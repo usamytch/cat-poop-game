@@ -3,10 +3,21 @@
 <head>
   <meta charset="UTF-8">
   <title>Кот и Лоток</title>
+  <link rel="icon" href="favicon-32.png" type="image/x-icon">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
   <canvas id="gameCanvas"></canvas>
-  <script src="game.js"></script>
+  <!-- Модули загружаются в порядке зависимостей -->
+  <script src="js/config.js"></script>
+  <script src="js/utils.js"></script>
+  <script src="js/audio.js"></script>
+  <script src="js/particles.js"></script>
+  <script src="js/bonuses.js"></script>
+  <script src="js/level.js"></script>
+  <script src="js/entities.js"></script>
+  <script src="js/projectiles.js"></script>
+  <script src="js/renderer.js"></script>
+  <script src="js/game.js"></script>
 </body>
 </html>
