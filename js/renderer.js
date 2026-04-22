@@ -220,9 +220,9 @@ function drawStartScreen() {
   ctx.fillText("Выбери сложность:", canvas.width/2, 300);
 
   const diffs = [
-    {key:"easy",   label:"1 — 😸 Лёгкий",  desc:"Медленная срочность, хозяин со 2 уровня, наведение какашек"},
-    {key:"normal", label:"2 — 😼 Нормал",   desc:"Стандартный режим, лёгкое наведение какашек"},
-    {key:"chaos",  label:"3 — 😈 Хаос",     desc:"Быстрая срочность, хозяин с 1 уровня, прямой выстрел"},
+    {key:"easy",   label:"😸 Лёгкий",  desc:"Медленная срочность, хозяин со 2 уровня, наведение какашек"},
+    {key:"normal", label:"😼 Нормал",   desc:"Стандартный режим, лёгкое наведение какашек"},
+    {key:"chaos",  label:"😈 Хаос",     desc:"Быстрая срочность, хозяин с 1 уровня, прямой выстрел"},
   ];
   diffs.forEach((d, i) => {
     const sel = difficulty === d.key;
@@ -320,6 +320,7 @@ function draw() {
 
   if (gameState === "start") {
     drawStartScreen();
+    if (IS_MOBILE) drawTouchControls();
     return;
   }
 
@@ -335,4 +336,5 @@ function draw() {
   drawUI();
 
   if (gameState !== "playing") drawOverlay();
+  if (IS_MOBILE) drawTouchControls();
 }

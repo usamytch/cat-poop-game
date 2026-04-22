@@ -2,6 +2,9 @@
 // CONFIG — constants, themes, catalog
 // ==========================================
 
+// ===== ОПРЕДЕЛЕНИЕ УСТРОЙСТВА =====
+const IS_MOBILE = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
+
 const canvas = document.getElementById("gameCanvas");
 const ctx = canvas.getContext("2d");
 canvas.width = 1200;

@@ -37,6 +37,12 @@ window.addEventListener("keydown", e => {
     if (e.key === "1") difficulty = "easy";
     if (e.key === "2") difficulty = "normal";
     if (e.key === "3") difficulty = "chaos";
+    if (e.key === "ArrowUp" || e.key === "ArrowDown") {
+      e.preventDefault();
+      const order = ["easy", "normal", "chaos"];
+      const idx = order.indexOf(difficulty);
+      difficulty = order[(idx + (e.key === "ArrowDown" ? 1 : -1) + 3) % 3];
+    }
     if (e.key === "Enter" || e.key === " ") startGame();
   } else if (gameState === "playing") {
     if (e.key === " " || e.key === "x" || e.key === "X") shootPoop();

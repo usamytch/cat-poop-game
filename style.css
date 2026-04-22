@@ -7,6 +7,11 @@ body {
   min-height: 100vh;
   font-family: Arial, sans-serif;
   overflow: auto;
+  /* Запрет выделения текста при тапах на мобильном */
+  -webkit-user-select: none;
+  user-select: none;
+  /* Запрет контекстного меню при долгом тапе */
+  -webkit-touch-callout: none;
 }
 
 canvas {
@@ -16,4 +21,21 @@ canvas {
   max-width: 100%;
   max-height: 100vh;
   box-shadow: 0 18px 48px rgba(0, 0, 0, 0.35);
+  /* Запрет масштабирования двойным тапом на мобильном */
+  touch-action: none;
+}
+
+/* На мобильном canvas занимает всю ширину экрана */
+@media (max-width: 1220px) {
+  body {
+    align-items: flex-start;
+    padding: 0;
+  }
+  canvas {
+    width: 100vw;
+    height: auto;
+    border-left: none;
+    border-right: none;
+    box-shadow: none;
+  }
 }
