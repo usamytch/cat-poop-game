@@ -95,6 +95,31 @@
 
 ---
 
+## 🧪 Тесты
+
+224 unit- и интеграционных теста на Vitest. Запуск:
+
+```bash
+npm install
+npm test
+```
+
+| Файл | Что покрыто |
+|---|---|
+| `tests/utils.test.js` | `clamp`, RNG, коллизии, bounds |
+| `tests/config.test.js` | DIFF, WORLD, BONUS_TYPES, obstacleCatalog |
+| `tests/bonuses.test.js` | `applyBonus`, `updateBonuses` |
+| `tests/particles.test.js` | конфетти, лужа, комбо-попапы |
+| `tests/projectiles.test.js` | выстрел, движение, попадание, комбо |
+| `tests/entities.test.js` | игрок и хозяин: движение, авария, лоток, паника |
+| `tests/level.test.js` | генерация уровня, движущиеся препятствия |
+| `tests/game.test.js` | статистика, startGame, respawnPlayer, update |
+| `tests/integration/combo-flow.test.js` | полный флоу 3 попаданий → бегство → очистка |
+| `tests/integration/urge-flow.test.js` | рост срочности, таблетка, авария, паника |
+| `tests/integration/level-progression.test.js` | прогресс уровней, активация хозяина |
+
+---
+
 ## 🏗️ Технологии
 
 - **Vanilla JS** — никаких фреймворков
@@ -103,6 +128,7 @@
 - **requestAnimationFrame** — игровой цикл
 - **localStorage** — сохранение прогресса
 - **LCG Seeded RNG** — детерминированная генерация уровней
+- **Vitest** — unit- и интеграционные тесты (Node.js, без браузера)
 
 ---
 
@@ -114,6 +140,8 @@ cat-poop-game/
 ├── style.css           # Стили страницы
 ├── cat.png             # Спрайт кота
 ├── master.png          # Спрайт хозяина
+├── package.json        # npm-зависимости (Vitest)
+├── vitest.config.js    # Конфиг тестов
 ├── js/
 │   ├── config.js       # Константы: WORLD, DIFF, локации, каталог препятствий, бонусы
 │   ├── utils.js        # Утилиты: RNG, clamp, коллизии, drawSprite, rrect
@@ -125,6 +153,20 @@ cat-poop-game/
 │   ├── projectiles.js  # Какашки: выстрел, наведение, попадание
 │   ├── renderer.js     # Весь рендеринг: фон, HUD, экраны
 │   └── game.js         # Состояние, ввод, игровой цикл
+├── tests/
+│   ├── setup.js        # Глобальные моки (canvas, audio, localStorage)
+│   ├── utils.test.js
+│   ├── config.test.js
+│   ├── bonuses.test.js
+│   ├── particles.test.js
+│   ├── projectiles.test.js
+│   ├── entities.test.js
+│   ├── level.test.js
+│   ├── game.test.js
+│   └── integration/
+│       ├── combo-flow.test.js
+│       ├── urge-flow.test.js
+│       └── level-progression.test.js
 └── screenshots/        # Скриншоты
 ```
 
