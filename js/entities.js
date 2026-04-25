@@ -134,16 +134,19 @@ const player = {
 const owner = {
   x: 800, y: 300, width: 52, height: 72,
   active: false, speed: 1.0,
-  // Анти-залипание
-  stuckTimer: 0,
-  lastX: 800, lastY: 300,
-  stuckNudge: null,
+
+  // A* навигация
+  path: [],           // [{col, row}, ...] — текущий путь по сетке
+  pathTimer: 0,       // пересчитываем путь каждые N кадров
+  PATH_RECALC: 45,    // пересчёт каждые 45 кадров (~0.75 сек)
+
   // Бегство после комбо
   fleeTimer: 0,
   fleeTarget: null,
+
   // Какашки на лице
-  poopHits: 0,       // сколько раз попали с момента последнего бегства
-  facePoops: [],     // [{rx, ry, rot, scale}] — позиции относительно центра хозяина
+  poopHits: 0,
+  facePoops: [],
 
   activate() {
     const diff = DIFF[difficulty];
@@ -156,15 +159,44 @@ const owner = {
       {x:b.right-this.width-20, y:b.bottom-this.height-20},
       {x:b.left+20,             y:b.top+20},
     ];
-    let best = corners[0], bestDist = 0;
+    // Sort corners farthest-first from player
+    corners.sort((a, c) => {
+      const da = Math.sqrt((a.x-player.x)**2 + (a.y-player.y)**2);
+      const dc = Math.sqrt((c.x-player.x)**2 + (c.y-player.y)**2);
+      return dc - da;
+    });
+    // Pick the farthest corner that doesn't overlap any obstacle
+    let best = null;
     for (const c of corners) {
-      const dx = c.x-player.x, dy = c.y-player.y;
-      const d = Math.sqrt(dx*dx+dy*dy);
-      if (d > bestDist) { bestDist = d; best = c; }
+      if (!hitsObstacles({x:c.x, y:c.y, width:this.width, height:this.height})) {
+        best = c; break;
+      }
+    }
+    // Fallback: spiral outward from the best corner to find a free grid cell
+    if (!best) {
+      const fc = corners[0];
+      const ownerWCells = Math.ceil(this.width / GRID);
+      const ownerHCells = Math.ceil(this.height / GRID);
+      const startCell = pixelToCell(fc.x + this.width/2, fc.y + this.height/2);
+      outer: for (let radius = 0; radius <= 6; radius++) {
+        for (let dr = -radius; dr <= radius; dr++) {
+          for (let dc = -radius; dc <= radius; dc++) {
+            if (Math.abs(dr) !== radius && Math.abs(dc) !== radius) continue;
+            const col = startCell.col + dc;
+            const row = startCell.row + dr;
+            if (col < 0 || row < 0 || col + ownerWCells > GRID_COLS || row + ownerHCells > GRID_ROWS) continue;
+            if (!cellsFree(col, row, ownerWCells, ownerHCells)) continue;
+            const pos = cellToPixel(col, row);
+            best = {x: pos.x, y: pos.y};
+            break outer;
+          }
+        }
+      }
+      if (!best) best = fc; // absolute fallback
     }
     this.x = best.x; this.y = best.y;
-    this.lastX = this.x; this.lastY = this.y;
-    this.stuckTimer = 0; this.stuckNudge = null;
+    this.path = [];
+    this.pathTimer = 0;
     this.fleeTimer = 0; this.fleeTarget = null;
     this.poopHits = 0; this.facePoops = [];
   },
@@ -186,6 +218,8 @@ const owner = {
     }
     this.fleeTarget = best;
     this.fleeTimer = 300; // 5 секунд при 60fps
+    this.path = [];
+    this.pathTimer = 0;
   },
 
   draw() {
@@ -204,7 +238,7 @@ const owner = {
     // Рисуем какашки на лице хозяина
     if (this.facePoops.length > 0) {
       const cx = this.x + this.width / 2;
-      const cy = this.y + this.height * 0.32; // область лица — верхняя треть спрайта
+      const cy = this.y + this.height * 0.32;
       ctx.save();
       for (const sp of this.facePoops) {
         ctx.save();
@@ -222,84 +256,96 @@ const owner = {
     ctx.globalAlpha = 1;
   },
 
+  // ===== A* ДВИЖЕНИЕ К ЦЕЛИ =====
+  _moveTowardTarget(tx, ty, spd) {
+    const b = getPlayBounds();
+
+    // Текущая ячейка хозяина (центр)
+    const ownerCx = this.x + this.width / 2;
+    const ownerCy = this.y + this.height / 2;
+    const ownerCell = pixelToCell(ownerCx, ownerCy);
+
+    // Целевая ячейка
+    const goalCell = pixelToCell(tx + this.width / 2, ty + this.height / 2);
+
+    // Пересчитываем путь по таймеру или если путь кончился
+    this.pathTimer--;
+    if (this.pathTimer <= 0 || this.path.length === 0) {
+      this.pathTimer = this.PATH_RECALC;
+      const newPath = aStarPath(ownerCell.col, ownerCell.row, goalCell.col, goalCell.row);
+      this.path = newPath ? newPath : [];
+    }
+
+    // Определяем направление движения
+    let dx = 0, dy = 0;
+
+    if (this.path.length >= 2) {
+      // Следующая ячейка в пути (пропускаем текущую [0])
+      const nextCell = this.path[1];
+      const nextPx = cellToPixelCenter(nextCell.col, nextCell.row);
+
+      dx = nextPx.x - ownerCx;
+      dy = nextPx.y - ownerCy;
+      const dist = Math.sqrt(dx*dx + dy*dy);
+
+      // Если достигли центра следующей ячейки — переходим к следующей
+      if (dist < spd + 2) {
+        this.path.shift();
+      } else {
+        dx /= dist;
+        dy /= dist;
+      }
+    } else {
+      // Нет пути или уже в цели — двигаемся напрямую
+      dx = tx - this.x;
+      dy = ty - this.y;
+      const dist = Math.sqrt(dx*dx + dy*dy);
+      if (dist > 1) { dx /= dist; dy /= dist; }
+    }
+
+    // Применяем движение с раздельной проверкой осей (скольжение вдоль стен)
+    const nx = this.x + dx * spd;
+    const ny = this.y + dy * spd;
+    const nrX = {x:nx,      y:this.y, width:this.width, height:this.height};
+    const nrY = {x:this.x,  y:ny,     width:this.width, height:this.height};
+    if (!hitsObstacles(nrX) && nx >= b.left && nx <= b.right  - this.width)  this.x = nx;
+    if (!hitsObstacles(nrY) && ny >= b.top  && ny <= b.bottom - this.height) this.y = ny;
+  },
+
   update() {
     if (!this.active) return;
     if (yarnFreezeTimer > 0) return;
 
     const b = getPlayBounds();
 
-    // Режим бегства: двигаемся к fleeTarget, а не к коту
+    // Режим бегства: двигаемся к fleeTarget
     if (this.fleeTimer > 0) {
       this.fleeTimer--;
       const tx = this.fleeTarget.x;
       const ty = this.fleeTarget.y;
-      let dx = tx - this.x, dy = ty - this.y;
-      const dist = Math.sqrt(dx*dx+dy*dy);
-      // Если добрались до угла — просто стоим там до конца таймера
+      const dx = tx - this.x, dy = ty - this.y;
+      const dist = Math.sqrt(dx*dx + dy*dy);
       if (dist > 2) {
-        dx /= dist; dy /= dist;
-        const spd = this.speed * 1.4; // убегает чуть быстрее обычного
-        const nx = this.x + dx*spd;
-        const ny = this.y + dy*spd;
-        const nrX = {x:nx,     y:this.y, width:this.width, height:this.height};
-        const nrY = {x:this.x, y:ny,     width:this.width, height:this.height};
-        if (!hitsObstacles(nrX) && nx >= b.left && nx <= b.right-this.width)   this.x = nx;
-        if (!hitsObstacles(nrY) && ny >= b.top  && ny <= b.bottom-this.height) this.y = ny;
+        this._moveTowardTarget(tx, ty, this.speed * 1.4);
       }
-      this.lastX = this.x; this.lastY = this.y;
-      return; // не преследуем кота во время бегства
+      // Вернулся из угла (fleeTimer только что стал 0) — очищаем какашки с лица
+      if (this.fleeTimer === 0 && this.facePoops.length > 0 && this.poopHits >= 3) {
+        this.facePoops = [];
+        this.poopHits = 0;
+      }
+      return;
     }
 
-    // Вернулся из угла (fleeTimer только что стал 0) — очищаем какашки с лица
+    // Вернулся из угла — очищаем какашки с лица
     if (this.facePoops.length > 0 && this.poopHits >= 3) {
       this.facePoops = [];
       this.poopHits = 0;
     }
 
-    const spd = this.speed;
+    // Преследование кота через A*
     const tx = player.x + player.size/2 - this.width/2;
     const ty = player.y + player.size/2 - this.height/2;
-    let dx = tx - this.x, dy = ty - this.y;
-    const dist = Math.sqrt(dx*dx+dy*dy);
-    if (dist > 1) { dx /= dist; dy /= dist; }
-
-    // Применяем nudge при залипании
-    if (this.stuckNudge) {
-      dx += this.stuckNudge.x;
-      dy += this.stuckNudge.y;
-      // Нормализуем обратно
-      const len = Math.sqrt(dx*dx+dy*dy);
-      if (len > 0) { dx /= len; dy /= len; }
-    }
-
-    const nx = this.x + dx*spd;
-    const ny = this.y + dy*spd;
-
-    // FIX: раздельная проверка осей — хозяин скользит вдоль препятствий
-    // вместо того чтобы залипать на углах
-    const nrX = {x:nx,      y:this.y, width:this.width, height:this.height};
-    const nrY = {x:this.x,  y:ny,     width:this.width, height:this.height};
-    if (!hitsObstacles(nrX) && nx >= b.left && nx <= b.right-this.width)   this.x = nx;
-    if (!hitsObstacles(nrY) && ny >= b.top  && ny <= b.bottom-this.height) this.y = ny;
-
-    // Детектор залипания: если почти не двигался — накапливаем таймер
-    const moved = Math.abs(this.x - this.lastX) + Math.abs(this.y - this.lastY);
-    if (moved < 0.5) {
-      this.stuckTimer++;
-      if (this.stuckTimer > 30) {
-        // Случайный боковой толчок для выхода из угла
-        this.stuckNudge = {
-          x: (Math.random()-0.5) * 2,
-          y: (Math.random()-0.5) * 2,
-        };
-        this.stuckTimer = 0;
-      }
-    } else {
-      this.stuckTimer = 0;
-      this.stuckNudge = null;
-    }
-    this.lastX = this.x;
-    this.lastY = this.y;
+    this._moveTowardTarget(tx, ty, this.speed);
 
     // Поймал кота
     if (rectsOverlap(playerRect(), ownerRect(), -6)) {

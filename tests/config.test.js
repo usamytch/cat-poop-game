@@ -107,21 +107,23 @@ describe('obstacleCatalog', () => {
     }
   });
 
-  it('each catalog entry has minW, maxW, minH, maxH, color, detail', () => {
+  it('each catalog entry has wCells, hCells, color, detail (grid-based sizing)', () => {
     for (const [key, entry] of Object.entries(obstacleCatalog)) {
-      expect(entry, `${key} missing minW`).toHaveProperty('minW');
-      expect(entry, `${key} missing maxW`).toHaveProperty('maxW');
-      expect(entry, `${key} missing minH`).toHaveProperty('minH');
-      expect(entry, `${key} missing maxH`).toHaveProperty('maxH');
+      expect(entry, `${key} missing wCells`).toHaveProperty('wCells');
+      expect(entry, `${key} missing hCells`).toHaveProperty('hCells');
       expect(entry, `${key} missing color`).toHaveProperty('color');
       expect(entry, `${key} missing detail`).toHaveProperty('detail');
+      expect(Array.isArray(entry.wCells), `${key} wCells must be array [min, max]`).toBe(true);
+      expect(Array.isArray(entry.hCells), `${key} hCells must be array [min, max]`).toBe(true);
     }
   });
 
-  it('minW <= maxW and minH <= maxH for all entries', () => {
+  it('wCells[0] <= wCells[1] and hCells[0] <= hCells[1] for all entries', () => {
     for (const [key, entry] of Object.entries(obstacleCatalog)) {
-      expect(entry.minW, `${key}: minW > maxW`).toBeLessThanOrEqual(entry.maxW);
-      expect(entry.minH, `${key}: minH > maxH`).toBeLessThanOrEqual(entry.maxH);
+      expect(entry.wCells[0], `${key}: wCells min > max`).toBeLessThanOrEqual(entry.wCells[1]);
+      expect(entry.hCells[0], `${key}: hCells min > max`).toBeLessThanOrEqual(entry.hCells[1]);
+      expect(entry.wCells[0], `${key}: wCells min must be >= 1`).toBeGreaterThanOrEqual(1);
+      expect(entry.hCells[0], `${key}: hCells min must be >= 1`).toBeGreaterThanOrEqual(1);
     }
   });
 });

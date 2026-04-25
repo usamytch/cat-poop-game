@@ -65,6 +65,7 @@ window.addEventListener("keyup", e => { keys[e.key] = false; });
 
 // ===== СТАРТ ИГРЫ =====
 function startGame() {
+  globalSeed = Date.now() & 0x7FFFFFFF; // timestamp-based seed, positive 31-bit int
   score = 0; level = 1; lives = 3;
   player.urge = 0; player.pooping = false; player.poopTimer = 0;
   poops.length = 0; overlayParticles.length = 0; comboPopups.length = 0;

@@ -1,119 +1,341 @@
 // ==========================================
-// LEVEL — generation, litter box placement
+// LEVEL — grid-based generation, litter box placement
 // ==========================================
 
 let currentLocation = locationThemes[0];
 let levelSeed = 1;
+// Per-run random seed set from Date.now() at startGame().
+// Mixing it into levelSeed makes every game run produce a unique map
+// while keeping tests deterministic (tests set globalSeed = 0).
+let globalSeed = 0;
 let levelMessageTimer = 180;
 const obstacles = [];
+const decorItems = []; // фоновые декоративные элементы (без коллизий)
 
-const litterBox = { x:620, y:310, width:92, height:62 };
+const litterBox = { x:620, y:310, width: GRID*2, height: GRID*2 };
 
-function generateObstacle(theme, rng, index, movingAllowed) {
-  const type = theme.obstacleTypes[randInt(rng, 0, theme.obstacleTypes.length-1)];
-  const meta = obstacleCatalog[type];
-  const w = randInt(rng, meta.minW, meta.maxW);
-  const h = randInt(rng, meta.minH, meta.maxH);
+// ===== СЕТКА =====
+// occupiedCells хранит ключи "col,row" для всех занятых ячеек
+// (препятствия + лоток). Декор не занимает ячейки.
+const occupiedCells = new Set();
+
+function cellKey(col, row) {
+  return `${col},${row}`;
+}
+
+function markCells(col, row, wCells, hCells) {
+  for (let r = row; r < row + hCells; r++) {
+    for (let c = col; c < col + wCells; c++) {
+      occupiedCells.add(cellKey(c, r));
+    }
+  }
+}
+
+function unmarkCells(col, row, wCells, hCells) {
+  for (let r = row; r < row + hCells; r++) {
+    for (let c = col; c < col + wCells; c++) {
+      occupiedCells.delete(cellKey(c, r));
+    }
+  }
+}
+
+// Проверяет, что все ячейки в прямоугольнике col..col+wCells-1, row..row+hCells-1
+// свободны И находятся в пределах сетки
+function cellsFree(col, row, wCells, hCells) {
+  if (col < 0 || row < 0 || col + wCells > GRID_COLS || row + hCells > GRID_ROWS) return false;
+  for (let r = row; r < row + hCells; r++) {
+    for (let c = col; c < col + wCells; c++) {
+      if (occupiedCells.has(cellKey(c, r))) return false;
+    }
+  }
+  return true;
+}
+
+// Проверяет, что ячейка (col, row) свободна (для A* и навигации)
+function isCellFree(col, row) {
+  if (col < 0 || row < 0 || col >= GRID_COLS || row >= GRID_ROWS) return false;
+  return !occupiedCells.has(cellKey(col, row));
+}
+
+// Конвертация пиксельных координат в ячейку сетки
+function pixelToCell(px, py) {
   const b = getPlayBounds();
-  const x = randInt(rng, b.left+20, b.right-w-20);
-  const y = randInt(rng, b.top+20, b.bottom-h-20);
-  const moving = movingAllowed && rng() > 0.72;
-  const axis = rng() > 0.5 ? "x" : "y";
-  const range = moving ? randInt(rng, 30, 70) : 0;
-  const speed = moving ? randRange(rng, 0.008, 0.02) : 0;
   return {
-    id: `${type}-${index}-${Math.floor(rng()*100000)}`,
-    type, x, y, width:w, height:h,
-    moving, axis, range, speed,
-    phase: randRange(rng, 0, Math.PI*2),
-    movingOffset: 0,
-    baseX: x, baseY: y,
+    col: Math.floor((px - b.left) / GRID),
+    row: Math.floor((py - b.top)  / GRID),
   };
 }
 
-function placeLitterBox(rng, spawn) {
+// Центр ячейки в пикселях
+function cellToPixelCenter(col, row) {
   const b = getPlayBounds();
-  const hud = {x:0, y:0, width:360, height:220};
-  const minDist = Math.min(420+(level-1)*45, 760);
-  const candidates = [
-    {x:b.right-litterBox.width-40,  y:b.top+40},
-    {x:b.right-litterBox.width-60,  y:b.bottom-litterBox.height-40},
-    {x:canvas.width/2-litterBox.width/2, y:b.top+60},
-    {x:canvas.width/2-litterBox.width/2, y:b.bottom-litterBox.height-50},
-    {x:b.left+60, y:b.top+40},
-    {x:b.left+60, y:b.bottom-litterBox.height-40},
-  ];
-  function farEnough(r) {
-    const dx = (r.x+r.width/2)-(spawn.x+spawn.width/2);
-    const dy = (r.y+r.height/2)-(spawn.y+spawn.height/2);
-    return Math.sqrt(dx*dx+dy*dy) >= minDist;
+  return {
+    x: b.left + col * GRID + GRID / 2,
+    y: b.top  + row * GRID + GRID / 2,
+  };
+}
+
+// Левый верхний угол ячейки в пикселях
+function cellToPixel(col, row) {
+  const b = getPlayBounds();
+  return {
+    x: b.left + col * GRID,
+    y: b.top  + row * GRID,
+  };
+}
+
+// ===== A* PATHFINDING =====
+// Возвращает массив {col, row} от startCell до goalCell, или null если пути нет.
+// Использует 4-связную сетку (вверх/вниз/влево/вправо).
+function aStarPath(startCol, startRow, goalCol, goalRow) {
+  const key = (c, r) => `${c},${r}`;
+  const heuristic = (c, r) => Math.abs(c - goalCol) + Math.abs(r - goalRow);
+
+  const openSet = new Map(); // key → {col, row, g, f, parent}
+  const closedSet = new Set();
+
+  const startNode = { col: startCol, row: startRow, g: 0, f: heuristic(startCol, startRow), parent: null };
+  openSet.set(key(startCol, startRow), startNode);
+
+  const dirs = [{dc:1,dr:0},{dc:-1,dr:0},{dc:0,dr:1},{dc:0,dr:-1}];
+
+  let iterations = 0;
+  while (openSet.size > 0 && iterations < 500) {
+    iterations++;
+    // Найти узел с минимальным f
+    let current = null;
+    for (const node of openSet.values()) {
+      if (!current || node.f < current.f) current = node;
+    }
+
+    if (current.col === goalCol && current.row === goalRow) {
+      // Восстановить путь
+      const path = [];
+      let n = current;
+      while (n) { path.unshift({col: n.col, row: n.row}); n = n.parent; }
+      return path;
+    }
+
+    const ck = key(current.col, current.row);
+    openSet.delete(ck);
+    closedSet.add(ck);
+
+    for (const {dc, dr} of dirs) {
+      const nc = current.col + dc;
+      const nr = current.row + dr;
+      const nk = key(nc, nr);
+      if (closedSet.has(nk)) continue;
+      // Разрешаем проход через свободные ячейки ИЛИ через цель (даже если занята лотком)
+      const isGoal = nc === goalCol && nr === goalRow;
+      if (!isGoal && !isCellFree(nc, nr)) continue;
+
+      const g = current.g + 1;
+      const existing = openSet.get(nk);
+      if (!existing || g < existing.g) {
+        openSet.set(nk, { col: nc, row: nr, g, f: g + heuristic(nc, nr), parent: current });
+      }
+    }
   }
-  for (let i=candidates.length-1; i>0; i--) {
+  return null; // путь не найден
+}
+
+// ===== ГЕНЕРАЦИЯ ПРЕПЯТСТВИЯ =====
+function generateObstacle(theme, rng, index, movingAllowed) {
+  const type = theme.obstacleTypes[randInt(rng, 0, theme.obstacleTypes.length - 1)];
+  const meta = obstacleCatalog[type];
+
+  // Размер в ячейках (случайный в диапазоне)
+  const wCells = randInt(rng, meta.wCells[0], meta.wCells[1]);
+  const hCells = randInt(rng, meta.hCells[0], meta.hCells[1]);
+
+  // Пиксельный размер кратен сетке
+  const w = wCells * GRID;
+  const h = hCells * GRID;
+
+  // Случайная позиция в сетке
+  const col = randInt(rng, 0, GRID_COLS - wCells);
+  const row = randInt(rng, 0, GRID_ROWS - hCells);
+
+  if (!cellsFree(col, row, wCells, hCells)) return null;
+
+  const pos = cellToPixel(col, row);
+
+  const moving = movingAllowed && rng() > 0.72;
+  const axis = rng() > 0.5 ? "x" : "y";
+  // Движущиеся препятствия двигаются на 1 ячейку в каждую сторону
+  const range = moving ? GRID : 0;
+  const speed = moving ? randRange(rng, 0.008, 0.02) : 0;
+
+  markCells(col, row, wCells, hCells);
+
+  return {
+    id: `${type}-${index}-${Math.floor(rng() * 100000)}`,
+    type, col, row, wCells, hCells,
+    x: pos.x, y: pos.y, width: w, height: h,
+    moving, axis, range, speed,
+    phase: randRange(rng, 0, Math.PI * 2),
+    movingOffset: 0,
+    baseX: pos.x, baseY: pos.y,
+  };
+}
+
+// ===== ГЕНЕРАЦИЯ ДЕКОРА =====
+function generateDecor(theme, rng, count) {
+  decorItems.length = 0;
+  if (!theme.decorTypes || theme.decorTypes.length === 0) return;
+
+  for (let i = 0; i < count; i++) {
+    const type = theme.decorTypes[randInt(rng, 0, theme.decorTypes.length - 1)];
+    const meta = decorCatalog[type];
+    const wCells = randInt(rng, meta.wCells[0], meta.wCells[1]);
+    const hCells = randInt(rng, meta.hCells[0], meta.hCells[1]);
+    const col = randInt(rng, 0, GRID_COLS - wCells);
+    const row = randInt(rng, 0, GRID_ROWS - hCells);
+    const pos = cellToPixel(col, row);
+    decorItems.push({
+      type, col, row, wCells, hCells,
+      x: pos.x, y: pos.y,
+      width: wCells * GRID, height: hCells * GRID,
+      drawStyle: meta.draw,
+    });
+  }
+}
+
+// ===== РАЗМЕЩЕНИЕ ЛОТКА =====
+function placeLitterBox(rng, spawnCol, spawnRow) {
+  // Лоток занимает 2×2 ячейки (80×80px при GRID=40)
+  const lbW = 2, lbH = 2;
+  const minDist = Math.min(3 + Math.floor((level - 1) * 0.5), 8); // минимум ячеек от спавна
+
+  // Перемешанный список всех возможных позиций
+  const candidates = [];
+  for (let r = 0; r < GRID_ROWS - lbH + 1; r++) {
+    for (let c = 0; c < GRID_COLS - lbW + 1; c++) {
+      const dist = Math.abs(c - spawnCol) + Math.abs(r - spawnRow);
+      if (dist >= minDist) candidates.push({c, r});
+    }
+  }
+
+  // Перемешать кандидатов
+  for (let i = candidates.length - 1; i > 0; i--) {
     const j = randInt(rng, 0, i);
     [candidates[i], candidates[j]] = [candidates[j], candidates[i]];
   }
-  for (const c of candidates) {
-    const r = {x:c.x, y:c.y, width:litterBox.width, height:litterBox.height};
-    if (!farEnough(r)) continue;
-    if (rectsOverlap(r, hud, 12)) continue;
-    if (hitsObstacles(r)) continue;
-    litterBox.x = r.x; litterBox.y = r.y; return;
+
+  // HUD занимает примерно первые 8 колонок × 6 строк (левый верхний угол)
+  const hudCols = 8, hudRows = 6;
+
+  for (const {c, r} of candidates) {
+    // Не ставить под HUD
+    if (c < hudCols && r < hudRows) continue;
+    // Проверяем лоток + 2 ячейки отступа со всех сторон (чтобы не касался препятствий)
+    const pad = 2;
+    const mc = Math.max(0, c - pad);
+    const mr = Math.max(0, r - pad);
+    const rightPad = Math.min(pad, GRID_COLS - (c + lbW));
+    const bottomPad = Math.min(pad, GRID_ROWS - (r + lbH));
+    const mw = (c - mc) + lbW + rightPad;
+    const mh = (r - mr) + lbH + bottomPad;
+    if (!cellsFree(mc, mr, mw, mh)) continue;
+
+    markCells(c, r, lbW, lbH);
+    const pos = cellToPixel(c, r);
+    litterBox.x = pos.x;
+    litterBox.y = pos.y;
+    litterBox.width  = lbW * GRID;
+    litterBox.height = lbH * GRID;
+    return;
   }
-  for (let att=0; att<180; att++) {
-    const r = {
-      x: randInt(rng, b.left+20, b.right-litterBox.width-20),
-      y: randInt(rng, b.top+20, b.bottom-litterBox.height-20),
-      width: litterBox.width, height: litterBox.height,
-    };
-    if (!farEnough(r)) continue;
-    if (rectsOverlap(r, hud, 12)) continue;
-    if (hitsObstacles(r)) continue;
-    litterBox.x = r.x; litterBox.y = r.y; return;
+
+  // Fallback — ищем любую свободную позицию без ограничения дистанции, но с отступом
+  for (let r = 0; r < GRID_ROWS - lbH + 1; r++) {
+    for (let c = 0; c < GRID_COLS - lbW + 1; c++) {
+      if (c < hudCols && r < hudRows) continue;
+      const pad = 1; // в крайнем случае хватит 1 ячейки
+      const mc = Math.max(0, c - pad);
+      const mr = Math.max(0, r - pad);
+      const rightPad = Math.min(pad, GRID_COLS - (c + lbW));
+      const bottomPad = Math.min(pad, GRID_ROWS - (r + lbH));
+      const mw = (c - mc) + lbW + rightPad;
+      const mh = (r - mr) + lbH + bottomPad;
+      if (!cellsFree(mc, mr, mw, mh)) continue;
+      markCells(c, r, lbW, lbH);
+      const pos = cellToPixel(c, r);
+      litterBox.x = pos.x;
+      litterBox.y = pos.y;
+      litterBox.width  = lbW * GRID;
+      litterBox.height = lbH * GRID;
+      return;
+    }
   }
-  litterBox.x = b.right-litterBox.width-40;
-  litterBox.y = b.bottom-litterBox.height-40;
+  // Абсолютный fallback — правый нижний угол (без проверок, крайний случай)
+  const fc = GRID_COLS - lbW;
+  const fr = GRID_ROWS - lbH;
+  const pos = cellToPixel(fc, fr);
+  litterBox.x = pos.x;
+  litterBox.y = pos.y;
+  litterBox.width  = lbW * GRID;
+  litterBox.height = lbH * GRID;
 }
 
+// ===== ГЕНЕРАЦИЯ УРОВНЯ =====
 function generateLevel() {
-  levelSeed = level*9973 + score*17 + 13;
+  levelSeed = level * 9973 + score * 17 + globalSeed * 31 + 13;
   const rng = createRng(levelSeed);
-  currentLocation = locationThemes[randInt(rng, 0, locationThemes.length-1)];
+  currentLocation = locationThemes[randInt(rng, 0, locationThemes.length - 1)];
+
   obstacles.length = 0;
   bonuses.length = 0;
+  occupiedCells.clear();
 
-  const obstCount = Math.min(4+level, 12);
+  const obstCount = Math.min(4 + level, 12);
   const movingAllowed = level >= 5;
-  const spawn = {x:90, y:canvas.height-WORLD.floorHeight-player.size-30, width:player.size, height:player.size};
 
+  // Спавн кота — левый нижний угол сетки
+  const spawnCol = 0;
+  const spawnRow = GRID_ROWS - 1;
+  const b = getPlayBounds();
+  const spawnPos = cellToPixel(spawnCol, spawnRow);
+  const spawn = { x: spawnPos.x, y: spawnPos.y, width: player.size, height: player.size };
+
+  // Заблокировать ячейки вокруг спавна (3×3 зона)
+  markCells(spawnCol, Math.max(0, spawnRow - 2), 3, 3);
+
+  // Генерация препятствий
   let att = 0;
-  while (obstacles.length < obstCount && att < obstCount*40) {
+  while (obstacles.length < obstCount && att < obstCount * 60) {
     att++;
     const ob = generateObstacle(currentLocation, rng, obstacles.length, movingAllowed);
-    const pr = {x:ob.x-24, y:ob.y-24, width:ob.width+48, height:ob.height+48};
-    if (rectsOverlap(pr, spawn)) continue;
-    if (rectsOverlap(pr, litterBox, 18)) continue;
-    if (hitsObstacles(pr)) continue;
-    obstacles.push(ob);
+    if (ob) obstacles.push(ob);
   }
 
-  placeLitterBox(rng, spawn);
-  player.x = spawn.x; player.y = spawn.y;
+  // Размещение лотка
+  placeLitterBox(rng, spawnCol, spawnRow);
+
+  // Снять блокировку спавна (кот может туда вернуться)
+  unmarkCells(spawnCol, Math.max(0, spawnRow - 2), 3, 3);
+
+  // Позиция игрока
+  player.x = spawn.x;
+  player.y = spawn.y;
   levelMessageTimer = 180;
 
-  // Спавн бонусов
+  // Декор (3–5 элементов, не блокируют)
+  const decorCount = randInt(rng, 3, 5);
+  generateDecor(currentLocation, rng, decorCount);
+
+  // Спавн бонусов — на свободных ячейках сетки
   const bonusKeys = Object.keys(BONUS_TYPES);
   const bonusCount = 2 + (level > 3 ? 1 : 0);
   let batt = 0;
   while (bonuses.length < bonusCount && batt < 200) {
     batt++;
-    const bx = randInt(rng, 80, canvas.width-80);
-    const by = randInt(rng, WORLD.topPadding+20, canvas.height-WORLD.floorHeight-40);
-    const br = {x:bx-20, y:by-20, width:40, height:40};
-    if (hitsObstacles(br)) continue;
-    if (rectsOverlap(br, litterBox, 20)) continue;
-    if (rectsOverlap(br, spawn, 30)) continue;
-    const btype = bonusKeys[randInt(rng, 0, bonusKeys.length-1)];
-    bonuses.push({x:bx, y:by, type:btype, alive:true, pulse:Math.random()*Math.PI*2});
+    const bc = randInt(rng, 1, GRID_COLS - 2);
+    const br = randInt(rng, 1, GRID_ROWS - 2);
+    if (!isCellFree(bc, br)) continue;
+    const center = cellToPixelCenter(bc, br);
+    const btype = bonusKeys[randInt(rng, 0, bonusKeys.length - 1)];
+    bonuses.push({ x: center.x, y: center.y, type: btype, alive: true, pulse: Math.random() * Math.PI * 2 });
   }
 }
 
@@ -121,7 +343,7 @@ function generateLevel() {
 function updateObstacles() {
   for (const ob of obstacles) {
     if (!ob.moving) continue;
-    ob.movingOffset = Math.sin(ob.phase + performance.now()*ob.speed) * ob.range;
+    ob.movingOffset = Math.sin(ob.phase + performance.now() * ob.speed) * ob.range;
     if (ob.axis === "x") ob.x = ob.baseX + ob.movingOffset;
     else                  ob.y = ob.baseY + ob.movingOffset;
   }

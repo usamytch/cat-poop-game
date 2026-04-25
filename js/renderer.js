@@ -2,6 +2,80 @@
 // RENDERER — all canvas drawing functions
 // ==========================================
 
+// ===== РИСОВАНИЕ ДЕКОРА (фоновые элементы, без коллизий) =====
+function drawDecorItem(d) {
+  const {x, y, width: w, height: h, drawStyle} = d;
+  const p = currentLocation.palette;
+  ctx.save();
+  ctx.globalAlpha = 0.38;
+  switch (drawStyle) {
+    case "rug": {
+      ctx.fillStyle = p.accent;
+      ctx.beginPath(); ctx.roundRect(x + 6, y + 6, w - 12, h - 12, 12); ctx.fill();
+      ctx.strokeStyle = p.trim; ctx.lineWidth = 4;
+      ctx.beginPath(); ctx.roundRect(x + 10, y + 10, w - 20, h - 20, 8); ctx.stroke();
+      ctx.strokeStyle = p.trim; ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(x + w/2, y + 14); ctx.lineTo(x + w/2, y + h - 14);
+      ctx.moveTo(x + 14, y + h/2); ctx.lineTo(x + w - 14, y + h/2);
+      ctx.stroke();
+      break;
+    }
+    case "mat": {
+      ctx.fillStyle = p.trim;
+      ctx.beginPath(); ctx.roundRect(x + 4, y + 4, w - 8, h - 8, 8); ctx.fill();
+      ctx.strokeStyle = p.accent; ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.roundRect(x + 8, y + 8, w - 16, h - 16, 5); ctx.stroke();
+      break;
+    }
+    case "bathmat": {
+      ctx.fillStyle = "#f0e8d8";
+      ctx.beginPath(); ctx.roundRect(x + 4, y + 4, w - 8, h - 8, 10); ctx.fill();
+      ctx.strokeStyle = "#c8b89a"; ctx.lineWidth = 2;
+      for (let i = 0; i < 4; i++) {
+        ctx.beginPath();
+        ctx.moveTo(x + 8 + i * ((w - 16) / 3), y + 8);
+        ctx.lineTo(x + 8 + i * ((w - 16) / 3), y + h - 8);
+        ctx.stroke();
+      }
+      break;
+    }
+    case "tiles_decor": {
+      ctx.strokeStyle = p.trim; ctx.lineWidth = 1.5;
+      const tileSize = GRID / 2;
+      for (let ty = y; ty < y + h; ty += tileSize) {
+        for (let tx = x; tx < x + w; tx += tileSize) {
+          ctx.strokeRect(tx + 2, ty + 2, tileSize - 4, tileSize - 4);
+        }
+      }
+      break;
+    }
+    case "patch": {
+      ctx.fillStyle = "#8faf6f";
+      ctx.beginPath(); ctx.ellipse(x + w/2, y + h/2, w/2 - 4, h/2 - 4, 0, 0, Math.PI*2); ctx.fill();
+      ctx.globalAlpha = 0.6;
+      ctx.fillStyle = "#6f8f4f"; ctx.font = "14px Arial"; ctx.textAlign = "center";
+      ctx.fillText("🌿", x + w/2, y + h/2 + 5);
+      break;
+    }
+    case "stone": {
+      ctx.fillStyle = "#a0a0a0";
+      ctx.beginPath(); ctx.ellipse(x + w/2, y + h/2, w/2 - 6, h/2 - 8, 0.3, 0, Math.PI*2); ctx.fill();
+      ctx.fillStyle = "#c8c8c8";
+      ctx.beginPath(); ctx.ellipse(x + w/2 - 4, y + h/2 - 4, w/4, h/4, 0.3, 0, Math.PI*2); ctx.fill();
+      break;
+    }
+    default:
+      break;
+  }
+  ctx.globalAlpha = 1;
+  ctx.restore();
+}
+
+function drawDecor() {
+  for (const d of decorItems) drawDecorItem(d);
+}
+
 // ===== РИСОВАНИЕ ПРЕПЯТСТВИЙ =====
 function drawObstacle(ob) {
   const {x, y, width:w, height:h, type} = ob;
@@ -85,7 +159,7 @@ function drawLitterBox() {
   ctx.fillStyle = "#5a3a00"; ctx.font = "bold 12px Arial"; ctx.textAlign = "center";
   ctx.fillText("🐾 Лоток", litterBox.x+litterBox.width/2, litterBox.y+litterBox.height+20);
 
-  // Прогресс-бар покакания — показываем только когда кот на лотке
+  // Прогресс-бар покакания
   if (isPooping && poopProgress > 0) {
     const poopTime = DIFF[difficulty].poopTime;
     const ratio = poopProgress / poopTime;
@@ -93,14 +167,11 @@ function drawLitterBox() {
     const bx = lx - 5;
     const by = litterBox.y + litterBox.height + 26;
     const bh = 10;
-    // Фон
     ctx.fillStyle = "rgba(0,0,0,0.35)";
     ctx.beginPath(); ctx.roundRect(bx, by, bw, bh, 5); ctx.fill();
-    // Заполнение — пульсирует
     const pulse2 = 0.7 + Math.sin(Date.now()*0.02)*0.3;
     ctx.fillStyle = `rgba(139,69,19,${pulse2})`;
     ctx.beginPath(); ctx.roundRect(bx, by, bw*ratio, bh, 5); ctx.fill();
-    // Эмодзи над баром
     ctx.font = "16px Arial";
     ctx.fillText("💩", litterBox.x+litterBox.width/2, by - 2);
   }
@@ -114,12 +185,10 @@ function drawUI() {
   const urgeRatio = player.urge / player.maxUrge;
   const panic = urgeRatio > 0.75;
 
-  // Панель HUD — увеличена по высоте для жизней
   const hudX=14, hudY=14, hudW=310, hudH=220;
   ctx.fillStyle = p.ui || "rgba(30,20,10,0.72)";
   ctx.beginPath(); ctx.roundRect(hudX, hudY, hudW, hudH, 18); ctx.fill();
 
-  // Уровень и счёт
   ctx.fillStyle = "#fff"; ctx.font = "bold 18px Arial"; ctx.textAlign = "left";
   ctx.fillText("Уровень "+level, hudX+18, hudY+34);
   ctx.fillStyle = "#ffd54f"; ctx.font = "bold 16px Arial";
@@ -127,11 +196,9 @@ function drawUI() {
   ctx.fillStyle = "#b0bec5"; ctx.font = "14px Arial";
   ctx.fillText("Рекорд: "+stats.highScore, hudX+18, hudY+78);
 
-  // Сложность
   ctx.fillStyle = "#90caf9"; ctx.font = "13px Arial";
   ctx.fillText(DIFF[difficulty].label, hudX+18, hudY+98);
 
-  // Шкала срочности
   const barX=hudX+18, barY=hudY+112, barW=hudW-36, barH=22;
   ctx.fillStyle = "rgba(0,0,0,0.4)"; ctx.beginPath(); ctx.roundRect(barX,barY,barW,barH,10); ctx.fill();
 
@@ -155,7 +222,6 @@ function drawUI() {
   ctx.fillStyle = "#fff"; ctx.font = "bold 13px Arial"; ctx.textAlign = "center";
   ctx.fillText(panic ? "😱 СРОЧНО!" : "💩 Срочность: "+Math.floor(urgeRatio*100)+"%", barX+barW/2, barY+15);
 
-  // Таймеры бонусов
   let bx = hudX+18;
   if (speedBoostTimer > 0) {
     ctx.fillStyle = "#4fc3f7"; ctx.font = "13px Arial"; ctx.textAlign = "left";
@@ -166,23 +232,19 @@ function drawUI() {
     ctx.fillText("🧶 "+Math.ceil(yarnFreezeTimer/60)+"с", bx, hudY+152);
   }
 
-  // Подсказка стрельбы + статус звука
   ctx.fillStyle = "rgba(255,255,255,0.55)"; ctx.font = "12px Arial"; ctx.textAlign = "left";
   ctx.fillText("Пробел — стрелять", hudX+18, hudY+174);
-  // Иконка мьюта справа в HUD
   const muteIcon = muted ? "🔇" : "🔊";
   ctx.font = "16px Arial"; ctx.textAlign = "right";
   ctx.fillStyle = muted ? "rgba(255,100,100,0.9)" : "rgba(255,255,255,0.7)";
   ctx.fillText(muteIcon + " M", hudX+hudW-14, hudY+174);
 
-  // ===== ЖИЗНИ =====
   const lifeIconSize = 28;
   const lifeY = hudY + 188;
   const lifeStartX = hudX + 18;
   for (let i = 0; i < 3; i++) {
     const lx = lifeStartX + i * (lifeIconSize + 6);
     if (i < lives) {
-      // Живая жизнь — иконка кота
       ctx.globalAlpha = 1.0;
       if (typeof lifeImage !== "undefined" && lifeImage.complete && lifeImage.naturalWidth > 0) {
         ctx.drawImage(lifeImage, lx, lifeY, lifeIconSize, lifeIconSize);
@@ -191,7 +253,6 @@ function drawUI() {
         ctx.fillText("🐱", lx, lifeY + lifeIconSize - 2);
       }
     } else {
-      // Потраченная жизнь — серый крестик
       ctx.globalAlpha = 0.28;
       if (typeof lifeImage !== "undefined" && lifeImage.complete && lifeImage.naturalWidth > 0) {
         ctx.drawImage(lifeImage, lx, lifeY, lifeIconSize, lifeIconSize);
@@ -204,7 +265,6 @@ function drawUI() {
   }
   ctx.globalAlpha = 1.0;
 
-  // Сообщение об уровне
   if (levelMessageTimer > 0) {
     const alpha = Math.min(1, levelMessageTimer/40);
     ctx.save();
@@ -224,7 +284,6 @@ function drawUI() {
 function drawStartScreen() {
   ctx.fillStyle = "#1a1a2e"; ctx.fillRect(0,0,canvas.width,canvas.height);
 
-  // Звёзды
   ctx.fillStyle = "rgba(255,255,255,0.6)";
   for (let i=0; i<60; i++) {
     const sx = (i*137.5)%canvas.width, sy = (i*97.3)%canvas.height;
@@ -287,7 +346,6 @@ function drawStartScreen() {
 
 // ===== ОВЕРЛЕЙ КОНЦА =====
 function drawOverlay() {
-  // Лужа при аварии
   if ((gameState === "accident" || (gameState === "lifeLost" && lifeLostReason === "accident")) && puddleAlpha > 0) {
     ctx.save();
     ctx.globalAlpha = puddleAlpha * 0.55;
@@ -303,7 +361,6 @@ function drawOverlay() {
   const cx = canvas.width/2, cy = canvas.height/2;
 
   if (gameState === "lifeLost") {
-    // Оверлей потери жизни
     const reason = lifeLostReason === "caught" ? "😾 Поймали!" : "💩 Авария!";
     ctx.font = "bold 64px Arial";
     ctx.fillStyle = lifeLostReason === "caught" ? "#ff7043" : "#ef5350";
@@ -315,7 +372,6 @@ function drawOverlay() {
     ctx.font = "bold 36px Arial"; ctx.fillStyle = "#fff";
     ctx.fillText("💔 −1 жизнь", cx, cy - 10);
 
-    // Оставшиеся жизни
     const lifeIconSize = 36;
     const totalW = 3 * lifeIconSize + 2 * 10;
     const lifeStartX = cx - totalW / 2;
@@ -335,7 +391,6 @@ function drawOverlay() {
     }
     ctx.globalAlpha = 1.0;
 
-    // Обратный отсчёт
     const secsLeft = Math.ceil(lifeLostTimer / 60);
     ctx.font = "20px Arial"; ctx.fillStyle = "rgba(255,255,255,0.7)";
     ctx.fillText("Продолжаем через " + secsLeft + "с...  (Enter — пропустить)", cx, cy + 80);
@@ -401,6 +456,7 @@ function draw() {
   }
 
   drawBg();
+  drawDecor();
   drawLitterBox();
   for (const ob of obstacles) drawObstacle(ob);
   drawBonuses();

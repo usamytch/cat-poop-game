@@ -9,6 +9,7 @@ beforeAll(() => {
 });
 
 function resetCommon() {
+  globalSeed = 0;
   obstacles.length = 0;
   poops.length = 0;
   comboPopups.length = 0;
@@ -163,6 +164,27 @@ describe('owner.activate()', () => {
       Math.abs(owner.x - c.x) < 2 && Math.abs(owner.y - c.y) < 2
     );
     expect(isCorner).toBe(true);
+  });
+
+  it('owner does not spawn on top of an obstacle', () => {
+    // Fill all three corners with a large obstacle so the fallback grid search is used
+    const b = getPlayBounds();
+    // Place a big obstacle covering the top-right and bottom-right corners
+    obstacles.push({
+      id: 'blocker',
+      x: b.right - owner.width - 60,
+      y: b.top,
+      width: 100,
+      height: b.bottom - b.top,
+    });
+    player.x = 100;
+    player.y = 300;
+    difficulty = 'normal';
+    level = 1;
+    owner.activate();
+    const ownerR = { x: owner.x, y: owner.y, width: owner.width, height: owner.height };
+    const overlaps = obstacles.some(o => rectsOverlap(ownerR, o));
+    expect(overlaps).toBe(false);
   });
 });
 
