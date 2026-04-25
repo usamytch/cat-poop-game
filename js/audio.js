@@ -194,6 +194,7 @@ const _MELODY_DUR = 64 * _E;
 let _melodyStartTime = null;  // ac.currentTime момента старта
 let _melodyScheduled = -1;    // последняя запланированная итерация
 let _melodyRAF = null;
+let _melodyNodes = [];        // все активные [oscillator, gain] пары
 
 function _scheduleMelodyIteration(iteration) {
   const ac = getAC();
@@ -212,6 +213,7 @@ function _scheduleMelodyIteration(iteration) {
       g.gain.exponentialRampToValueAtTime(0.001, t + dur);
       o.start(t);
       o.stop(t + dur + 0.05);
+      _melodyNodes.push([o, g]);
     } catch(e) {}
   });
   _melodyScheduled = iteration;
@@ -244,6 +246,17 @@ function startMelody() {
 
 function stopMelody() {
   if (_melodyRAF) { cancelAnimationFrame(_melodyRAF); _melodyRAF = null; }
+  // Немедленно останавливаем все запланированные осцилляторы
+  for (const [o, g] of _melodyNodes) {
+    try {
+      g.gain.cancelScheduledValues(0);
+      g.gain.setValueAtTime(0, 0);
+      o.stop(0);
+      o.disconnect();
+      g.disconnect();
+    } catch(e) {}
+  }
+  _melodyNodes = [];
   _melodyStartTime = null;
   _melodyScheduled = -1;
 }

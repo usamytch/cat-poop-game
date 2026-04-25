@@ -141,6 +141,9 @@ const owner = {
   // Бегство после комбо
   fleeTimer: 0,
   fleeTarget: null,
+  // Какашки на лице
+  poopHits: 0,       // сколько раз попали с момента последнего бегства
+  facePoops: [],     // [{rx, ry, rot, scale}] — позиции относительно центра хозяина
 
   activate() {
     const diff = DIFF[difficulty];
@@ -163,6 +166,7 @@ const owner = {
     this.lastX = this.x; this.lastY = this.y;
     this.stuckTimer = 0; this.stuckNudge = null;
     this.fleeTimer = 0; this.fleeTarget = null;
+    this.poopHits = 0; this.facePoops = [];
   },
 
   // Запускает режим бегства — хозяин убегает в дальний угол от кота
@@ -197,6 +201,24 @@ const owner = {
       ctx.fillText("👨", this.x+this.width/2, this.y+this.height/2+10);
       ctx.textAlign = "left";
     });
+    // Рисуем какашки на лице хозяина
+    if (this.facePoops.length > 0) {
+      const cx = this.x + this.width / 2;
+      const cy = this.y + this.height * 0.32; // область лица — верхняя треть спрайта
+      ctx.save();
+      for (const sp of this.facePoops) {
+        ctx.save();
+        ctx.translate(cx + sp.rx, cy + sp.ry);
+        ctx.rotate(sp.rot);
+        ctx.scale(sp.scale, sp.scale);
+        ctx.font = "16px Arial";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText("💩", 0, 0);
+        ctx.restore();
+      }
+      ctx.restore();
+    }
     ctx.globalAlpha = 1;
   },
 
@@ -226,6 +248,12 @@ const owner = {
       }
       this.lastX = this.x; this.lastY = this.y;
       return; // не преследуем кота во время бегства
+    }
+
+    // Вернулся из угла (fleeTimer только что стал 0) — очищаем какашки с лица
+    if (this.facePoops.length > 0 && this.poopHits >= 3) {
+      this.facePoops = [];
+      this.poopHits = 0;
     }
 
     const spd = this.speed;

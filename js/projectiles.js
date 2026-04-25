@@ -57,6 +57,21 @@ function updatePoops() {
       p.alive = false;
       comboCount++;
       comboTimer = 180;
+
+      // Попадание снижает срочность — величина настраивается в DIFF[difficulty].hitUrgeReduce
+      player.urge = clamp(player.urge - DIFF[difficulty].hitUrgeReduce, 0, player.maxUrge);
+
+      // Добавляем какашку на лицо хозяина (позиция относительно центра лица)
+      owner.poopHits++;
+      const faceW = owner.width * 0.7;  // ширина зоны лица
+      const faceH = owner.height * 0.28; // высота зоны лица
+      owner.facePoops.push({
+        rx: (Math.random() - 0.5) * faceW,
+        ry: (Math.random() - 0.5) * faceH,
+        rot: Math.random() * Math.PI * 2,
+        scale: 0.7 + Math.random() * 0.5,
+      });
+
       if (comboCount >= 3) {
         comboPopups.push({x:owner.x+owner.width/2, y:owner.y-20, text:"COMBO! x"+comboCount, timer:90, color:"#ff9800"});
         sndCombo();

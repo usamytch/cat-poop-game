@@ -18,9 +18,9 @@ const lifeImage = new Image(); lifeImage.src = "favicon-32.png";
 
 // ===== СЛОЖНОСТЬ =====
 const DIFF = {
-  easy:   { label:"😸 Лёгкий", urgeRate:0.7,  baseSpd:1.2, spdPerLvl:0.2,  firstLvl:2, poopTime:120 },
-  normal: { label:"😼 Нормал", urgeRate:1.4,  baseSpd:1.8, spdPerLvl:0.35, firstLvl:1, poopTime:180 },
-  chaos:  { label:"😈 Хаос",   urgeRate:2.2,  baseSpd:2.8, spdPerLvl:0.55, firstLvl:1, poopTime:240 },
+  easy:   { label:"😸 Лёгкий", urgeRate:1.0,  baseSpd:1.2, spdPerLvl:0.2,  firstLvl:2, poopTime:120, hitUrgeReduce:1.5 },
+  normal: { label:"😼 Нормал", urgeRate:1.9,  baseSpd:1.8, spdPerLvl:0.35, firstLvl:1, poopTime:180, hitUrgeReduce:1.0 },
+  chaos:  { label:"😈 Хаос",   urgeRate:3.0,  baseSpd:2.8, spdPerLvl:0.55, firstLvl:1, poopTime:240, hitUrgeReduce:0.6 },
 };
 
 // Скорость снаряда-какашки
