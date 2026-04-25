@@ -71,9 +71,18 @@ const player = {
       stats.totalAccidents++;
       stats.update(score, level);
       spawnPuddle(this.x+this.size/2, this.y+this.size/2);
-      gameState = "accident";
-      overlayTimer = 0;
-      sndLose();
+      stopMelody();
+      lives--;
+      if (lives <= 0) {
+        gameState = "accident";
+        overlayTimer = 0;
+        sndLose();
+      } else {
+        gameState = "lifeLost";
+        lifeLostTimer = 150; // 2.5 сек при 60fps
+        lifeLostReason = "accident";
+        sndLifeLost();
+      }
       return;
     }
 
@@ -268,9 +277,18 @@ const owner = {
     if (rectsOverlap(playerRect(), ownerRect(), -6)) {
       stats.totalCaught++;
       stats.update(score, level);
-      gameState = "caught";
-      overlayTimer = 0;
-      sndHit(); sndLose();
+      stopMelody();
+      lives--;
+      if (lives <= 0) {
+        gameState = "caught";
+        overlayTimer = 0;
+        sndHit(); sndLose();
+      } else {
+        gameState = "lifeLost";
+        lifeLostTimer = 150;
+        lifeLostReason = "caught";
+        sndHit(); sndLifeLost();
+      }
     }
   },
 };

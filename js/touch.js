@@ -25,6 +25,8 @@ if (IS_MOBILE) {
   const BTN_SHOOT = { cx: 1100, cy: 590, r: 60, label: "💩", touchId: null };
   // Кнопка "Старт / Продолжить" — центр экрана (только на стартовом/оверлейном экране)
   const BTN_ACTION = { cx: 600, cy: 590, r: 55, label: "▶", touchId: null };
+  // Кнопка мьюта — верхний правый угол, всегда видна
+  const BTN_MUTE = { cx: 1155, cy: 45, r: 38 };
 
   // ===== ВСПОМОГАТЕЛЬНАЯ ФУНКЦИЯ: canvas-координаты из touch =====
   function canvasCoords(touch) {
@@ -67,6 +69,12 @@ if (IS_MOBILE) {
     for (const touch of e.changedTouches) {
       const { x, y } = canvasCoords(touch);
 
+      // Кнопка мьюта — всегда первой, в любом состоянии
+      if (inCircle(x, y, BTN_MUTE.cx, BTN_MUTE.cy, BTN_MUTE.r)) {
+        toggleMute();
+        continue;
+      }
+
       // Джойстик
       if (inCircle(x, y, JOY.cx, JOY.cy, JOY.outerR + 20) && JOY.touchId === null) {
         JOY.active  = true;
@@ -89,6 +97,8 @@ if (IS_MOBILE) {
         if (inCircle(x, y, BTN_ACTION.cx, BTN_ACTION.cy, BTN_ACTION.r + 30)) {
           if (gameState === "start") {
             startGame();
+          } else if (gameState === "lifeLost") {
+            respawnPlayer();
           } else {
             gameState = "start";
           }
@@ -152,6 +162,18 @@ if (IS_MOBILE) {
   // Вызывается из draw() в renderer.js
   function drawTouchControls() {
     ctx.save();
+
+    // --- Кнопка мьюта — всегда видна в правом верхнем углу ---
+    ctx.beginPath();
+    ctx.arc(BTN_MUTE.cx, BTN_MUTE.cy, BTN_MUTE.r, 0, Math.PI*2);
+    ctx.fillStyle = muted ? "rgba(255,80,80,0.75)" : "rgba(30,30,30,0.60)";
+    ctx.fill();
+    ctx.strokeStyle = muted ? "rgba(255,120,120,0.9)" : "rgba(255,255,255,0.45)";
+    ctx.lineWidth = 2.5;
+    ctx.stroke();
+    ctx.font = "26px Arial";
+    ctx.textAlign = "center";
+    ctx.fillText(muted ? "🔇" : "🔊", BTN_MUTE.cx, BTN_MUTE.cy + 9);
 
     if (gameState === "playing") {
       // --- Джойстик ---

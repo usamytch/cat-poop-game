@@ -114,8 +114,8 @@ function drawUI() {
   const urgeRatio = player.urge / player.maxUrge;
   const panic = urgeRatio > 0.75;
 
-  // Панель HUD
-  const hudX=14, hudY=14, hudW=310, hudH=190;
+  // Панель HUD — увеличена по высоте для жизней
+  const hudX=14, hudY=14, hudW=310, hudH=220;
   ctx.fillStyle = p.ui || "rgba(30,20,10,0.72)";
   ctx.beginPath(); ctx.roundRect(hudX, hudY, hudW, hudH, 18); ctx.fill();
 
@@ -166,9 +166,43 @@ function drawUI() {
     ctx.fillText("🧶 "+Math.ceil(yarnFreezeTimer/60)+"с", bx, hudY+152);
   }
 
-  // Подсказка стрельбы
+  // Подсказка стрельбы + статус звука
   ctx.fillStyle = "rgba(255,255,255,0.55)"; ctx.font = "12px Arial"; ctx.textAlign = "left";
-  ctx.fillText("Пробел — стрелять  M — звук", hudX+18, hudY+174);
+  ctx.fillText("Пробел — стрелять", hudX+18, hudY+174);
+  // Иконка мьюта справа в HUD
+  const muteIcon = muted ? "🔇" : "🔊";
+  ctx.font = "16px Arial"; ctx.textAlign = "right";
+  ctx.fillStyle = muted ? "rgba(255,100,100,0.9)" : "rgba(255,255,255,0.7)";
+  ctx.fillText(muteIcon + " M", hudX+hudW-14, hudY+174);
+
+  // ===== ЖИЗНИ =====
+  const lifeIconSize = 28;
+  const lifeY = hudY + 188;
+  const lifeStartX = hudX + 18;
+  for (let i = 0; i < 3; i++) {
+    const lx = lifeStartX + i * (lifeIconSize + 6);
+    if (i < lives) {
+      // Живая жизнь — иконка кота
+      ctx.globalAlpha = 1.0;
+      if (typeof lifeImage !== "undefined" && lifeImage.complete && lifeImage.naturalWidth > 0) {
+        ctx.drawImage(lifeImage, lx, lifeY, lifeIconSize, lifeIconSize);
+      } else {
+        ctx.font = lifeIconSize + "px Arial"; ctx.textAlign = "left";
+        ctx.fillText("🐱", lx, lifeY + lifeIconSize - 2);
+      }
+    } else {
+      // Потраченная жизнь — серый крестик
+      ctx.globalAlpha = 0.28;
+      if (typeof lifeImage !== "undefined" && lifeImage.complete && lifeImage.naturalWidth > 0) {
+        ctx.drawImage(lifeImage, lx, lifeY, lifeIconSize, lifeIconSize);
+      } else {
+        ctx.font = lifeIconSize + "px Arial"; ctx.textAlign = "left";
+        ctx.fillText("🐱", lx, lifeY + lifeIconSize - 2);
+      }
+      ctx.globalAlpha = 1.0;
+    }
+  }
+  ctx.globalAlpha = 1.0;
 
   // Сообщение об уровне
   if (levelMessageTimer > 0) {
@@ -246,7 +280,7 @@ function drawStartScreen() {
   ctx.restore();
 
   ctx.font = "15px Arial"; ctx.fillStyle = "rgba(255,255,255,0.45)";
-  ctx.fillText("WASD / Стрелки — движение  |  Пробел — стрелять  |  M — звук", canvas.width/2, 650);
+  ctx.fillText("WASD / Стрелки — движение  |  Пробел — стрелять  |  M — " + (muted ? "🔇 выкл" : "🔊 вкл"), canvas.width/2, 650);
 
   ctx.restore();
 }
@@ -254,7 +288,7 @@ function drawStartScreen() {
 // ===== ОВЕРЛЕЙ КОНЦА =====
 function drawOverlay() {
   // Лужа при аварии
-  if (gameState === "accident" && puddleAlpha > 0) {
+  if ((gameState === "accident" || (gameState === "lifeLost" && lifeLostReason === "accident")) && puddleAlpha > 0) {
     ctx.save();
     ctx.globalAlpha = puddleAlpha * 0.55;
     ctx.fillStyle = "#8B4513";
@@ -267,6 +301,48 @@ function drawOverlay() {
 
   ctx.save(); ctx.textAlign = "center";
   const cx = canvas.width/2, cy = canvas.height/2;
+
+  if (gameState === "lifeLost") {
+    // Оверлей потери жизни
+    const reason = lifeLostReason === "caught" ? "😾 Поймали!" : "💩 Авария!";
+    ctx.font = "bold 64px Arial";
+    ctx.fillStyle = lifeLostReason === "caught" ? "#ff7043" : "#ef5350";
+    ctx.shadowColor = lifeLostReason === "caught" ? "#bf360c" : "#b71c1c";
+    ctx.shadowBlur = 24;
+    ctx.fillText(reason, cx, cy - 70);
+    ctx.shadowBlur = 0;
+
+    ctx.font = "bold 36px Arial"; ctx.fillStyle = "#fff";
+    ctx.fillText("💔 −1 жизнь", cx, cy - 10);
+
+    // Оставшиеся жизни
+    const lifeIconSize = 36;
+    const totalW = 3 * lifeIconSize + 2 * 10;
+    const lifeStartX = cx - totalW / 2;
+    for (let i = 0; i < 3; i++) {
+      const lx = lifeStartX + i * (lifeIconSize + 10);
+      if (i < lives) {
+        ctx.globalAlpha = 1.0;
+      } else {
+        ctx.globalAlpha = 0.22;
+      }
+      if (typeof lifeImage !== "undefined" && lifeImage.complete && lifeImage.naturalWidth > 0) {
+        ctx.drawImage(lifeImage, lx, cy + 20, lifeIconSize, lifeIconSize);
+      } else {
+        ctx.font = lifeIconSize + "px Arial";
+        ctx.fillText("🐱", lx, cy + 20 + lifeIconSize - 2);
+      }
+    }
+    ctx.globalAlpha = 1.0;
+
+    // Обратный отсчёт
+    const secsLeft = Math.ceil(lifeLostTimer / 60);
+    ctx.font = "20px Arial"; ctx.fillStyle = "rgba(255,255,255,0.7)";
+    ctx.fillText("Продолжаем через " + secsLeft + "с...  (Enter — пропустить)", cx, cy + 80);
+
+    ctx.restore();
+    return;
+  }
 
   if (gameState === "win") {
     ctx.font = "bold 72px Arial"; ctx.fillStyle = "#ffd54f";
@@ -335,6 +411,6 @@ function draw() {
   drawComboPopups();
   drawUI();
 
-  if (gameState !== "playing") drawOverlay();
+  if (gameState !== "playing" && gameState !== "start") drawOverlay();
   if (IS_MOBILE) drawTouchControls();
 }

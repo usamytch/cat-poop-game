@@ -14,6 +14,7 @@ const WORLD = { width: 1200, height: 700, floorHeight: 90, topPadding: 70, sideP
 
 const catImage = new Image(); catImage.src = "cat.png";
 const masterImage = new Image(); masterImage.src = "master.png";
+const lifeImage = new Image(); lifeImage.src = "favicon-32.png";
 
 // ===== СЛОЖНОСТЬ =====
 const DIFF = {
