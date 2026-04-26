@@ -85,6 +85,7 @@ function startGame() {
   owner.activate();
   sndMeow();
   gameState = "playing";
+  stopPanicMelody();
   startMelody();
 }
 

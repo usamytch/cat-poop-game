@@ -62,12 +62,20 @@ const player = {
 
     // Паника
     const urgeRatio = this.urge / this.maxUrge;
-    if (urgeRatio > 0.75) {
+    const inPanic = urgeRatio > 0.75;
+    if (inPanic) {
       panicShake = clamp((urgeRatio-0.75)/0.25*8, 0, 8);
       alarmTimer++;
       if (alarmTimer % 36 === 0) sndAlarm();
+      // Переключаем на паника-мелодию при пересечении порога
+      if (_panicStartTime === null) startPanicMelody();
     } else {
       panicShake = 0; alarmTimer = 0;
+      // Возвращаем обычную мелодию, если паника прошла (напр. таблетка)
+      if (_panicStartTime !== null) {
+        stopPanicMelody();
+        startMelody();
+      }
     }
 
     // Авария
@@ -75,6 +83,7 @@ const player = {
       stats.totalAccidents++;
       stats.update(score, level);
       spawnPuddle(this.x+this.size/2, this.y+this.size/2);
+      stopPanicMelody();
       stopMelody();
       lives--;
       if (lives <= 0) {
