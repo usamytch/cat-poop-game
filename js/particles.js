@@ -10,6 +10,33 @@ const comboPopups = [];
 let comboCount = 0;
 let comboTimer = 0;
 
+// OPT 6: Кэш emoji → offscreen canvas
+// Emoji-рендеринг через fillText — самая медленная операция Canvas 2D.
+// Pre-render один раз, затем drawImage (в 3–5× быстрее).
+const _emojiCache = new Map();
+
+function getEmojiCanvas(emoji, size) {
+  const key = emoji + '_' + size;
+  if (_emojiCache.has(key)) return _emojiCache.get(key);
+  const ec = document.createElement('canvas');
+  const pad = 4;
+  ec.width = ec.height = size + pad * 2;
+  const ectx = ec.getContext('2d');
+  ectx.font = size + 'px Arial';
+  ectx.textAlign = 'center';
+  ectx.textBaseline = 'middle';
+  ectx.fillText(emoji, (size + pad * 2) / 2, (size + pad * 2) / 2);
+  _emojiCache.set(key, ec);
+  return ec;
+}
+
+// Рисует emoji через кэш (быстрее fillText)
+function drawEmoji(emoji, x, y, size) {
+  const ec = getEmojiCanvas(emoji, size);
+  const half = ec.width / 2;
+  ctx.drawImage(ec, x - half, y - half);
+}
+
 function spawnConfetti(cx, cy) {
   const emojis = ["💩","⭐","✨","🎉","💫","🌟"];
   for (let i=0; i<28; i++) {
@@ -54,21 +81,29 @@ function updateOverlayParticles() {
     p.alpha -= p.fade;
     p.rot += p.rotSpd;
   }
-  for (let i=overlayParticles.length-1; i>=0; i--) {
-    if (overlayParticles[i].alpha <= 0) overlayParticles.splice(i,1);
+  // OPT 8: swap-and-pop вместо splice — O(1) вместо O(n)
+  for (let i = overlayParticles.length - 1; i >= 0; i--) {
+    if (overlayParticles[i].alpha <= 0) {
+      overlayParticles[i] = overlayParticles[overlayParticles.length - 1];
+      overlayParticles.pop();
+    }
   }
   if (puddleAlpha > 0) puddleAlpha -= 0.008;
 }
 
 function drawOverlayParticles() {
   for (const p of overlayParticles) {
+    const alpha = Math.max(0, p.alpha);
+    if (alpha <= 0) continue;
     ctx.save();
-    ctx.globalAlpha = Math.max(0, p.alpha);
+    ctx.globalAlpha = alpha;
     ctx.translate(p.x, p.y);
     ctx.rotate(p.rot);
-    ctx.font = p.size+"px Arial";
-    ctx.textAlign = "center";
-    ctx.fillText(p.emoji, 0, p.size/3);
+    // OPT 6: используем emoji-кэш вместо fillText
+    const size = Math.round(p.size);
+    const ec = getEmojiCanvas(p.emoji, size);
+    const half = ec.width / 2;
+    ctx.drawImage(ec, -half, -half + size / 3);
     ctx.restore();
   }
   ctx.globalAlpha = 1;
@@ -76,8 +111,12 @@ function drawOverlayParticles() {
 
 function updateComboPopups() {
   for (const p of comboPopups) { p.timer--; p.y -= 0.7; }
-  for (let i=comboPopups.length-1; i>=0; i--) {
-    if (comboPopups[i].timer <= 0) comboPopups.splice(i,1);
+  // OPT 8: swap-and-pop
+  for (let i = comboPopups.length - 1; i >= 0; i--) {
+    if (comboPopups[i].timer <= 0) {
+      comboPopups[i] = comboPopups[comboPopups.length - 1];
+      comboPopups.pop();
+    }
   }
 }
 

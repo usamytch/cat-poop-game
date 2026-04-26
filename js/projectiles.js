@@ -12,8 +12,6 @@ function shootPoop() {
   const cy = player.y + player.size/2;
 
   // Всегда целимся в хозяина если он активен (все уровни сложности).
-  // На хаосе хозяин быстрее и агрессивнее — это и создаёт сложность,
-  // а не слепой выстрел.
   let dx = lastDir.x, dy = lastDir.y;
   if (owner.active) {
     const toX = (owner.x + owner.width/2)  - cx;
@@ -60,13 +58,13 @@ function updatePoops() {
       comboCount++;
       comboTimer = 180;
 
-      // Попадание снижает срочность — величина настраивается в DIFF[difficulty].hitUrgeReduce
+      // Попадание снижает срочность
       player.urge = clamp(player.urge - DIFF[difficulty].hitUrgeReduce, 0, player.maxUrge);
 
-      // Добавляем какашку на лицо хозяина (позиция относительно центра лица)
+      // Добавляем какашку на лицо хозяина
       owner.poopHits++;
-      const faceW = owner.width * 0.7;  // ширина зоны лица
-      const faceH = owner.height * 0.28; // высота зоны лица
+      const faceW = owner.width * 0.7;
+      const faceH = owner.height * 0.28;
       owner.facePoops.push({
         rx: (Math.random() - 0.5) * faceW,
         ry: (Math.random() - 0.5) * faceH,
@@ -86,8 +84,13 @@ function updatePoops() {
       score += 2;
     }
   }
-  // Убираем мёртвые
-  for (let i=poops.length-1; i>=0; i--) { if (!poops[i].alive) poops.splice(i,1); }
+  // OPT 8: swap-and-pop вместо splice — O(1) вместо O(n)
+  for (let i = poops.length - 1; i >= 0; i--) {
+    if (!poops[i].alive) {
+      poops[i] = poops[poops.length - 1];
+      poops.pop();
+    }
+  }
   // Сброс комбо по таймеру
   if (comboTimer > 0) { comboTimer--; if (comboTimer === 0) comboCount = 0; }
 }
@@ -96,18 +99,17 @@ function drawPoops() {
   for (const p of poops) {
     if (!p.alive) continue;
 
-    // Шлейф
+    // OPT 6: Шлейф через emoji-кэш
     for (let i=0; i<p.trail.length; i++) {
       const t = p.trail[i];
       const alpha = (i+1)/p.trail.length * 0.4;
       ctx.globalAlpha = alpha;
-      ctx.font = "14px Arial"; ctx.textAlign = "center";
-      ctx.fillText("💩", t.x, t.y+5);
+      drawEmoji("💩", t.x, t.y + 5, 14);
     }
     ctx.globalAlpha = 1;
 
-    ctx.font = "20px Arial"; ctx.textAlign = "center";
-    ctx.fillText("💩", p.x, p.y+7);
-    ctx.textAlign = "left";
+    // OPT 6: Основная какашка через emoji-кэш
+    drawEmoji("💩", p.x, p.y + 7, 20);
   }
+  ctx.textAlign = "left";
 }

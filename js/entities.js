@@ -31,8 +31,8 @@ const player = {
     });
     // Бонус-иконки над котом
     let iconX = this.x;
-    if (speedBoostTimer > 0) { ctx.font = "18px Arial"; ctx.fillText("🐟", iconX, this.y-6); iconX += 22; }
-    if (yarnFreezeTimer > 0) { ctx.font = "18px Arial"; ctx.fillText("🧶", iconX, this.y-6); }
+    if (speedBoostTimer > 0) { drawEmoji("🐟", iconX + 9, this.y - 6 + 9, 18); iconX += 22; }
+    if (yarnFreezeTimer > 0) { drawEmoji("🧶", iconX + 9, this.y - 6 + 9, 18); }
     ctx.restore();
   },
 
@@ -233,8 +233,9 @@ const owner = {
     let best = corners[0], bestDist = 0;
     for (const c of corners) {
       const dx = c.x - player.x, dy = c.y - player.y;
-      const d = Math.sqrt(dx*dx+dy*dy);
-      if (d > bestDist) { bestDist = d; best = c; }
+      // OPT 10: используем квадрат дистанции для сравнения
+      const d2 = dx*dx + dy*dy;
+      if (d2 > bestDist) { bestDist = d2; best = c; }
     }
     this.fleeTarget = best;
     this.fleeTimer = 300; // 5 секунд при 60fps
@@ -243,7 +244,7 @@ const owner = {
     this.hesitateTimer = 0;
   },
 
-  // Вызывается при выстреле кота — хозяин реагирует (немедленный пересчёт пути + знак паники)
+  // Вызывается при выстреле кота — хозяин реагирует
   onShotFired() {
     if (!this.active || this.fleeTimer > 0) return;
     this.pathTimer = 0;       // форсируем пересчёт пути на следующем кадре
@@ -273,10 +274,8 @@ const owner = {
         ctx.translate(cx + sp.rx, cy + sp.ry);
         ctx.rotate(sp.rot);
         ctx.scale(sp.scale, sp.scale);
-        ctx.font = "14px Arial";
-        ctx.textAlign = "center";
-        ctx.textBaseline = "middle";
-        ctx.fillText("💩", 0, 0);
+        // OPT 6: emoji-кэш для какашек на лице
+        drawEmoji("💩", 0, 0, 14);
         ctx.restore();
       }
       ctx.restore();
@@ -286,8 +285,9 @@ const owner = {
     // ===== ЗНАК НАД ГОЛОВОЙ =====
     if (this.fleeTimer === 0) {
       const cx = this.x + this.width / 2;
+      // OPT 5: используем _now вместо Date.now()
+      const bounce = Math.sin(_now / 180) * 3;
       const cy = this.y - 10;
-      const bounce = Math.sin(Date.now() / 180) * 3;
 
       if (this.shotReactTimer > 0) {
         // Реакция на выстрел — эмодзи паники
@@ -361,12 +361,16 @@ const owner = {
 
       dx = nextPx.x - ownerCx;
       dy = nextPx.y - ownerCy;
-      const dist = Math.sqrt(dx*dx + dy*dy);
+
+      // OPT 10: сравниваем квадраты дистанций вместо sqrt
+      const dist2 = dx*dx + dy*dy;
+      const threshold = spd + 2;
 
       // Если достигли центра следующей ячейки — переходим к следующей
-      if (dist < spd + 2) {
+      if (dist2 < threshold * threshold) {
         this.path.shift();
       } else {
+        const dist = Math.sqrt(dist2);
         dx /= dist;
         dy /= dist;
       }
@@ -383,16 +387,19 @@ const owner = {
       // Нет пути или уже в цели — двигаемся напрямую
       dx = tx - this.x;
       dy = ty - this.y;
-      const dist = Math.sqrt(dx*dx + dy*dy);
-      if (dist > 1) { dx /= dist; dy /= dist; }
+      const dist2 = dx*dx + dy*dy;
+      if (dist2 > 1) {
+        const dist = Math.sqrt(dist2);
+        dx /= dist; dy /= dist;
+      }
     }
 
     // Применяем stuckNudge если есть
     if (this.stuckNudge) {
       dx += this.stuckNudge.x * 0.5;
       dy += this.stuckNudge.y * 0.5;
-      const nd = Math.sqrt(dx*dx + dy*dy);
-      if (nd > 0) { dx /= nd; dy /= nd; }
+      const nd2 = dx*dx + dy*dy;
+      if (nd2 > 0) { const nd = Math.sqrt(nd2); dx /= nd; dy /= nd; }
     }
 
     // Применяем движение с раздельной проверкой осей (скольжение вдоль стен)
@@ -421,8 +428,9 @@ const owner = {
       const tx = this.fleeTarget.x;
       const ty = this.fleeTarget.y;
       const dx = tx - this.x, dy = ty - this.y;
-      const dist = Math.sqrt(dx*dx + dy*dy);
-      if (dist > 2) {
+      // OPT 10: квадрат дистанции для сравнения dist > 2
+      const dist2 = dx*dx + dy*dy;
+      if (dist2 > 4) {
         this._moveTowardTarget(tx, ty, this.speed * 1.4);
       }
       // Вернулся из угла (fleeTimer только что стал 0) — очищаем какашки с лица
@@ -472,8 +480,10 @@ const owner = {
     this._moveTowardTarget(tx, ty, this.speed);
 
     // ===== АНТИ-ЗАСТРЕВАНИЕ =====
-    const movedDist = Math.sqrt((this.x - prevX)**2 + (this.y - prevY)**2);
-    if (movedDist < 0.5) {
+    // OPT 10: квадрат дистанции для сравнения movedDist < 0.5
+    const ddx = this.x - prevX, ddy = this.y - prevY;
+    const movedDist2 = ddx*ddx + ddy*ddy;
+    if (movedDist2 < 0.25) { // 0.5² = 0.25
       this.stuckTimer++;
       if (this.stuckTimer > 30) {
         // Застрял — форсируем пересчёт пути и добавляем случайный толчок

@@ -15,12 +15,14 @@ const decorItems = []; // фоновые декоративные элемент
 const litterBox = { x:620, y:310, width: GRID*2, height: GRID*2 };
 
 // ===== СЕТКА =====
-// occupiedCells хранит ключи "col,row" для всех занятых ячеек
-// (препятствия + лоток). Декор не занимает ячейки.
+// OPT 2: Целочисленный ключ вместо строки `${col},${row}`.
+// GRID_ROWS=13, GRID_COLS=28 → max key = 27*100+12 = 2712 (уникален при col<100, row<100)
+// occupiedCells хранит числовые ключи col*100+row для всех занятых ячеек.
+// Декор не занимает ячейки.
 const occupiedCells = new Set();
 
 function cellKey(col, row) {
-  return `${col},${row}`;
+  return col * 100 + row;
 }
 
 function markCells(col, row, wCells, hCells) {
@@ -84,19 +86,65 @@ function cellToPixel(col, row) {
   };
 }
 
-// ===== A* PATHFINDING =====
+// ===== OPT 1: A* PATHFINDING с min-heap =====
+// MinHeap — бинарная куча с минимальным элементом наверху.
+// Заменяет O(n) линейный поиск на O(log n) push/pop.
+class MinHeap {
+  constructor(cmp) {
+    this._data = [];
+    this._cmp = cmp;
+  }
+  get size() { return this._data.length; }
+  isEmpty() { return this._data.length === 0; }
+  push(item) {
+    this._data.push(item);
+    this._bubbleUp(this._data.length - 1);
+  }
+  pop() {
+    const top = this._data[0];
+    const last = this._data.pop();
+    if (this._data.length > 0) {
+      this._data[0] = last;
+      this._siftDown(0);
+    }
+    return top;
+  }
+  _bubbleUp(i) {
+    while (i > 0) {
+      const parent = (i - 1) >> 1;
+      if (this._cmp(this._data[i], this._data[parent]) < 0) {
+        const tmp = this._data[i]; this._data[i] = this._data[parent]; this._data[parent] = tmp;
+        i = parent;
+      } else break;
+    }
+  }
+  _siftDown(i) {
+    const n = this._data.length;
+    while (true) {
+      let smallest = i;
+      const l = 2*i+1, r = 2*i+2;
+      if (l < n && this._cmp(this._data[l], this._data[smallest]) < 0) smallest = l;
+      if (r < n && this._cmp(this._data[r], this._data[smallest]) < 0) smallest = r;
+      if (smallest === i) break;
+      const tmp = this._data[i]; this._data[i] = this._data[smallest]; this._data[smallest] = tmp;
+      i = smallest;
+    }
+  }
+}
+
+// OPT 9: Переиспользуемые Map/Set для A* — не создаём new каждый раз
+const _astarOpen = new Map();    // key → node
+const _astarClosed = new Set();  // key
+
 // Возвращает массив {col, row} от startCell до goalCell, или null если пути нет.
 // Использует 4-связную сетку (вверх/вниз/влево/вправо).
 // entityW/entityH — физический размер сущности (px) для проверки проходимости ячеек.
 function aStarPath(startCol, startRow, goalCol, goalRow, entityW, entityH) {
-  const key = (c, r) => `${c},${r}`;
   const heuristic = (c, r) => Math.abs(c - goalCol) + Math.abs(r - goalRow);
 
   // Проверяет, может ли сущность физически находиться в центре ячейки (nc, nr)
-  // Учитывает и статические occupiedCells, и физические коллизии с препятствиями
   const canPass = (nc, nr) => {
     if (!isCellFree(nc, nr)) return false;
-    // Если размер сущности задан — проверяем физическое перекрытие
     if (entityW && entityH) {
       const center = cellToPixelCenter(nc, nr);
       const rect = {
@@ -110,22 +158,32 @@ function aStarPath(startCol, startRow, goalCol, goalRow, entityW, entityH) {
     return true;
   };
 
-  const openSet = new Map(); // key → {col, row, g, f, parent}
-  const closedSet = new Set();
+  // OPT 9: очищаем переиспользуемые структуры
+  _astarOpen.clear();
+  _astarClosed.clear();
 
+  // OPT 1: min-heap по f вместо линейного поиска
+  const heap = new MinHeap((a, b) => a.f - b.f);
+
+  const startKey = cellKey(startCol, startRow);
   const startNode = { col: startCol, row: startRow, g: 0, f: heuristic(startCol, startRow), parent: null };
-  openSet.set(key(startCol, startRow), startNode);
+  _astarOpen.set(startKey, startNode);
+  heap.push(startNode);
 
   const dirs = [{dc:1,dr:0},{dc:-1,dr:0},{dc:0,dr:1},{dc:0,dr:-1}];
 
   let iterations = 0;
-  while (openSet.size > 0 && iterations < 600) {
+  while (!heap.isEmpty() && iterations < 600) {
     iterations++;
-    // Найти узел с минимальным f
-    let current = null;
-    for (const node of openSet.values()) {
-      if (!current || node.f < current.f) current = node;
-    }
+
+    // OPT 1: O(log n) вместо O(n)
+    const current = heap.pop();
+    const ck = cellKey(current.col, current.row);
+
+    // Узел мог быть обновлён — пропускаем устаревшие копии
+    if (_astarClosed.has(ck)) continue;
+    _astarClosed.add(ck);
+    _astarOpen.delete(ck);
 
     if (current.col === goalCol && current.row === goalRow) {
       // Восстановить путь
@@ -135,23 +193,21 @@ function aStarPath(startCol, startRow, goalCol, goalRow, entityW, entityH) {
       return path;
     }
 
-    const ck = key(current.col, current.row);
-    openSet.delete(ck);
-    closedSet.add(ck);
-
     for (const {dc, dr} of dirs) {
       const nc = current.col + dc;
       const nr = current.row + dr;
-      const nk = key(nc, nr);
-      if (closedSet.has(nk)) continue;
+      const nk = cellKey(nc, nr);
+      if (_astarClosed.has(nk)) continue;
       // Разрешаем проход через свободные ячейки ИЛИ через цель (даже если занята лотком)
       const isGoal = nc === goalCol && nr === goalRow;
       if (!isGoal && !canPass(nc, nr)) continue;
 
       const g = current.g + 1;
-      const existing = openSet.get(nk);
+      const existing = _astarOpen.get(nk);
       if (!existing || g < existing.g) {
-        openSet.set(nk, { col: nc, row: nr, g, f: g + heuristic(nc, nr), parent: current });
+        const node = { col: nc, row: nr, g, f: g + heuristic(nc, nr), parent: current };
+        _astarOpen.set(nk, node);
+        heap.push(node); // старая копия будет пропущена через _astarClosed
       }
     }
   }
@@ -356,6 +412,9 @@ function generateLevel() {
     const btype = bonusKeys[randInt(rng, 0, bonusKeys.length - 1)];
     bonuses.push({ x: center.x, y: center.y, type: btype, alive: true, pulse: Math.random() * Math.PI * 2 });
   }
+
+  // OPT 4: Перестраиваем offscreen-слой фона при каждой генерации уровня
+  if (typeof rebuildBgLayer === 'function') rebuildBgLayer();
 }
 
 // ===== ОБНОВЛЕНИЕ ПРЕПЯТСТВИЙ =====

@@ -193,7 +193,8 @@ const _MELODY_DUR = 64 * _E;
 
 let _melodyStartTime = null;  // ac.currentTime момента старта
 let _melodyScheduled = -1;    // последняя запланированная итерация
-let _melodyRAF = null;
+// OPT 11: setTimeout вместо rAF — планировщик мелодии нужен раз в 500мс, не 60fps
+let _melodyTimer = null;
 let _melodyNodes = [];        // все активные [oscillator, gain] пары
 
 function _scheduleMelodyIteration(iteration) {
@@ -229,7 +230,8 @@ function _melodyTick() {
   if (needed > _melodyScheduled) {
     _scheduleMelodyIteration(needed);
   }
-  _melodyRAF = requestAnimationFrame(_melodyTick);
+  // OPT 11: проверяем раз в 500мс — достаточно для lookahead ~14 сек
+  _melodyTimer = setTimeout(_melodyTick, 500);
 }
 
 function startMelody() {
@@ -241,11 +243,12 @@ function startMelody() {
   // Планируем сразу первые две итерации
   _scheduleMelodyIteration(0);
   _scheduleMelodyIteration(1);
-  _melodyRAF = requestAnimationFrame(_melodyTick);
+  // OPT 11: setTimeout вместо requestAnimationFrame
+  _melodyTimer = setTimeout(_melodyTick, 500);
 }
 
 function stopMelody() {
-  if (_melodyRAF) { cancelAnimationFrame(_melodyRAF); _melodyRAF = null; }
+  if (_melodyTimer) { clearTimeout(_melodyTimer); _melodyTimer = null; }
   // Немедленно останавливаем все запланированные осцилляторы
   for (const [o, g] of _melodyNodes) {
     try {

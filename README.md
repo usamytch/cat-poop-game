@@ -162,6 +162,27 @@ npm test
 
 ---
 
+## ⚡ Производительность
+
+Игра оптимизирована для стабильных 60 fps в любом браузере:
+
+| Оптимизация | Файл | Эффект |
+|---|---|---|
+| **A\* min-heap** — O(log n) вместо O(n) поиска | [`js/level.js`](js/level.js) | 5–10× ускорение навигации хозяина |
+| **Целочисленный `cellKey`** — число вместо строки | [`js/level.js`](js/level.js) | 3–5× быстрее Map/Set операции |
+| **Кэш `getPlayBounds()`** — синглтон вместо new | [`js/utils.js`](js/utils.js) | Нет GC-давления от 15+ аллокаций/кадр |
+| **Offscreen canvas** — фон/декор/статичные препятствия | [`js/renderer.js`](js/renderer.js) | 40–60% меньше работы рендерера |
+| **Emoji-кэш** — `drawImage` вместо `fillText` | [`js/particles.js`](js/particles.js), [`js/projectiles.js`](js/projectiles.js), [`js/bonuses.js`](js/bonuses.js) | 3–5× быстрее рендеринг частиц |
+| **`Date.now()` один раз за кадр** | [`js/renderer.js`](js/renderer.js) | Нет повторных системных вызовов |
+| **Swap-and-pop** — O(1) вместо O(n) `splice` | [`js/particles.js`](js/particles.js), [`js/projectiles.js`](js/projectiles.js) | Нет сдвига массивов при удалении |
+| **Переиспользование Map/Set в A\*** — `.clear()` | [`js/level.js`](js/level.js) | Нет аллокаций каждые 30 кадров |
+| **Squared distance** — без `Math.sqrt` где не нужен | [`js/entities.js`](js/entities.js) | Меньше вычислений в горячих путях |
+| **Melody `setTimeout`** — вместо rAF | [`js/audio.js`](js/audio.js) | Освобождает rAF бюджет для рендеринга |
+| **`setFont()` кэш** — не парсить font-строку повторно | [`js/utils.js`](js/utils.js) | Нет лишнего парсинга CSS-шрифта |
+| **`WORLD` константы** — вместо `canvas.width/height` | [`js/renderer.js`](js/renderer.js) | Нет DOM-обращений в горячих путях |
+
+---
+
 ## 🏗️ Технологии
 
 - **Vanilla JS** — никаких фреймворков

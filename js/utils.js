@@ -23,13 +23,17 @@ function circleRect(c, r) {
   return dx*dx+dy*dy < c.r*c.r;
 }
 
+// ===== OPT 3: Кэшированный объект bounds (canvas фиксирован 1200×700) =====
+// Создаётся один раз, не аллоцирует новый объект при каждом вызове.
+const _playBounds = {
+  left:   WORLD.sidePadding,
+  top:    WORLD.topPadding,
+  right:  WORLD.width  - WORLD.sidePadding,
+  bottom: WORLD.height - WORLD.floorHeight,
+};
+
 function getPlayBounds() {
-  return {
-    left:   WORLD.sidePadding,
-    top:    WORLD.topPadding,
-    right:  canvas.width  - WORLD.sidePadding,
-    bottom: canvas.height - WORLD.floorHeight,
-  };
+  return _playBounds;
 }
 
 function playerRect(x, y) {
@@ -92,4 +96,10 @@ function rrect(x, y, w, h, r, fill) {
   ctx.beginPath();
   ctx.roundRect(x, y, w, h, r);
   ctx.fill();
+}
+
+// ===== OPT 12: Кэш ctx.font — не переустанавливать без изменений =====
+let _currentFont = '';
+function setFont(f) {
+  if (f !== _currentFont) { ctx.font = f; _currentFont = f; }
 }

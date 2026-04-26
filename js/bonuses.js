@@ -33,10 +33,12 @@ function drawBonuses() {
     ctx.save();
     ctx.translate(b.x, b.y);
     ctx.scale(sc, sc);
+    // OPT 6: shadowBlur для бонусов оставляем (это визуальный эффект свечения),
+    // но emoji рисуем через кэш
     ctx.shadowColor = meta.color;
     ctx.shadowBlur = 14;
-    ctx.font = "28px Arial"; ctx.textAlign = "center";
-    ctx.fillText(meta.emoji, 0, 10);
+    // OPT 6: используем emoji-кэш вместо fillText
+    drawEmoji(meta.emoji, 0, 10, 28);
     ctx.shadowBlur = 0;
     ctx.restore();
   }
