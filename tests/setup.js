@@ -139,6 +139,88 @@ global.AudioContext = MockAudioContext;
 // all `const`/`let`/`function` declarations land on globalThis.
 // Call this at the top of each test file (or beforeEach if you need isolation).
 
+// ===== resetGameState() — единый сброс игрового состояния для тестов =====
+// Используйте вместо локальных reset-функций в каждом тестовом файле.
+// Сбрасывает все глобальные переменные к начальным значениям.
+export function resetGameState() {
+  // Числовые переменные состояния
+  score = 0;
+  level = 1;
+  lives = 3;
+  difficulty = 'normal';
+  gameState = 'start';
+  overlayTimer = 0;
+  lifeLostTimer = 0;
+  lifeLostReason = '';
+
+  // Игрок
+  player.x = 100;
+  player.y = 300;
+  player.urge = 0;
+  player.speed = 3.9;
+  player.pooping = false;
+  player.poopTimer = 0;
+
+  // Хозяин
+  owner.x = 800;
+  owner.y = 300;
+  owner.active = false;
+  owner.speed = 1.0;
+  owner.fleeTimer = 0;
+  owner.fleeTarget = null;
+  owner.poopHits = 0;
+  owner.facePoops = [];
+  owner.stuckTimer = 0;
+  owner.stuckNudge = null;
+  owner.lastX = 800;
+  owner.lastY = 300;
+  owner.driftAngle = 0;
+  owner.driftTimer = 0;
+  owner.hesitateTimer = 0;
+  owner.shotReactTimer = 0;
+  owner.path = [];
+  owner.pathTimer = 0;
+
+  // Массивы
+  poops.length = 0;
+  overlayParticles.length = 0;
+  comboPopups.length = 0;
+  bonuses.length = 0;
+  obstacles.length = 0;
+
+  // Таймеры и счётчики
+  comboCount = 0;
+  comboTimer = 0;
+  speedBoostTimer = 0;
+  yarnFreezeTimer = 0;
+  shootCooldown = 0;
+  panicShake = 0;
+  alarmTimer = 0;
+  puddleAlpha = 0;
+  poopProgress = 0;
+  isPooping = false;
+
+  // Лоток — безопасная позиция далеко от игрока
+  litterBox.x = 900;
+  litterBox.y = 400;
+  litterBox.width = 80;
+  litterBox.height = 80;
+
+  // RNG seed
+  globalSeed = 0;
+}
+
+// ===== hitOwner() — вспомогательная функция для тестов комбо/попаданий =====
+// Помещает какашку прямо в центр хозяина и вызывает updatePoops().
+export function hitOwner() {
+  poops.push({
+    x: owner.x + owner.width / 2,
+    y: owner.y + owner.height / 2,
+    dx: 0, dy: 0, r: 10, alive: true, trail: [],
+  });
+  updatePoops();
+}
+
 export function loadGame() {
   // Reset mutable state
   _storage.clear();
@@ -157,11 +239,14 @@ export function loadGame() {
   const files = [
     'js/config.js',
     'js/utils.js',
+    'js/melody-data.js',
     'js/audio.js',
     'js/particles.js',
     'js/bonuses.js',
+    'js/pathfinding.js',
     'js/level.js',
-    'js/entities.js',
+    'js/player.js',
+    'js/owner.js',
     'js/projectiles.js',
     'js/game.js',
   ];

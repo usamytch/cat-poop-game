@@ -35,16 +35,22 @@ read_file("README.md")
 
 | Файл | Ответственность |
 |---|---|
-| [`js/config.js`](../js/config.js) | Константы: WORLD, DIFF, локации, каталог препятствий, бонусы |
-| [`js/utils.js`](../js/utils.js) | Утилиты: RNG, clamp, коллизии, drawSprite, rrect |
-| [`js/audio.js`](../js/audio.js) | Web Audio API: tone(), sndMeow/Fart/Hit/… |
-| [`js/particles.js`](../js/particles.js) | Частицы: конфетти, лужа, комбо-попапы |
+| [`js/config.js`](../js/config.js) | Только константы: WORLD, DIFF, GRID, BONUS_TYPES, каталоги |
+| [`js/utils.js`](../js/utils.js) | Утилиты: RNG, clamp, коллизии, drawSprite, rrect, setFont |
+| [`js/melody-data.js`](../js/melody-data.js) | Данные нот мелодии (_MELODY_NOTES, _BPM, _E, _S, _MELODY_DUR) |
+| [`js/audio.js`](../js/audio.js) | Web Audio API: tone(), snd*(), startMelody/stopMelody |
+| [`js/particles.js`](../js/particles.js) | Частицы: конфетти, лужа, комбо-попапы, emoji-кэш |
 | [`js/bonuses.js`](../js/bonuses.js) | Бонусы: подбор, эффекты, таймеры |
-| [`js/level.js`](../js/level.js) | Генерация уровня, препятствий, лотка |
-| [`js/entities.js`](../js/entities.js) | Игрок и хозяин (движение, коллизии, ИИ) |
-| [`js/projectiles.js`](../js/projectiles.js) | Какашки: выстрел, наведение, попадание |
-| [`js/renderer.js`](../js/renderer.js) | Весь рендеринг: фон, HUD, экраны |
-| [`js/game.js`](../js/game.js) | Состояние, ввод, игровой цикл |
+| [`js/pathfinding.js`](../js/pathfinding.js) | MinHeap + aStarPath (A* алгоритм) |
+| [`js/level.js`](../js/level.js) | Сетка + generateLevel + updateObstacles |
+| [`js/player.js`](../js/player.js) | Объект player: движение, срочность, лоток, паника |
+| [`js/owner.js`](../js/owner.js) | Объект owner: AI, A*-навигация, бегство, человечность |
+| [`js/projectiles.js`](../js/projectiles.js) | Какашки: выстрел, движение, попадание, комбо |
+| [`js/renderer-bg.js`](../js/renderer-bg.js) | Offscreen canvas: фон, декор, статичные препятствия |
+| [`js/renderer-hud.js`](../js/renderer-hud.js) | HUD, стартовый экран, оверлеи, лоток |
+| [`js/renderer.js`](../js/renderer.js) | draw() — главный оркестратор рендеринга (~40 строк) |
+| [`js/touch.js`](../js/touch.js) | Мобильное управление |
+| [`js/game.js`](../js/game.js) | Canvas init, состояние, ввод, игровой цикл |
 
 ---
 

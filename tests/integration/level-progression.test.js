@@ -24,7 +24,7 @@ function resetForLevel() {
   player.x = 100;
   player.y = 300;
   player.urge = 10;
-  player.size = 48;
+  // Use real sizes from entities — do not hardcode
   player.speed = 3.9;
   player.pooping = false;
   player.poopTimer = 0;

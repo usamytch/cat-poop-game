@@ -156,13 +156,16 @@ npm test
 
 | Файл | Что покрыто |
 |---|---|
-| `tests/utils.test.js` | `clamp`, RNG, коллизии, bounds |
+| `tests/math.test.js` | `clamp`, RNG, `rectsOverlap`, `circleRect` (чистые функции) |
+| `tests/utils.test.js` | `getPlayBounds`, `playerRect`, `ownerRect`, `escapeObstacles`, `hitsObstacles` |
 | `tests/config.test.js` | DIFF, WORLD, BONUS_TYPES, obstacleCatalog |
 | `tests/bonuses.test.js` | `applyBonus`, `updateBonuses` |
 | `tests/particles.test.js` | конфетти, лужа, комбо-попапы |
 | `tests/projectiles.test.js` | выстрел, движение, попадание, комбо |
-| `tests/entities.test.js` | игрок и хозяин: движение, авария, лоток, паника |
+| `tests/player.test.js` | игрок: движение, авария, лоток, паника, бонусы |
+| `tests/owner.test.js` | хозяин: activate, flee, onShotFired, update, AI |
 | `tests/level.test.js` | генерация уровня, движущиеся препятствия |
+| `tests/grid.test.js` | cellKey, markCells, cellsFree, pixelToCell, aStarPath |
 | `tests/game.test.js` | статистика, startGame, respawnPlayer, update |
 | `tests/integration/combo-flow.test.js` | полный флоу 3 попаданий → бегство → очистка |
 | `tests/integration/urge-flow.test.js` | рост срочности, таблетка, авария, паника |
@@ -176,18 +179,18 @@ npm test
 
 | Оптимизация | Файл | Эффект |
 |---|---|---|
-| **A\* min-heap** — O(log n) вместо O(n) поиска | [`js/level.js`](js/level.js) | 5–10× ускорение навигации хозяина |
+| **A\* min-heap** — O(log n) вместо O(n) поиска | [`js/pathfinding.js`](js/pathfinding.js) | 5–10× ускорение навигации хозяина |
 | **Целочисленный `cellKey`** — число вместо строки | [`js/level.js`](js/level.js) | 3–5× быстрее Map/Set операции |
 | **Кэш `getPlayBounds()`** — синглтон вместо new | [`js/utils.js`](js/utils.js) | Нет GC-давления от 15+ аллокаций/кадр |
-| **Offscreen canvas** — фон/декор/статичные препятствия | [`js/renderer.js`](js/renderer.js) | 40–60% меньше работы рендерера |
+| **Offscreen canvas** — фон/декор/статичные препятствия | [`js/renderer-bg.js`](js/renderer-bg.js) | 40–60% меньше работы рендерера |
 | **Emoji-кэш** — `drawImage` вместо `fillText` | [`js/particles.js`](js/particles.js), [`js/projectiles.js`](js/projectiles.js), [`js/bonuses.js`](js/bonuses.js) | 3–5× быстрее рендеринг частиц |
 | **`Date.now()` один раз за кадр** | [`js/renderer.js`](js/renderer.js) | Нет повторных системных вызовов |
 | **Swap-and-pop** — O(1) вместо O(n) `splice` | [`js/particles.js`](js/particles.js), [`js/projectiles.js`](js/projectiles.js) | Нет сдвига массивов при удалении |
-| **Переиспользование Map/Set в A\*** — `.clear()` | [`js/level.js`](js/level.js) | Нет аллокаций каждые 30 кадров |
-| **Squared distance** — без `Math.sqrt` где не нужен | [`js/entities.js`](js/entities.js) | Меньше вычислений в горячих путях |
+| **Переиспользование Map/Set в A\*** — `.clear()` | [`js/pathfinding.js`](js/pathfinding.js) | Нет аллокаций каждые 30 кадров |
+| **Squared distance** — без `Math.sqrt` где не нужен | [`js/owner.js`](js/owner.js) | Меньше вычислений в горячих путях |
 | **Melody `setTimeout`** — вместо rAF | [`js/audio.js`](js/audio.js) | Освобождает rAF бюджет для рендеринга |
 | **`setFont()` кэш** — не парсить font-строку повторно | [`js/utils.js`](js/utils.js) | Нет лишнего парсинга CSS-шрифта |
-| **`WORLD` константы** — вместо `canvas.width/height` | [`js/renderer.js`](js/renderer.js) | Нет DOM-обращений в горячих путях |
+| **`WORLD` константы** — вместо `canvas.width/height` | [`js/renderer-bg.js`](js/renderer-bg.js), [`js/renderer-hud.js`](js/renderer-hud.js) | Нет DOM-обращений в горячих путях |
 
 ---
 
@@ -214,26 +217,35 @@ cat-poop-game/
 ├── package.json        # npm-зависимости (Vitest)
 ├── vitest.config.js    # Конфиг тестов
 ├── js/
-│   ├── config.js       # Константы: WORLD, DIFF, локации, каталог препятствий, бонусы
-│   ├── utils.js        # Утилиты: RNG, clamp, коллизии, drawSprite, rrect
-│   ├── audio.js        # Web Audio API: tone(), sndMeow/Fart/Hit/…
-│   ├── particles.js    # Частицы: конфетти, лужа, комбо-попапы
+│   ├── config.js       # Только константы: WORLD, DIFF, GRID, BONUS_TYPES, каталоги
+│   ├── utils.js        # Утилиты: RNG, clamp, коллизии, drawSprite, rrect, setFont
+│   ├── melody-data.js  # Данные нот мелодии (_MELODY_NOTES, _BPM, _E, _S, _MELODY_DUR)
+│   ├── audio.js        # Web Audio API: tone(), snd*(), startMelody/stopMelody
+│   ├── particles.js    # Частицы: конфетти, лужа, комбо-попапы, emoji-кэш
 │   ├── bonuses.js      # Бонусы: подбор, эффекты, таймеры
-│   ├── level.js        # Генерация уровня, препятствий, лотка
-│   ├── entities.js     # Игрок и хозяин (движение, коллизии, ИИ)
-│   ├── projectiles.js  # Какашки: выстрел, наведение, попадание
-│   ├── renderer.js     # Весь рендеринг: фон, HUD, экраны
-│   └── game.js         # Состояние, ввод, игровой цикл
+│   ├── pathfinding.js  # MinHeap + aStarPath (A* алгоритм)
+│   ├── level.js        # Сетка + generateLevel + updateObstacles
+│   ├── player.js       # Объект player: движение, срочность, лоток, паника
+│   ├── owner.js        # Объект owner: AI, A*-навигация, бегство, человечность
+│   ├── projectiles.js  # Какашки: выстрел, движение, попадание, комбо
+│   ├── renderer-bg.js  # Offscreen canvas: фон, декор, статичные препятствия
+│   ├── renderer-hud.js # HUD, стартовый экран, оверлеи, лоток
+│   ├── renderer.js     # draw() — главный оркестратор рендеринга (~40 строк)
+│   ├── touch.js        # Мобильное управление
+│   └── game.js         # Canvas init, состояние, ввод, игровой цикл
 ├── tests/
-│   ├── setup.js        # Глобальные моки (canvas, audio, localStorage)
-│   ├── utils.test.js
-│   ├── config.test.js
-│   ├── bonuses.test.js
-│   ├── particles.test.js
-│   ├── projectiles.test.js
-│   ├── entities.test.js
-│   ├── level.test.js
-│   ├── game.test.js
+│   ├── setup.js              # Моки + loadGame() + resetGameState() + hitOwner()
+│   ├── math.test.js          # clamp, RNG, rectsOverlap, circleRect (чистые функции)
+│   ├── utils.test.js         # getPlayBounds, playerRect, ownerRect, escapeObstacles, hitsObstacles
+│   ├── config.test.js        # DIFF, WORLD, BONUS_TYPES, obstacleCatalog
+│   ├── bonuses.test.js       # applyBonus, updateBonuses
+│   ├── particles.test.js     # конфетти, лужа, комбо-попапы
+│   ├── projectiles.test.js   # выстрел, движение, попадание, комбо
+│   ├── player.test.js        # player: движение, срочность, авария, лоток, паника, бонусы
+│   ├── owner.test.js         # owner: activate, flee, onShotFired, update, AI
+│   ├── level.test.js         # generateLevel, updateObstacles
+│   ├── grid.test.js          # cellKey, markCells, cellsFree, pixelToCell, aStarPath
+│   ├── game.test.js          # stats, startGame, respawnPlayer, update, input
 │   └── integration/
 │       ├── combo-flow.test.js
 │       ├── urge-flow.test.js

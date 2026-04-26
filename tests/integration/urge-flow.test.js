@@ -23,7 +23,7 @@ function resetUrge() {
   player.x = 100;
   player.y = 300;
   player.urge = 0;
-  player.size = 48;
+  // Use real sizes from entities — do not hardcode
   player.speed = 3.9;
   player.pooping = false;
   player.poopTimer = 0;
@@ -31,6 +31,7 @@ function resetUrge() {
   owner.fleeTimer = 0;
   owner.facePoops = [];
   owner.poopHits = 0;
+  // Use real owner sizes from entities — do not hardcode
   speedBoostTimer = 0;
   yarnFreezeTimer = 0;
   shootCooldown = 0;
@@ -76,8 +77,7 @@ describe('Urge reduction on hit', () => {
     owner.active = true;
     owner.x = 800;
     owner.y = 300;
-    owner.width = 52;
-    owner.height = 72;
+    // Use real owner sizes from entities
     poops.push({
       x: owner.x + owner.width / 2,
       y: owner.y + owner.height / 2,
@@ -92,6 +92,7 @@ describe('Urge reduction on hit', () => {
     owner.active = true;
     owner.x = 800;
     owner.y = 300;
+    // Use real owner sizes from entities
     poops.push({
       x: owner.x + owner.width / 2,
       y: owner.y + owner.height / 2,

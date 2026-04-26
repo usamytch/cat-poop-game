@@ -20,11 +20,9 @@ function resetForCombo() {
   player.x = 100;
   player.y = 300;
   player.urge = 50;
-  player.size = 48;
+  // Use real sizes from entities — do not hardcode
   owner.x = 800;
   owner.y = 300;
-  owner.width = 52;
-  owner.height = 72;
   owner.active = true;
   owner.facePoops = [];
   owner.poopHits = 0;
