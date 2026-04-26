@@ -31,14 +31,13 @@ function resetCommon() {
   player.x = 100;
   player.y = 300;
   player.urge = 0;
-  player.size = 48;
+  // Не хардкодим размеры — берём из игрового объекта (entities.js)
+  // player.size, owner.width, owner.height уже заданы там
   player.speed = 3.9;
   player.pooping = false;
   player.poopTimer = 0;
   owner.x = 800;
   owner.y = 300;
-  owner.width = 52;
-  owner.height = 72;
   owner.active = false;
   owner.speed = 1.0;
   owner.fleeTimer = 0;
@@ -49,6 +48,12 @@ function resetCommon() {
   owner.stuckNudge = null;
   owner.lastX = owner.x;
   owner.lastY = owner.y;
+  owner.driftAngle = 0;
+  owner.driftTimer = 0;
+  owner.hesitateTimer = 0;
+  owner.shotReactTimer = 0;
+  owner.path = [];
+  owner.pathTimer = 0;
   poopProgress = 0;
   isPooping = false;
   bonuses.length = 0;
@@ -60,6 +65,23 @@ function resetCommon() {
 }
 
 beforeEach(resetCommon);
+
+// ---------------------------------------------------------------------------
+describe('entity sizes — grid compatibility', () => {
+  it('player.size = 36 (fits in 1 grid cell with margin)', () => {
+    expect(player.size).toBe(36);
+    expect(player.size).toBeLessThan(40); // GRID = 40
+  });
+
+  it('owner.width = 36 (fits in 1 grid cell with margin)', () => {
+    expect(owner.width).toBe(36);
+    expect(owner.width).toBeLessThan(40);
+  });
+
+  it('owner.height = 52', () => {
+    expect(owner.height).toBe(52);
+  });
+});
 
 // ---------------------------------------------------------------------------
 describe('owner — initial state after activate()', () => {
@@ -82,6 +104,38 @@ describe('owner — initial state after activate()', () => {
     difficulty = 'normal';
     owner.activate();
     expect(owner.fleeTimer).toBe(0);
+  });
+
+  it('stuckTimer = 0 after activate', () => {
+    owner.stuckTimer = 99;
+    level = 1;
+    difficulty = 'normal';
+    owner.activate();
+    expect(owner.stuckTimer).toBe(0);
+  });
+
+  it('stuckNudge = null after activate', () => {
+    owner.stuckNudge = { x: 1, y: 0 };
+    level = 1;
+    difficulty = 'normal';
+    owner.activate();
+    expect(owner.stuckNudge).toBeNull();
+  });
+
+  it('shotReactTimer = 0 after activate', () => {
+    owner.shotReactTimer = 20;
+    level = 1;
+    difficulty = 'normal';
+    owner.activate();
+    expect(owner.shotReactTimer).toBe(0);
+  });
+
+  it('hesitateTimer = 0 after activate', () => {
+    owner.hesitateTimer = 10;
+    level = 1;
+    difficulty = 'normal';
+    owner.activate();
+    expect(owner.hesitateTimer).toBe(0);
   });
 });
 
@@ -222,6 +276,50 @@ describe('owner.flee()', () => {
     }
     expect(owner.fleeTarget.x).toBeCloseTo(best.x);
     expect(owner.fleeTarget.y).toBeCloseTo(best.y);
+  });
+
+  it('flee() resets hesitateTimer to 0', () => {
+    owner.hesitateTimer = 10;
+    owner.flee();
+    expect(owner.hesitateTimer).toBe(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+describe('owner.onShotFired()', () => {
+  it('sets pathTimer to 0 when active and not fleeing', () => {
+    owner.active = true;
+    owner.fleeTimer = 0;
+    owner.pathTimer = 25;
+    owner.onShotFired();
+    expect(owner.pathTimer).toBe(0);
+  });
+
+  it('sets shotReactTimer to 30 when active and not fleeing', () => {
+    owner.active = true;
+    owner.fleeTimer = 0;
+    owner.shotReactTimer = 0;
+    owner.onShotFired();
+    expect(owner.shotReactTimer).toBe(30);
+  });
+
+  it('does nothing when owner is not active', () => {
+    owner.active = false;
+    owner.pathTimer = 25;
+    owner.shotReactTimer = 0;
+    owner.onShotFired();
+    expect(owner.pathTimer).toBe(25);
+    expect(owner.shotReactTimer).toBe(0);
+  });
+
+  it('does nothing when owner is fleeing', () => {
+    owner.active = true;
+    owner.fleeTimer = 100;
+    owner.pathTimer = 25;
+    owner.shotReactTimer = 0;
+    owner.onShotFired();
+    expect(owner.pathTimer).toBe(25);
+    expect(owner.shotReactTimer).toBe(0);
   });
 });
 
@@ -375,6 +473,86 @@ describe('owner.update() — anti-stuck', () => {
 });
 
 // ---------------------------------------------------------------------------
+describe('owner.update() — shotReactTimer decrements', () => {
+  it('shotReactTimer decrements each frame during pursuit', () => {
+    owner.active = true;
+    owner.fleeTimer = 0;
+    owner.shotReactTimer = 10;
+    // Place owner far from player to avoid catch
+    player.x = 100;
+    player.y = 100;
+    owner.x = 900;
+    owner.y = 500;
+    owner.update();
+    expect(owner.shotReactTimer).toBe(9);
+  });
+
+  it('shotReactTimer does not go below 0', () => {
+    owner.active = true;
+    owner.fleeTimer = 0;
+    owner.shotReactTimer = 0;
+    player.x = 100;
+    player.y = 100;
+    owner.x = 900;
+    owner.y = 500;
+    owner.update();
+    expect(owner.shotReactTimer).toBe(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+describe('owner.update() — hesitateTimer', () => {
+  it('hesitateTimer decrements and owner does not move while hesitating', () => {
+    owner.active = true;
+    owner.fleeTimer = 0;
+    owner.hesitateTimer = 5;
+    const prevX = owner.x;
+    const prevY = owner.y;
+    owner.update();
+    expect(owner.hesitateTimer).toBe(4);
+    // Owner should not have moved (hesitate returns early)
+    expect(owner.x).toBe(prevX);
+    expect(owner.y).toBe(prevY);
+  });
+});
+
+// ---------------------------------------------------------------------------
+describe('escapeObstacles — player and owner are never inside obstacles', () => {
+  it('player.update() pushes player out of obstacle it spawned inside', () => {
+    obstacles.length = 0;
+    // Place a large obstacle directly on top of the player
+    obstacles.push({ id: 'trap', x: player.x - 10, y: player.y - 10, width: 100, height: 100 });
+    player.urge = 10;
+    litterBox.x = 900;
+    litterBox.y = 400;
+    owner.active = false;
+    player.update();
+    // After update, player must not overlap any obstacle
+    const pr = { x: player.x, y: player.y, width: player.size, height: player.size };
+    const overlaps = obstacles.some(o => rectsOverlap(pr, o));
+    expect(overlaps).toBe(false);
+  });
+
+  it('owner.update() pushes owner out of obstacle it spawned inside', () => {
+    obstacles.length = 0;
+    // Place owner far from player to avoid catch
+    player.x = 100;
+    player.y = 100;
+    owner.x = 600;
+    owner.y = 300;
+    owner.active = true;
+    owner.fleeTimer = 0;
+    // Place a large obstacle directly on top of the owner
+    obstacles.push({ id: 'trap', x: owner.x - 10, y: owner.y - 10, width: 100, height: 100 });
+    owner.update();
+    // After update, owner must not overlap any obstacle
+    const or_ = { x: owner.x, y: owner.y, width: owner.width, height: owner.height };
+    const overlaps = obstacles.some(o => rectsOverlap(or_, o));
+    expect(overlaps).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
 describe('player.update() — urge growth', () => {
   it('urge grows each frame by urgeRate/60 * (1 + (level-1)*0.08)', () => {
     player.urge = 0;
@@ -520,7 +698,7 @@ describe('player.update() — panic', () => {
 describe('player.update() — bonus pickup', () => {
   it('player overlapping bonus → applyBonus called and bonus.alive = false', () => {
     // Bonus rect: {x: bx-20, y: by-20, width:40, height:40}
-    // Player rect: {x: player.x, y: player.y, width:48, height:48}
+    // Player rect: {x: player.x, y: player.y, width:36, height:36}
     // Place bonus center inside player rect so rects overlap
     const bx = player.x + 10;
     const by = player.y + 10;

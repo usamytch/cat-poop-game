@@ -14,7 +14,8 @@ beforeEach(() => {
   difficulty = 'normal';
   player.x = 90;
   player.y = 400;
-  player.size = 48;
+  // Используем актуальный размер из игрового объекта — не хардкодим
+  // player.size уже задан в entities.js
   obstacles.length = 0;
   bonuses.length = 0;
   occupiedCells.clear();
@@ -383,5 +384,64 @@ describe('aStarPath()', () => {
     expect(path).not.toBeNull();
     expect(path.length).toBe(1);
     expect(path[0]).toEqual({ col: 2, row: 2 });
+  });
+
+  it('with entityW/entityH: avoids cell physically blocked by obstacle even if occupiedCells says free', () => {
+    occupiedCells.clear();
+    obstacles.length = 0;
+    // Берём размеры хозяина из игрового объекта
+    const entityW = owner.width;
+    const entityH = owner.height;
+    // Cell (2,0) center
+    const b = getPlayBounds();
+    const cellCx = b.left + 2 * GRID + GRID / 2;
+    const cellCy = b.top + GRID / 2;
+    // Физическое препятствие покрывает rect хозяина в центре ячейки (2,0)
+    obstacles.push({
+      id: 'phys-block',
+      x: cellCx - entityW / 2 - 2,
+      y: cellCy - entityH / 2 - 2,
+      width: entityW + 4,
+      height: entityH + 4,
+    });
+    // occupiedCells НЕ помечает ячейку (2,0) — только физическое препятствие
+    expect(isCellFree(2, 0)).toBe(true); // сетка считает свободной
+
+    // С учётом физического размера: путь не должен проходить через (2,0)
+    const pathWithSize = aStarPath(0, 0, 4, 0, entityW, entityH);
+    if (pathWithSize) {
+      for (const step of pathWithSize) {
+        const stepCx = b.left + step.col * GRID + GRID / 2;
+        const stepCy = b.top + step.row * GRID + GRID / 2;
+        const stepRect = { x: stepCx - entityW/2, y: stepCy - entityH/2, width: entityW, height: entityH };
+        const blocked = obstacles.some(o => rectsOverlap(stepRect, o));
+        expect(blocked).toBe(false);
+      }
+    }
+    obstacles.length = 0;
+    occupiedCells.clear();
+  });
+
+  it('with entityW/entityH: still finds path when route exists around physical obstacle', () => {
+    occupiedCells.clear();
+    obstacles.length = 0;
+    const entityW = owner.width;
+    const entityH = owner.height;
+    const b = getPlayBounds();
+    // Блокируем только ячейку (2,0) физически — путь должен обойти через другую строку
+    const cellCx = b.left + 2 * GRID + GRID / 2;
+    const cellCy = b.top + GRID / 2;
+    obstacles.push({
+      id: 'phys-block2',
+      x: cellCx - entityW / 2 - 2,
+      y: cellCy - entityH / 2 - 2,
+      width: entityW + 4,
+      height: entityH + 4,
+    });
+    const path = aStarPath(0, 0, 4, 0, entityW, entityH);
+    // Путь должен существовать (обход через другие строки)
+    expect(path).not.toBeNull();
+    obstacles.length = 0;
+    occupiedCells.clear();
   });
 });

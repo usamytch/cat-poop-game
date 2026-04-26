@@ -12,7 +12,7 @@ let isPooping = false;  // кот сейчас на лотке и "делает 
 
 // ===== ИГРОК =====
 const player = {
-  x: 90, y: 400, size: 48, speed: 3.9,
+  x: 90, y: 400, size: 36, speed: 3.9,
   urge: 0, maxUrge: 100,
   pooping: false, poopTimer: 0,
 
@@ -25,8 +25,8 @@ const player = {
     drawSprite(catImage, this.x, this.y, this.size, this.size, () => {
       ctx.fillStyle = "#f5a623"; ctx.beginPath();
       ctx.arc(this.x+this.size/2, this.y+this.size/2, this.size/2, 0, Math.PI*2); ctx.fill();
-      ctx.fillStyle = "#fff"; ctx.font = "bold 28px Arial"; ctx.textAlign = "center";
-      ctx.fillText("🐱", this.x+this.size/2, this.y+this.size/2+10);
+      ctx.fillStyle = "#fff"; ctx.font = "bold 24px Arial"; ctx.textAlign = "center";
+      ctx.fillText("🐱", this.x+this.size/2, this.y+this.size/2+8);
       ctx.textAlign = "left";
     });
     // Бонус-иконки над котом
@@ -39,6 +39,10 @@ const player = {
   update() {
     const diff = DIFF[difficulty];
     const b = getPlayBounds();
+
+    // Гарантия: кот не может быть внутри препятствия (напр. из-за движущегося)
+    escapeObstacles(this);
+
     const spd = this.speed * (speedBoostTimer > 0 ? 1.7 : 1.0);
     let dx = 0, dy = 0;
     if (keys["ArrowLeft"]  || keys["a"] || keys["A"]) { dx = -1; lastDir = {x:-1, y:0}; }
@@ -132,13 +136,13 @@ const player = {
 
 // ===== ХОЗЯИН =====
 const owner = {
-  x: 800, y: 300, width: 52, height: 72,
+  x: 800, y: 300, width: 36, height: 52,
   active: false, speed: 1.0,
 
   // A* навигация
   path: [],           // [{col, row}, ...] — текущий путь по сетке
   pathTimer: 0,       // пересчитываем путь каждые N кадров
-  PATH_RECALC: 45,    // пересчёт каждые 45 кадров (~0.75 сек)
+  PATH_RECALC: 30,    // пересчёт каждые 30 кадров (~0.5 сек)
 
   // Бегство после комбо
   fleeTimer: 0,
@@ -147,6 +151,18 @@ const owner = {
   // Какашки на лице
   poopHits: 0,
   facePoops: [],
+
+  // Анти-застревание
+  stuckTimer: 0,      // кадры без значимого движения
+  stuckNudge: null,   // временный вектор "толчка" при застревании
+  lastX: 800,
+  lastY: 300,
+
+  // Человечность
+  driftAngle: 0,      // текущее угловое отклонение (рад)
+  driftTimer: 0,      // кадры до следующей смены дрейфа
+  hesitateTimer: 0,   // кадры микро-заморозки
+  shotReactTimer: 0,  // кадры отображения реакции на выстрел
 
   activate() {
     const diff = DIFF[difficulty];
@@ -199,6 +215,10 @@ const owner = {
     this.pathTimer = 0;
     this.fleeTimer = 0; this.fleeTarget = null;
     this.poopHits = 0; this.facePoops = [];
+    this.stuckTimer = 0; this.stuckNudge = null;
+    this.lastX = this.x; this.lastY = this.y;
+    this.driftAngle = 0; this.driftTimer = 0; this.hesitateTimer = 0;
+    this.shotReactTimer = 0;
   },
 
   // Запускает режим бегства — хозяин убегает в дальний угол от кота
@@ -220,6 +240,14 @@ const owner = {
     this.fleeTimer = 300; // 5 секунд при 60fps
     this.path = [];
     this.pathTimer = 0;
+    this.hesitateTimer = 0;
+  },
+
+  // Вызывается при выстреле кота — хозяин реагирует (немедленный пересчёт пути + знак паники)
+  onShotFired() {
+    if (!this.active || this.fleeTimer > 0) return;
+    this.pathTimer = 0;       // форсируем пересчёт пути на следующем кадре
+    this.shotReactTimer = 30; // ~0.5 сек показываем знак паники ‼
   },
 
   draw() {
@@ -231,8 +259,8 @@ const owner = {
     drawSprite(masterImage, this.x, this.y, this.width, this.height, () => {
       ctx.fillStyle = "#e07b39"; ctx.beginPath();
       ctx.arc(this.x+this.width/2, this.y+this.height/2, this.width/2, 0, Math.PI*2); ctx.fill();
-      ctx.fillStyle = "#fff"; ctx.font = "bold 28px Arial"; ctx.textAlign = "center";
-      ctx.fillText("👨", this.x+this.width/2, this.y+this.height/2+10);
+      ctx.fillStyle = "#fff"; ctx.font = "bold 22px Arial"; ctx.textAlign = "center";
+      ctx.fillText("👨", this.x+this.width/2, this.y+this.height/2+8);
       ctx.textAlign = "left";
     });
     // Рисуем какашки на лице хозяина
@@ -245,7 +273,7 @@ const owner = {
         ctx.translate(cx + sp.rx, cy + sp.ry);
         ctx.rotate(sp.rot);
         ctx.scale(sp.scale, sp.scale);
-        ctx.font = "16px Arial";
+        ctx.font = "14px Arial";
         ctx.textAlign = "center";
         ctx.textBaseline = "middle";
         ctx.fillText("💩", 0, 0);
@@ -254,6 +282,47 @@ const owner = {
       ctx.restore();
     }
     ctx.globalAlpha = 1;
+
+    // ===== ЗНАК НАД ГОЛОВОЙ =====
+    if (this.fleeTimer === 0) {
+      const cx = this.x + this.width / 2;
+      const cy = this.y - 10;
+      const bounce = Math.sin(Date.now() / 180) * 3;
+
+      if (this.shotReactTimer > 0) {
+        // Реакция на выстрел — эмодзи паники
+        ctx.save();
+        ctx.font = "20px Arial";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "bottom";
+        ctx.fillText("😱", cx, cy + bounce);
+        ctx.restore();
+      } else if (this.path.length >= 2) {
+        // Преследует кота — восклицательный знак
+        ctx.save();
+        ctx.font = "bold 20px Arial";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "bottom";
+        // Тень
+        ctx.fillStyle = "rgba(0,0,0,0.35)";
+        ctx.fillText("!", cx + 1, cy + bounce + 1);
+        // Знак
+        ctx.fillStyle = "#ff2222";
+        ctx.fillText("!", cx, cy + bounce);
+        ctx.restore();
+      } else if (this.stuckTimer > 20 || this.hesitateTimer > 0) {
+        // Тупит / не знает куда идти — знак вопроса
+        ctx.save();
+        ctx.font = "bold 18px Arial";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "bottom";
+        ctx.fillStyle = "rgba(0,0,0,0.35)";
+        ctx.fillText("?", cx + 1, cy + bounce + 1);
+        ctx.fillStyle = "#ffdd00";
+        ctx.fillText("?", cx, cy + bounce);
+        ctx.restore();
+      }
+    }
   },
 
   // ===== A* ДВИЖЕНИЕ К ЦЕЛИ =====
@@ -272,8 +341,14 @@ const owner = {
     this.pathTimer--;
     if (this.pathTimer <= 0 || this.path.length === 0) {
       this.pathTimer = this.PATH_RECALC;
-      const newPath = aStarPath(ownerCell.col, ownerCell.row, goalCell.col, goalCell.row);
-      this.path = newPath ? newPath : [];
+      const newPath = aStarPath(ownerCell.col, ownerCell.row, goalCell.col, goalCell.row, this.width, this.height);
+      if (newPath) {
+        this.path = newPath;
+      } else {
+        // Путь не найден — форсируем пересчёт на следующем кадре
+        this.path = [];
+        this.pathTimer = 0;
+      }
     }
 
     // Определяем направление движения
@@ -295,12 +370,29 @@ const owner = {
         dx /= dist;
         dy /= dist;
       }
+
+      // Применяем дрейф (человечность) — небольшое угловое отклонение
+      if (this.driftAngle !== 0) {
+        const cos = Math.cos(this.driftAngle);
+        const sin = Math.sin(this.driftAngle);
+        const ndx = dx * cos - dy * sin;
+        const ndy = dx * sin + dy * cos;
+        dx = ndx; dy = ndy;
+      }
     } else {
       // Нет пути или уже в цели — двигаемся напрямую
       dx = tx - this.x;
       dy = ty - this.y;
       const dist = Math.sqrt(dx*dx + dy*dy);
       if (dist > 1) { dx /= dist; dy /= dist; }
+    }
+
+    // Применяем stuckNudge если есть
+    if (this.stuckNudge) {
+      dx += this.stuckNudge.x * 0.5;
+      dy += this.stuckNudge.y * 0.5;
+      const nd = Math.sqrt(dx*dx + dy*dy);
+      if (nd > 0) { dx /= nd; dy /= nd; }
     }
 
     // Применяем движение с раздельной проверкой осей (скольжение вдоль стен)
@@ -317,6 +409,11 @@ const owner = {
     if (yarnFreezeTimer > 0) return;
 
     const b = getPlayBounds();
+
+    // Гарантия: хозяин не может быть внутри препятствия (напр. из-за движущегося)
+    if (escapeObstacles(this)) {
+      this.path = []; this.pathTimer = 0;
+    }
 
     // Режим бегства: двигаемся к fleeTarget
     if (this.fleeTimer > 0) {
@@ -342,10 +439,55 @@ const owner = {
       this.poopHits = 0;
     }
 
+    // ===== ТАЙМЕР РЕАКЦИИ НА ВЫСТРЕЛ =====
+    if (this.shotReactTimer > 0) this.shotReactTimer--;
+
+    // ===== МИКРО-ЗАМОРОЗКА (человечность) =====
+    if (this.hesitateTimer > 0) {
+      this.hesitateTimer--;
+      return; // стоим на месте
+    }
+
+    // ===== ОБНОВЛЕНИЕ ДРЕЙФА (человечность) =====
+    this.driftTimer--;
+    if (this.driftTimer <= 0) {
+      // Новый случайный дрейф ±0.18 рад (~±10°)
+      this.driftAngle = (Math.random() - 0.5) * 0.36;
+      this.driftTimer = 80 + Math.floor(Math.random() * 40); // 80–120 кадров
+    }
+
+    // ===== СЛУЧАЙНАЯ МИКРО-ЗАМОРОЗКА =====
+    // ~0.4% шанс в кадр ≈ раз в ~4 сек
+    if (Math.random() < 0.004) {
+      this.hesitateTimer = 12; // ~0.2 сек
+    }
+
+    // Запоминаем позицию до движения
+    const prevX = this.x;
+    const prevY = this.y;
+
     // Преследование кота через A*
     const tx = player.x + player.size/2 - this.width/2;
     const ty = player.y + player.size/2 - this.height/2;
     this._moveTowardTarget(tx, ty, this.speed);
+
+    // ===== АНТИ-ЗАСТРЕВАНИЕ =====
+    const movedDist = Math.sqrt((this.x - prevX)**2 + (this.y - prevY)**2);
+    if (movedDist < 0.5) {
+      this.stuckTimer++;
+      if (this.stuckTimer > 30) {
+        // Застрял — форсируем пересчёт пути и добавляем случайный толчок
+        this.path = [];
+        this.pathTimer = 0;
+        // Случайный толчок в одном из 4 направлений
+        const nudges = [{x:1,y:0},{x:-1,y:0},{x:0,y:1},{x:0,y:-1}];
+        this.stuckNudge = nudges[Math.floor(Math.random() * nudges.length)];
+        this.stuckTimer = 0;
+      }
+    } else {
+      this.stuckTimer = 0;
+      this.stuckNudge = null;
+    }
 
     // Поймал кота
     if (rectsOverlap(playerRect(), ownerRect(), -6)) {

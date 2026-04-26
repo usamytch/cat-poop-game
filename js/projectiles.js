@@ -32,6 +32,8 @@ function shootPoop() {
   stats.totalPoops++;
   shootCooldown = 22;
   sndFart();
+  // Хозяин реагирует на звук выстрела — немедленный пересчёт пути + знак паники
+  owner.onShotFired();
 }
 
 function updatePoops() {

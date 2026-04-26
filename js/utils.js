@@ -48,6 +48,36 @@ function hitsObstacles(rect, ignId) {
   return obstacles.some(o => o.id !== ignId && rectsOverlap(rect, o));
 }
 
+// Выталкивает сущность из препятствий если она внутри.
+// Возвращает true если пришлось выталкивать.
+function escapeObstacles(entity) {
+  const b = getPlayBounds();
+  const selfRect = {x: entity.x, y: entity.y, width: entity.width || entity.size, height: entity.height || entity.size};
+  if (!hitsObstacles(selfRect)) return false;
+
+  const dirs = [
+    {dx:1,dy:0},{dx:-1,dy:0},{dx:0,dy:1},{dx:0,dy:-1},
+    {dx:1,dy:1},{dx:-1,dy:1},{dx:1,dy:-1},{dx:-1,dy:-1},
+  ];
+  const w = entity.width || entity.size;
+  const h = entity.height || entity.size;
+  for (let step = 2; step <= 80; step += 2) {
+    for (const {dx, dy} of dirs) {
+      const ex = entity.x + dx * step;
+      const ey = entity.y + dy * step;
+      const er = {x:ex, y:ey, width:w, height:h};
+      if (!hitsObstacles(er) &&
+          ex >= b.left && ey >= b.top &&
+          ex + w <= b.right && ey + h <= b.bottom) {
+        entity.x = ex;
+        entity.y = ey;
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
 // Canvas helpers
 function drawSprite(img, x, y, w, h, fb) {
   if (img.complete && img.naturalWidth > 0) {

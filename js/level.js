@@ -87,9 +87,28 @@ function cellToPixel(col, row) {
 // ===== A* PATHFINDING =====
 // Возвращает массив {col, row} от startCell до goalCell, или null если пути нет.
 // Использует 4-связную сетку (вверх/вниз/влево/вправо).
-function aStarPath(startCol, startRow, goalCol, goalRow) {
+// entityW/entityH — физический размер сущности (px) для проверки проходимости ячеек.
+function aStarPath(startCol, startRow, goalCol, goalRow, entityW, entityH) {
   const key = (c, r) => `${c},${r}`;
   const heuristic = (c, r) => Math.abs(c - goalCol) + Math.abs(r - goalRow);
+
+  // Проверяет, может ли сущность физически находиться в центре ячейки (nc, nr)
+  // Учитывает и статические occupiedCells, и физические коллизии с препятствиями
+  const canPass = (nc, nr) => {
+    if (!isCellFree(nc, nr)) return false;
+    // Если размер сущности задан — проверяем физическое перекрытие
+    if (entityW && entityH) {
+      const center = cellToPixelCenter(nc, nr);
+      const rect = {
+        x: center.x - entityW / 2,
+        y: center.y - entityH / 2,
+        width: entityW,
+        height: entityH,
+      };
+      if (hitsObstacles(rect)) return false;
+    }
+    return true;
+  };
 
   const openSet = new Map(); // key → {col, row, g, f, parent}
   const closedSet = new Set();
@@ -100,7 +119,7 @@ function aStarPath(startCol, startRow, goalCol, goalRow) {
   const dirs = [{dc:1,dr:0},{dc:-1,dr:0},{dc:0,dr:1},{dc:0,dr:-1}];
 
   let iterations = 0;
-  while (openSet.size > 0 && iterations < 500) {
+  while (openSet.size > 0 && iterations < 600) {
     iterations++;
     // Найти узел с минимальным f
     let current = null;
@@ -127,7 +146,7 @@ function aStarPath(startCol, startRow, goalCol, goalRow) {
       if (closedSet.has(nk)) continue;
       // Разрешаем проход через свободные ячейки ИЛИ через цель (даже если занята лотком)
       const isGoal = nc === goalCol && nr === goalRow;
-      if (!isGoal && !isCellFree(nc, nr)) continue;
+      if (!isGoal && !canPass(nc, nr)) continue;
 
       const g = current.g + 1;
       const existing = openSet.get(nk);

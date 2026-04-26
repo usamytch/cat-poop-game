@@ -209,6 +209,55 @@ describe('ownerRect(x, y)', () => {
 });
 
 // ---------------------------------------------------------------------------
+describe('escapeObstacles(entity)', () => {
+  it('entity not in obstacle → returns false, position unchanged', () => {
+    obstacles.length = 0;
+    obstacles.push({ id: 'ob1', x: 500, y: 500, width: 80, height: 80 });
+    const entity = { x: 100, y: 100, width: 36, height: 36 };
+    const result = escapeObstacles(entity);
+    expect(result).toBe(false);
+    expect(entity.x).toBe(100);
+    expect(entity.y).toBe(100);
+  });
+
+  it('entity inside obstacle → returns true and moves entity out', () => {
+    obstacles.length = 0;
+    // Place obstacle in the middle of the play area
+    obstacles.push({ id: 'ob1', x: 200, y: 200, width: 80, height: 80 });
+    // Place entity fully inside the obstacle
+    const entity = { x: 220, y: 220, width: 36, height: 36 };
+    const result = escapeObstacles(entity);
+    expect(result).toBe(true);
+    // Entity should no longer overlap the obstacle
+    const er = { x: entity.x, y: entity.y, width: entity.width, height: entity.height };
+    expect(hitsObstacles(er)).toBe(false);
+  });
+
+  it('entity inside obstacle → final position is within play bounds', () => {
+    obstacles.length = 0;
+    obstacles.push({ id: 'ob1', x: 200, y: 200, width: 80, height: 80 });
+    const entity = { x: 220, y: 220, width: 36, height: 36 };
+    escapeObstacles(entity);
+    const b = getPlayBounds();
+    expect(entity.x).toBeGreaterThanOrEqual(b.left);
+    expect(entity.y).toBeGreaterThanOrEqual(b.top);
+    expect(entity.x + entity.width).toBeLessThanOrEqual(b.right);
+    expect(entity.y + entity.height).toBeLessThanOrEqual(b.bottom);
+  });
+
+  it('works with player-like entity (size field)', () => {
+    obstacles.length = 0;
+    obstacles.push({ id: 'ob1', x: 300, y: 300, width: 80, height: 80 });
+    // player uses .size not .width/.height
+    const entity = { x: 320, y: 320, size: 36, width: 36, height: 36 };
+    const result = escapeObstacles(entity);
+    expect(result).toBe(true);
+    const er = { x: entity.x, y: entity.y, width: 36, height: 36 };
+    expect(hitsObstacles(er)).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
 describe('hitsObstacles(rect, ignId)', () => {
   it('empty obstacles → false', () => {
     obstacles.length = 0;
