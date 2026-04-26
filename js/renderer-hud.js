@@ -209,17 +209,20 @@ function drawStartScreen() {
     ctx.fillText(d.desc, WORLD.width/2, by+48);
   });
 
-  const t = _now*0.003;
-  const sc = 1 + Math.sin(t)*0.04;
-  ctx.save(); ctx.translate(WORLD.width/2, 590); ctx.scale(sc, sc);
-  ctx.fillStyle = "#ffd54f";
-  ctx.beginPath(); ctx.roundRect(-140,-28,280,56,28); ctx.fill();
-  setFont("bold 26px Arial"); ctx.fillStyle = "#1a1a2e";
-  ctx.fillText("▶  ИГРАТЬ  (Enter)", 0, 10);
-  ctx.restore();
+  // На мобиле кнопку "ИГРАТЬ" и подсказку с клавишами рисует drawTouchControls()
+  if (!IS_MOBILE) {
+    const t = _now*0.003;
+    const sc = 1 + Math.sin(t)*0.04;
+    ctx.save(); ctx.translate(WORLD.width/2, 590); ctx.scale(sc, sc);
+    ctx.fillStyle = "#ffd54f";
+    ctx.beginPath(); ctx.roundRect(-140,-28,280,56,28); ctx.fill();
+    setFont("bold 26px Arial"); ctx.fillStyle = "#1a1a2e";
+    ctx.fillText("▶  ИГРАТЬ  (Enter)", 0, 10);
+    ctx.restore();
 
-  setFont("15px Arial"); ctx.fillStyle = "rgba(255,255,255,0.45)";
-  ctx.fillText("WASD / Стрелки — движение  |  Пробел — стрелять  |  M — " + (muted ? "🔇 выкл" : "🔊 вкл"), WORLD.width/2, 650);
+    setFont("15px Arial"); ctx.fillStyle = "rgba(255,255,255,0.45)";
+    ctx.fillText("WASD / Стрелки — движение  |  Пробел — стрелять  |  M — " + (muted ? "🔇 выкл" : "🔊 вкл"), WORLD.width/2, 650);
+  }
 
   ctx.restore();
 }

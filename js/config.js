@@ -5,6 +5,12 @@
 // ===== ОПРЕДЕЛЕНИЕ УСТРОЙСТВА =====
 const IS_MOBILE = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
 
+// Canvas init здесь — до touch.js, который регистрирует canvas.addEventListener
+const canvas = document.getElementById("gameCanvas");
+const ctx = canvas.getContext("2d");
+canvas.width = 1200;
+canvas.height = 700;
+
 const WORLD = { width: 1200, height: 700, floorHeight: 90, topPadding: 70, sidePadding: 40 };
 
 // ===== СЕТКА УРОВНЯ =====

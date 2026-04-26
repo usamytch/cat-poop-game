@@ -1,13 +1,6 @@
 // ==========================================
-// GAME — canvas init, state, stats, input, loop
+// GAME — state, stats, input, loop
 // ==========================================
-
-// ===== CANVAS INIT =====
-// (moved here from config.js — DOM operations belong in game init, not constants)
-const canvas = document.getElementById("gameCanvas");
-const ctx = canvas.getContext("2d");
-canvas.width = WORLD.width;
-canvas.height = WORLD.height;
 
 // ===== СТАТИСТИКА =====
 const stats = {

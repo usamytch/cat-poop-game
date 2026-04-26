@@ -94,7 +94,23 @@ if (IS_MOBILE) {
 
       // Кнопка действия (старт / меню)
       if (gameState !== "playing") {
-        if (inCircle(x, y, BTN_ACTION.cx, BTN_ACTION.cy, BTN_ACTION.r + 30)) {
+        // Тап по карточкам сложности — проверяем ПЕРВЫМИ, до BTN_ACTION
+        // (иначе нижняя карточка "Хаос" перекрывается кругом BTN_ACTION)
+        if (gameState === "start") {
+          const diffs = ["easy", "normal", "chaos"];
+          let diffSelected = false;
+          diffs.forEach((key, i) => {
+            const bx = canvas.width/2 - 220, by = 330 + i*80, bw = 440, bh = 62;
+            if (x >= bx && x <= bx+bw && y >= by && y <= by+bh) {
+              difficulty = key;
+              diffSelected = true;
+            }
+          });
+          if (diffSelected) continue;
+        }
+
+        // Кнопка "ИГРАТЬ" / "В меню" — точный радиус без лишнего запаса
+        if (inCircle(x, y, BTN_ACTION.cx, BTN_ACTION.cy, BTN_ACTION.r)) {
           if (gameState === "start") {
             startGame();
           } else if (gameState === "lifeLost") {
@@ -103,16 +119,6 @@ if (IS_MOBILE) {
             gameState = "start";
           }
           continue;
-        }
-        // Тап по карточкам сложности на стартовом экране
-        if (gameState === "start") {
-          const diffs = ["easy", "normal", "chaos"];
-          diffs.forEach((key, i) => {
-            const bx = canvas.width/2 - 220, by = 330 + i*80, bw = 440, bh = 62;
-            if (x >= bx && x <= bx+bw && y >= by && y <= by+bh) {
-              difficulty = key;
-            }
-          });
         }
       }
     }
