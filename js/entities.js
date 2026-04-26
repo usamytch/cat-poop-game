@@ -174,11 +174,12 @@ const owner = {
       {x:b.right-this.width-20, y:b.top+20},
       {x:b.right-this.width-20, y:b.bottom-this.height-20},
       {x:b.left+20,             y:b.top+20},
+      {x:b.left+20,             y:b.bottom-this.height-20},
     ];
     // Sort corners farthest-first from player
     corners.sort((a, c) => {
-      const da = Math.sqrt((a.x-player.x)**2 + (a.y-player.y)**2);
-      const dc = Math.sqrt((c.x-player.x)**2 + (c.y-player.y)**2);
+      const da = (a.x-player.x)**2 + (a.y-player.y)**2;
+      const dc = (c.x-player.x)**2 + (c.y-player.y)**2;
       return dc - da;
     });
     // Pick the farthest corner that doesn't overlap any obstacle

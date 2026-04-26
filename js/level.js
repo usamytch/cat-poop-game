@@ -366,15 +366,19 @@ function generateLevel() {
   const obstCount = Math.min(4 + level, 12);
   const movingAllowed = level >= 5;
 
-  // Спавн кота — левый нижний угол сетки
-  const spawnCol = 0;
-  const spawnRow = GRID_ROWS - 1;
+  // Спавн кота — случайный угол сетки (детерминировано через RNG)
+  // 0=левый нижний, 1=правый нижний, 2=левый верхний, 3=правый верхний
+  const cornerIdx = randInt(rng, 0, 3);
+  const spawnCol = (cornerIdx === 1 || cornerIdx === 3) ? GRID_COLS - 1 : 0;
+  const spawnRow = (cornerIdx === 0 || cornerIdx === 1) ? GRID_ROWS - 1 : 0;
   const b = getPlayBounds();
   const spawnPos = cellToPixel(spawnCol, spawnRow);
   const spawn = { x: spawnPos.x, y: spawnPos.y, width: player.size, height: player.size };
 
-  // Заблокировать ячейки вокруг спавна (3×3 зона)
-  markCells(spawnCol, Math.max(0, spawnRow - 2), 3, 3);
+  // Заблокировать ячейки вокруг спавна (3×3 зона, с учётом границ)
+  const blockCol = Math.max(0, Math.min(spawnCol, GRID_COLS - 3));
+  const blockRow = Math.max(0, Math.min(spawnRow - (spawnRow > 0 ? 2 : 0), GRID_ROWS - 3));
+  markCells(blockCol, blockRow, 3, 3);
 
   // Генерация препятствий
   let att = 0;
@@ -388,7 +392,7 @@ function generateLevel() {
   placeLitterBox(rng, spawnCol, spawnRow);
 
   // Снять блокировку спавна (кот может туда вернуться)
-  unmarkCells(spawnCol, Math.max(0, spawnRow - 2), 3, 3);
+  unmarkCells(blockCol, blockRow, 3, 3);
 
   // Позиция игрока
   player.x = spawn.x;

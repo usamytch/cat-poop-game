@@ -208,11 +208,12 @@ describe('owner.activate()', () => {
     level = 1;
     owner.activate();
     const b = getPlayBounds();
-    // Owner should be placed in one of the corners
+    // Owner should be placed in one of the four corners
     const corners = [
       { x: b.right - owner.width - 20, y: b.top + 20 },
       { x: b.right - owner.width - 20, y: b.bottom - owner.height - 20 },
       { x: b.left + 20, y: b.top + 20 },
+      { x: b.left + 20, y: b.bottom - owner.height - 20 },
     ];
     const isCorner = corners.some(c =>
       Math.abs(owner.x - c.x) < 2 && Math.abs(owner.y - c.y) < 2

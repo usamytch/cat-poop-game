@@ -30,6 +30,42 @@ describe('generateLevel()', () => {
     expect(obstacles.length).toBeGreaterThan(0);
   });
 
+  it('player spawns in one of the four corners of the play area', () => {
+    const b = getPlayBounds();
+    const corners = [
+      { x: b.left,                    y: b.top },                   // top-left
+      { x: b.right - player.size,     y: b.top },                   // top-right
+      { x: b.left,                    y: b.bottom - player.size },  // bottom-left
+      { x: b.right - player.size,     y: b.bottom - player.size },  // bottom-right
+    ];
+    // Run several seeds to confirm all spawns land in a corner
+    for (let s = 0; s < 8; s++) {
+      globalSeed = s * 1000;
+      obstacles.length = 0; bonuses.length = 0; occupiedCells.clear();
+      generateLevel();
+      const isCorner = corners.some(c =>
+        Math.abs(player.x - c.x) < GRID && Math.abs(player.y - c.y) < GRID
+      );
+      expect(isCorner, `seed=${s}: player at (${player.x},${player.y}) is not near any corner`).toBe(true);
+    }
+  });
+
+  it('player spawns in different corners across different seeds', () => {
+    const b = getPlayBounds();
+    const spawnedCorners = new Set();
+    for (let s = 0; s < 20; s++) {
+      globalSeed = s * 777;
+      obstacles.length = 0; bonuses.length = 0; occupiedCells.clear();
+      generateLevel();
+      // Classify corner by quadrant
+      const isLeft  = player.x < (b.left + b.right) / 2;
+      const isTop   = player.y < (b.top + b.bottom) / 2;
+      spawnedCorners.add(`${isLeft ? 'L' : 'R'}-${isTop ? 'T' : 'B'}`);
+    }
+    // With 20 seeds we expect at least 2 distinct corners
+    expect(spawnedCorners.size).toBeGreaterThanOrEqual(2);
+  });
+
   it('litterBox has x, y, width, height', () => {
     generateLevel();
     expect(litterBox).toHaveProperty('x');
