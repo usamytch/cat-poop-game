@@ -1,3 +1,41 @@
+/* ===== ПОРТРЕТНЫЙ РЕЖИМ — заглушка для мобильных ===== */
+#rotate-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  background: #1a1a2e;
+  color: #fff;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  gap: 20px;
+  font-family: Arial, sans-serif;
+  text-align: center;
+  padding: 24px;
+}
+
+#rotate-overlay .rotate-icon {
+  font-size: 72px;
+  animation: rotate-hint 1.5s ease-in-out infinite alternate;
+}
+
+#rotate-overlay p {
+  font-size: 20px;
+  margin: 0;
+  opacity: 0.9;
+}
+
+@keyframes rotate-hint {
+  from { transform: rotate(-20deg); }
+  to   { transform: rotate(20deg); }
+}
+
+@media (orientation: portrait) and (max-width: 1024px) {
+  #rotate-overlay { display: flex; }
+  body > canvas   { display: none; }
+}
+
 body {
   margin: 0;
   background: #222;

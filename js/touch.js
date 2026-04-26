@@ -7,6 +7,21 @@
 
 if (IS_MOBILE) {
 
+  // ===== БЛОКИРОВКА ОРИЕНТАЦИИ (landscape) =====
+  // Пробуем через Screen Orientation API (Chrome/Android).
+  // На iOS Safari API недоступен — там работает CSS-оверлей из style.css.
+  (function tryLockOrientation() {
+    if (typeof screen === "undefined") return; // Node.js / тесты
+    const so = screen.orientation || screen.msOrientation || screen.mozOrientation;
+    if (so && typeof so.lock === "function") {
+      so.lock("landscape").catch(() => {
+        // Браузер отклонил (например, не в полноэкранном режиме) — ничего страшного,
+        // CSS-оверлей всё равно покажет подсказку при портретном режиме.
+      });
+    }
+  })();
+
+
   // ===== КОНФИГУРАЦИЯ ДЖОЙСТИКА =====
   // Все координаты — в пространстве canvas (1200×700)
   const JOY = {

@@ -3,11 +3,18 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="screen-orientation" content="landscape">
   <title>Cat Poop Game</title>
   <link rel="icon" href="favicon-32.png" type="image/x-icon">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
+  <!-- Оверлей «поверни телефон» для портретного режима -->
+  <div id="rotate-overlay">
+    <div class="rotate-icon">📱</div>
+    <p>Поверни телефон горизонтально</p>
+    <p style="font-size:14px;opacity:0.6;">Игра работает только в альбомном режиме</p>
+  </div>
   <canvas id="gameCanvas"></canvas>
   <!-- Модули загружаются в порядке зависимостей -->
   <script src="js/config.js"></script>
