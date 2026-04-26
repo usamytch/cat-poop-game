@@ -89,7 +89,7 @@ function drawUI() {
   ctx.fillStyle = "#fff";
   setFont("bold 13px Arial");
   ctx.textAlign = "center";
-  ctx.fillText(panic ? "😱 СРОЧНО!" : "💩 Срочность: "+Math.floor(urgeRatio*100)+"%", barX+barW/2, barY+15);
+  ctx.fillText(panic ? "😱 СРОЧНО!" : "💩 Хочется: "+Math.floor(urgeRatio*100)+"%", barX+barW/2, barY+15);
 
   let bx = hudX+18;
   if (speedBoostTimer > 0) {
