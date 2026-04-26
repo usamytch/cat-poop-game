@@ -39,7 +39,7 @@ if (IS_MOBILE) {
   // Кнопка "Выстрел 💩" — правый нижний угол
   const BTN_SHOOT = { cx: 1100, cy: 590, r: 60, label: "💩", touchId: null };
   // Кнопка "Старт / Продолжить" — центр экрана (только на стартовом/оверлейном экране)
-  const BTN_ACTION = { cx: 600, cy: 590, r: 55, label: "▶", touchId: null };
+  const BTN_ACTION = { cx: 600, cy: 635, r: 55, label: "▶", touchId: null };
   // Кнопка мьюта — верхний правый угол, всегда видна
   const BTN_MUTE = { cx: 1155, cy: 45, r: 38 };
 
