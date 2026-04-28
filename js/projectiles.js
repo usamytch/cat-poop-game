@@ -30,6 +30,11 @@ function shootPoop() {
   stats.totalPoops++;
   shootCooldown = 22;
   sndFart();
+  // Снижаем срочность при выстреле (на лёгком и нормале)
+  const shootReduce = DIFF[difficulty].shootUrgeReduce;
+  if (shootReduce > 0) {
+    player.urge = clamp(player.urge - shootReduce, 0, player.maxUrge);
+  }
   // Хозяин реагирует на звук выстрела — немедленный пересчёт пути + знак паники
   owner.onShotFired();
 }

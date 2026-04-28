@@ -84,6 +84,34 @@ describe('shootPoop()', () => {
     const p = poops[0];
     expect(p.dx).toBeLessThan(0);
   });
+
+  it('easy: shooting reduces player.urge by shootUrgeReduce', () => {
+    difficulty = 'easy';
+    player.urge = 50;
+    shootPoop();
+    expect(player.urge).toBeCloseTo(50 - DIFF.easy.shootUrgeReduce);
+  });
+
+  it('normal: shooting reduces player.urge by shootUrgeReduce', () => {
+    difficulty = 'normal';
+    player.urge = 50;
+    shootPoop();
+    expect(player.urge).toBeCloseTo(50 - DIFF.normal.shootUrgeReduce);
+  });
+
+  it('chaos: shooting does NOT reduce player.urge (shootUrgeReduce === 0)', () => {
+    difficulty = 'chaos';
+    player.urge = 50;
+    shootPoop();
+    expect(player.urge).toBeCloseTo(50);
+  });
+
+  it('shooting does not reduce urge below 0', () => {
+    difficulty = 'easy';
+    player.urge = 0;
+    shootPoop();
+    expect(player.urge).toBeGreaterThanOrEqual(0);
+  });
 });
 
 // ---------------------------------------------------------------------------

@@ -68,21 +68,21 @@ beforeEach(resetCommon);
 // ---------------------------------------------------------------------------
 describe('owner — initial state after activate()', () => {
   it('poopHits = 0 after activate', () => {
-    level = 1;
+    level = 2; // normal.firstLvl = 2
     difficulty = 'normal';
     owner.activate();
     expect(owner.poopHits).toBe(0);
   });
 
   it('facePoops = [] after activate', () => {
-    level = 1;
+    level = 2; // normal.firstLvl = 2
     difficulty = 'normal';
     owner.activate();
     expect(owner.facePoops).toEqual([]);
   });
 
   it('fleeTimer = 0 after activate', () => {
-    level = 1;
+    level = 2; // normal.firstLvl = 2
     difficulty = 'normal';
     owner.activate();
     expect(owner.fleeTimer).toBe(0);
@@ -90,7 +90,7 @@ describe('owner — initial state after activate()', () => {
 
   it('stuckTimer = 0 after activate', () => {
     owner.stuckTimer = 99;
-    level = 1;
+    level = 2; // normal.firstLvl = 2
     difficulty = 'normal';
     owner.activate();
     expect(owner.stuckTimer).toBe(0);
@@ -98,7 +98,7 @@ describe('owner — initial state after activate()', () => {
 
   it('stuckNudge = null after activate', () => {
     owner.stuckNudge = { x: 1, y: 0 };
-    level = 1;
+    level = 2; // normal.firstLvl = 2
     difficulty = 'normal';
     owner.activate();
     expect(owner.stuckNudge).toBeNull();
@@ -106,7 +106,7 @@ describe('owner — initial state after activate()', () => {
 
   it('shotReactTimer = 0 after activate', () => {
     owner.shotReactTimer = 20;
-    level = 1;
+    level = 2; // normal.firstLvl = 2
     difficulty = 'normal';
     owner.activate();
     expect(owner.shotReactTimer).toBe(0);
@@ -114,7 +114,7 @@ describe('owner — initial state after activate()', () => {
 
   it('hesitateTimer = 0 after activate', () => {
     owner.hesitateTimer = 10;
-    level = 1;
+    level = 2; // normal.firstLvl = 2
     difficulty = 'normal';
     owner.activate();
     expect(owner.hesitateTimer).toBe(0);
@@ -124,29 +124,29 @@ describe('owner — initial state after activate()', () => {
 // ---------------------------------------------------------------------------
 describe('owner.activate()', () => {
   it('level < diff.firstLvl → active = false', () => {
-    difficulty = 'normal'; // firstLvl = 1
-    level = 0;
+    difficulty = 'normal'; // firstLvl = 2
+    level = 1;
     owner.activate();
     expect(owner.active).toBe(false);
   });
 
   it('level >= diff.firstLvl → active = true', () => {
-    difficulty = 'normal'; // firstLvl = 1
-    level = 1;
+    difficulty = 'normal'; // firstLvl = 2
+    level = 2;
     owner.activate();
     expect(owner.active).toBe(true);
   });
 
-  it('easy mode: level 1 → inactive (firstLvl=2)', () => {
-    difficulty = 'easy'; // firstLvl = 2
+  it('easy mode: level 1 → inactive (firstLvl=3)', () => {
+    difficulty = 'easy'; // firstLvl = 3
     level = 1;
     owner.activate();
     expect(owner.active).toBe(false);
   });
 
-  it('easy mode: level 2 → active', () => {
-    difficulty = 'easy'; // firstLvl = 2
-    level = 2;
+  it('easy mode: level 3 → active', () => {
+    difficulty = 'easy'; // firstLvl = 3
+    level = 3;
     owner.activate();
     expect(owner.active).toBe(true);
   });
@@ -162,7 +162,7 @@ describe('owner.activate()', () => {
   it('poopHits reset to 0', () => {
     owner.poopHits = 5;
     difficulty = 'normal';
-    level = 1;
+    level = 2; // normal.firstLvl = 2
     owner.activate();
     expect(owner.poopHits).toBe(0);
   });
@@ -170,7 +170,7 @@ describe('owner.activate()', () => {
   it('facePoops cleared', () => {
     owner.facePoops = [{ rx: 1, ry: 1, rot: 0, scale: 1 }];
     difficulty = 'normal';
-    level = 1;
+    level = 2; // normal.firstLvl = 2
     owner.activate();
     expect(owner.facePoops).toEqual([]);
   });
@@ -178,7 +178,7 @@ describe('owner.activate()', () => {
   it('fleeTimer reset to 0', () => {
     owner.fleeTimer = 100;
     difficulty = 'normal';
-    level = 1;
+    level = 2; // normal.firstLvl = 2
     owner.activate();
     expect(owner.fleeTimer).toBe(0);
   });
@@ -187,7 +187,7 @@ describe('owner.activate()', () => {
     player.x = 100;
     player.y = 300;
     difficulty = 'normal';
-    level = 1;
+    level = 2; // normal.firstLvl = 2
     owner.activate();
     const b = getPlayBounds();
     // Owner should be placed in one of the four corners

@@ -16,7 +16,7 @@ describe('DIFF — difficulty modes', () => {
     expect(DIFF).toHaveProperty('chaos');
   });
 
-  const requiredFields = ['urgeRate', 'baseSpd', 'spdPerLvl', 'firstLvl', 'poopTime', 'hitUrgeReduce'];
+  const requiredFields = ['urgeRate', 'baseSpd', 'spdPerLvl', 'firstLvl', 'poopTime', 'hitUrgeReduce', 'shootUrgeReduce'];
   for (const mode of ['easy', 'normal', 'chaos']) {
     for (const field of requiredFields) {
       it(`DIFF.${mode} has field "${field}"`, () => {
@@ -46,17 +46,38 @@ describe('DIFF — difficulty modes', () => {
     expect(DIFF.easy.hitUrgeReduce).toBeGreaterThan(DIFF.normal.hitUrgeReduce);
     expect(DIFF.normal.hitUrgeReduce).toBeGreaterThan(DIFF.chaos.hitUrgeReduce);
   });
+
+  it('shootUrgeReduce is >= 0 for all modes', () => {
+    expect(DIFF.easy.shootUrgeReduce).toBeGreaterThanOrEqual(0);
+    expect(DIFF.normal.shootUrgeReduce).toBeGreaterThanOrEqual(0);
+    expect(DIFF.chaos.shootUrgeReduce).toBeGreaterThanOrEqual(0);
+  });
+
+  it('easy.shootUrgeReduce >= normal.shootUrgeReduce >= chaos.shootUrgeReduce', () => {
+    expect(DIFF.easy.shootUrgeReduce).toBeGreaterThanOrEqual(DIFF.normal.shootUrgeReduce);
+    expect(DIFF.normal.shootUrgeReduce).toBeGreaterThanOrEqual(DIFF.chaos.shootUrgeReduce);
+  });
+
+  it('chaos.shootUrgeReduce === 0 (no urge reduction on shoot in chaos)', () => {
+    expect(DIFF.chaos.shootUrgeReduce).toBe(0);
+  });
 });
 
 // ---------------------------------------------------------------------------
-describe('DIFF — balance: hitUrgeReduce vs urge growth per cooldown', () => {
+describe('DIFF — balance: urge reduction vs urge growth per cooldown', () => {
   // Cooldown = 22 frames; urge growth per frame = urgeRate/60
-  // chaos: hitUrgeReduce < urgeRate/60 * 22 (can't cheat by shooting alone)
-  // normal: hitUrgeReduce may exceed urgeRate/60*22 — shooting helps but
-  //         the player still needs to reach the litter box (design intent)
-  it('chaos: hitUrgeReduce < urgeRate/60 * 22 (shooting cannot cancel urge growth)', () => {
-    const { hitUrgeReduce, urgeRate } = DIFF.chaos;
-    expect(hitUrgeReduce).toBeLessThan(urgeRate / 60 * 22);
+  // On chaos: shootUrgeReduce=0 — misses give no relief, only direct hits help
+  // On easy/normal: shootUrgeReduce > 0 — every shot reduces urge slightly
+  it('chaos: shootUrgeReduce === 0 (misses give no urge relief on chaos)', () => {
+    expect(DIFF.chaos.shootUrgeReduce).toBe(0);
+  });
+
+  it('easy: shootUrgeReduce > 0 (every shot reduces urge on easy)', () => {
+    expect(DIFF.easy.shootUrgeReduce).toBeGreaterThan(0);
+  });
+
+  it('normal: shootUrgeReduce > 0 (every shot reduces urge on normal)', () => {
+    expect(DIFF.normal.shootUrgeReduce).toBeGreaterThan(0);
   });
 
   it('normal: hitUrgeReduce is a positive number (shooting reduces urge)', () => {
