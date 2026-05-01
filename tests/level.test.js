@@ -253,6 +253,34 @@ describe('generateLevel()', () => {
     expect(Array.isArray(decorItems)).toBe(true);
   });
 
+  it('no two decor items share a grid cell', () => {
+    // Run across several seeds to get statistical confidence
+    for (let s = 0; s < 8; s++) {
+      globalSeed = s * 1337;
+      obstacles.length = 0;
+      bonuses.length = 0;
+      occupiedCells.clear();
+      generateLevel();
+
+      const b = getPlayBounds();
+      const decorCellMap = new Map();
+      for (const d of decorItems) {
+        const col = Math.round((d.x - b.left) / GRID);
+        const row = Math.round((d.y - b.top) / GRID);
+        for (let r = row; r < row + d.hCells; r++) {
+          for (let c = col; c < col + d.wCells; c++) {
+            const key = `${c},${r}`;
+            expect(
+              decorCellMap.has(key),
+              `seed=${s}: decor cell ${key} occupied by both "${decorCellMap.get(key)}" and "${d.type}"`
+            ).toBe(false);
+            decorCellMap.set(key, d.type);
+          }
+        }
+      }
+    }
+  });
+
   it('obstacles have wCells and hCells properties', () => {
     generateLevel();
     for (const ob of obstacles) {

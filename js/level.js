@@ -131,13 +131,39 @@ function generateDecor(theme, rng, count) {
   decorItems.length = 0;
   if (!theme.decorTypes || theme.decorTypes.length === 0) return;
 
-  for (let i = 0; i < count; i++) {
+  // Отдельный Set занятых декором ячеек — декор не перекрывает другой декор,
+  // но может лежать под препятствиями (это нормально визуально)
+  const decorCells = new Set();
+
+  let placed = 0;
+  let attempts = 0;
+  const maxAttempts = count * 40;
+
+  while (placed < count && attempts < maxAttempts) {
+    attempts++;
     const type = theme.decorTypes[randInt(rng, 0, theme.decorTypes.length - 1)];
     const meta = decorCatalog[type];
     const wCells = randInt(rng, meta.wCells[0], meta.wCells[1]);
     const hCells = randInt(rng, meta.hCells[0], meta.hCells[1]);
     const col = randInt(rng, 0, GRID_COLS - wCells);
     const row = randInt(rng, 0, GRID_ROWS - hCells);
+
+    // Проверяем, что ни одна ячейка не занята другим декором
+    let overlap = false;
+    outer: for (let r = row; r < row + hCells; r++) {
+      for (let c = col; c < col + wCells; c++) {
+        if (decorCells.has(cellKey(c, r))) { overlap = true; break outer; }
+      }
+    }
+    if (overlap) continue;
+
+    // Занимаем ячейки в decorCells
+    for (let r = row; r < row + hCells; r++) {
+      for (let c = col; c < col + wCells; c++) {
+        decorCells.add(cellKey(c, r));
+      }
+    }
+
     const pos = cellToPixel(col, row);
     decorItems.push({
       type, col, row, wCells, hCells,
@@ -145,6 +171,7 @@ function generateDecor(theme, rng, count) {
       width: wCells * GRID, height: hCells * GRID,
       drawStyle: meta.draw,
     });
+    placed++;
   }
 }
 

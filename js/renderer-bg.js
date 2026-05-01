@@ -76,7 +76,9 @@ function _drawDecorItemTo(bctx, d) {
       break;
     }
     case "tiles_decor": {
-      bctx.strokeStyle = p.trim; bctx.lineWidth = 1.5;
+      // Lower alpha for tile grid — it's a dense pattern and looks like a debug overlay at 0.38
+      bctx.globalAlpha = 0.13;
+      bctx.strokeStyle = p.trim; bctx.lineWidth = 1;
       const tileSize = GRID / 2;
       for (let ty = y; ty < y + h; ty += tileSize) {
         for (let tx = x; tx < x + w; tx += tileSize) {
@@ -120,38 +122,140 @@ function _drawObstacleTo(bctx, ob) {
   const oy = y + (ob.axis === "y" ? sway : 0);
   bctx.save();
   bctx.translate(ox, oy);
-  bctx.fillStyle = currentLocation.palette.shadow; bctx.fillRect(8, h-10, w-16, 12);
+  // Ground shadow — ellipse for organic shapes, rect for furniture
+  if (type === "plant" || type === "tree" || type === "bush") {
+    bctx.fillStyle = currentLocation.palette.shadow;
+    bctx.beginPath(); bctx.ellipse(w/2, h-4, w*0.42, 7, 0, 0, Math.PI*2); bctx.fill();
+  } else {
+    bctx.fillStyle = currentLocation.palette.shadow; bctx.fillRect(8, h-10, w-16, 12);
+  }
   switch (type) {
     case "wardrobe": case "cabinet": case "fridge":
       _rrectTo(bctx,0,0,w,h,10,meta.color); _rrectTo(bctx,8,8,w-16,h-16,8,meta.detail);
-      bctx.fillStyle = meta.color; bctx.fillRect(w/2-3,12,6,h-24); bctx.fillRect(w/2-12,h/2,5,18); bctx.fillRect(w/2+7,h/2,5,18); break;
+      // Divider line
+      bctx.fillStyle = meta.color; bctx.fillRect(w/2-3,12,6,h-24);
+      // Door handles — visible contrasting rounded rects
+      _rrectTo(bctx, w/4-3, h/2-7, 6, 14, 3, meta.detail === "#c89b6d" ? "#5a3010" : "#4a7a90");
+      _rrectTo(bctx, w*3/4-3, h/2-7, 6, 14, 3, meta.detail === "#c89b6d" ? "#5a3010" : "#4a7a90");
+      // Top-edge sheen — narrow rounded strip, not a floating rect
+      _rrectTo(bctx, 12, 10, Math.min(w*0.28, 36), 6, 3, "rgba(255,255,255,0.22)");
+      break;
     case "dresser": case "counter":
       _rrectTo(bctx,0,0,w,h,10,meta.color);
-      for (let i=1; i<=3; i++) { const dy=(h/4)*i-10; bctx.fillStyle=meta.detail; bctx.fillRect(10,dy,w-20,12); bctx.fillStyle=meta.color; bctx.fillRect(w/2-8,dy+3,16,6); } break;
+      for (let i=1; i<=3; i++) {
+        const dy=(h/4)*i-10;
+        bctx.fillStyle=meta.detail; bctx.fillRect(10,dy,w-20,12);
+        // Drawer pull — small dark rounded rect centered on each drawer
+        _rrectTo(bctx, w/2-6, dy+3, 12, 6, 3, "rgba(0,0,0,0.28)");
+      }
+      // Top-edge sheen
+      _rrectTo(bctx, 12, 10, Math.min(w*0.28, 36), 6, 3, "rgba(255,255,255,0.22)");
+      break;
     case "armchair": case "rockingChair":
       _rrectTo(bctx,10,18,w-20,h-18,18,meta.color); _rrectTo(bctx,0,0,w,34,16,meta.detail);
+      // Seat cushion — slightly lighter inset rounded rect
+      _rrectTo(bctx, 16, 36, w-32, h-54, 12, "rgba(255,255,255,0.22)");
       bctx.fillStyle = meta.color; bctx.fillRect(8,h-18,10,18); bctx.fillRect(w-18,h-18,10,18);
-      if (type === "rockingChair") { bctx.strokeStyle=meta.detail; bctx.lineWidth=4; bctx.beginPath(); bctx.arc(w/2,h-2,w/2-8,Math.PI*0.1,Math.PI*0.9); bctx.stroke(); } break;
+      if (type === "rockingChair") { bctx.strokeStyle=meta.detail; bctx.lineWidth=4; bctx.beginPath(); bctx.arc(w/2,h-2,w/2-8,Math.PI*0.1,Math.PI*0.9); bctx.stroke(); }
+      // Top-edge sheen on backrest
+      _rrectTo(bctx, 8, 6, Math.min(w*0.28, 36), 6, 3, "rgba(255,255,255,0.22)");
+      break;
     case "plant": case "tree": case "bush":
-      bctx.fillStyle = meta.detail; bctx.fillRect(w/2-10,h*0.45,20,h*0.55);
-      bctx.fillStyle = meta.color; bctx.beginPath(); bctx.arc(w/2,h*0.28,w*0.28,0,Math.PI*2); bctx.arc(w*0.32,h*0.42,w*0.22,0,Math.PI*2); bctx.arc(w*0.68,h*0.42,w*0.22,0,Math.PI*2); bctx.fill();
-      if (type === "plant") { bctx.fillStyle=meta.detail; bctx.fillRect(w/2-18,h-18,36,18); } break;
+      // Trunk (not for bush — it has no trunk)
+      if (type !== "bush") {
+        bctx.fillStyle = meta.detail; bctx.fillRect(w/2-10,h*0.45,20,h*0.55);
+      }
+      // Fix: separate beginPath per circle to avoid triangle artifacts between arcs
+      bctx.fillStyle = meta.color;
+      bctx.beginPath(); bctx.arc(w/2,   h*0.28, w*0.28, 0, Math.PI*2); bctx.fill();
+      bctx.beginPath(); bctx.arc(w*0.32, h*0.42, w*0.22, 0, Math.PI*2); bctx.fill();
+      bctx.beginPath(); bctx.arc(w*0.68, h*0.42, w*0.22, 0, Math.PI*2); bctx.fill();
+      if (type === "plant") {
+        // Pot body
+        _rrectTo(bctx, w/2-18, h-20, 36, 20, 6, meta.detail);
+        // Pot rim — slightly wider lighter strip at top of pot
+        _rrectTo(bctx, w/2-20, h-22, 40, 6, 3, "rgba(255,255,255,0.25)");
+      }
+      // No highlight for organic shapes
+      break;
     case "sink":
       _rrectTo(bctx,10,0,w-20,26,10,meta.detail); _rrectTo(bctx,0,18,w,h-18,12,meta.color);
-      bctx.fillStyle = "#9bb7c7"; bctx.fillRect(w/2-4,6,8,18); break;
+      // Faucet
+      bctx.fillStyle = "#9bb7c7"; bctx.fillRect(w/2-4,6,8,18);
+      // Drain hole — small dark circle in basin center
+      bctx.fillStyle = "rgba(0,0,0,0.30)";
+      bctx.beginPath(); bctx.arc(w/2, h*0.65, 5, 0, Math.PI*2); bctx.fill();
+      // Drain ring
+      bctx.strokeStyle = "rgba(0,0,0,0.18)"; bctx.lineWidth = 2;
+      bctx.beginPath(); bctx.arc(w/2, h*0.65, 9, 0, Math.PI*2); bctx.stroke();
+      break;
     case "toilet":
-      _rrectTo(bctx,12,0,w-24,28,10,meta.detail); _rrectTo(bctx,18,24,w-36,26,12,meta.color); _rrectTo(bctx,8,44,w-16,h-44,18,meta.detail); break;
+      _rrectTo(bctx,12,0,w-24,28,10,meta.detail);
+      _rrectTo(bctx,18,24,w-36,26,12,meta.color);
+      _rrectTo(bctx,8,44,w-16,h-44,18,meta.detail);
+      // Flush button on tank
+      _rrectTo(bctx, w/2-8, 8, 16, 10, 4, "rgba(0,0,0,0.18)");
+      // Seat hinge dots
+      bctx.fillStyle = "rgba(0,0,0,0.22)";
+      bctx.beginPath(); bctx.arc(w/2-10, 26, 3, 0, Math.PI*2); bctx.fill();
+      bctx.beginPath(); bctx.arc(w/2+10, 26, 3, 0, Math.PI*2); bctx.fill();
+      break;
     case "laundry": case "barrel":
-      _rrectTo(bctx,8,0,w-16,h,18,meta.color); bctx.strokeStyle=meta.detail; bctx.lineWidth=4;
-      bctx.strokeRect(14,12,w-28,h-24); bctx.strokeRect(14,h/2-8,w-28,16); break;
+      _rrectTo(bctx,8,0,w-16,h,18,meta.color);
+      bctx.strokeStyle=meta.detail; bctx.lineWidth=4;
+      bctx.strokeRect(14,12,w-28,h-24); bctx.strokeRect(14,h/2-8,w-28,16);
+      if (type === "laundry") {
+        // Lid line across top
+        bctx.strokeStyle = "rgba(0,0,0,0.20)"; bctx.lineWidth = 3;
+        bctx.beginPath(); bctx.moveTo(14,20); bctx.lineTo(w-14,20); bctx.stroke();
+        // Lid handle — small rounded rect
+        _rrectTo(bctx, w/2-10, 12, 20, 8, 4, "rgba(0,0,0,0.22)");
+      } else {
+        // Barrel: extra metal ring near bottom
+        bctx.strokeStyle=meta.detail; bctx.lineWidth=3;
+        bctx.strokeRect(14, h*0.72, w-28, 10);
+      }
+      // No wide highlight for laundry/barrel — rounded body doesn't suit a rect sheen
+      break;
     case "table": case "bench": case "woodpile":
-      _rrectTo(bctx,0,0,w,20,10,meta.detail); bctx.fillStyle=meta.color; bctx.fillRect(10,18,12,h-18); bctx.fillRect(w-22,18,12,h-18);
-      if (type === "woodpile") { for (let j=0; j<4; j++) { bctx.fillStyle=meta.detail; bctx.beginPath(); bctx.arc(24+j*((w-48)/3),h-18,12,0,Math.PI*2); bctx.fill(); } } break;
+      // Tabletop
+      _rrectTo(bctx,0,0,w,20,10,meta.detail);
+      bctx.fillStyle = meta.color;
+      if (type === "table") {
+        // Varying leg thickness: left thin (8px), inner-left (10px), inner-right (10px), right thick (14px)
+        bctx.fillRect(10,   18, 8,  h-18);
+        bctx.fillRect(Math.floor(w/3)-5, 18, 10, h-18);
+        bctx.fillRect(Math.floor(w*2/3)-5, 18, 10, h-18);
+        bctx.fillRect(w-24, 18, 14, h-18);
+      } else {
+        bctx.fillRect(10,18,12,h-18); bctx.fillRect(w-22,18,12,h-18);
+      }
+      if (type === "bench") {
+        // Seat slats — vertical lines across the top surface
+        bctx.strokeStyle = "rgba(0,0,0,0.18)"; bctx.lineWidth = 2;
+        for (let s=1; s<=2; s++) {
+          const sx = Math.floor(w * s / 3);
+          bctx.beginPath(); bctx.moveTo(sx, 2); bctx.lineTo(sx, 18); bctx.stroke();
+        }
+      }
+      if (type === "woodpile") { for (let j=0; j<4; j++) { bctx.fillStyle=meta.detail; bctx.beginPath(); bctx.arc(24+j*((w-48)/3),h-18,12,0,Math.PI*2); bctx.fill(); } }
+      // Narrow sheen on tabletop edge only
+      _rrectTo(bctx, 10, 3, Math.min(w*0.28, 36), 6, 3, "rgba(255,255,255,0.22)");
+      break;
     case "stool": case "crate":
+      // No white highlight for crate/stool — it clashes with the X pattern
       _rrectTo(bctx,0,0,w,h,10,meta.color); bctx.strokeStyle=meta.detail; bctx.lineWidth=3;
-      bctx.strokeRect(8,8,w-16,h-16); bctx.beginPath(); bctx.moveTo(8,8); bctx.lineTo(w-8,h-8); bctx.moveTo(w-8,8); bctx.lineTo(8,h-8); bctx.stroke(); break;
+      bctx.strokeRect(8,8,w-16,h-16);
+      bctx.beginPath(); bctx.moveTo(8,8); bctx.lineTo(w-8,h-8); bctx.moveTo(w-8,8); bctx.lineTo(8,h-8); bctx.stroke();
+      if (type === "crate") {
+        // Nail dots at corners of inner rect
+        bctx.fillStyle = "rgba(0,0,0,0.35)";
+        [[10,10],[w-10,10],[10,h-10],[w-10,h-10]].forEach(([nx,ny]) => {
+          bctx.beginPath(); bctx.arc(nx, ny, 2.5, 0, Math.PI*2); bctx.fill();
+        });
+      }
+      break;
   }
-  bctx.fillStyle = "rgba(255,255,255,0.18)"; bctx.fillRect(8,8,w*0.35,10);
   bctx.restore();
 }
 
