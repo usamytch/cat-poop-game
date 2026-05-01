@@ -141,6 +141,139 @@ describe('generateLevel()', () => {
     expect(obstacles.every(o => !o.moving)).toBe(true);
   });
 
+  // ---------------------------------------------------------------------------
+  // Invariant: gap between any two obstacles is either 0 (flush) or ≥1 cell (40px passable).
+  // A gap of 1..39px would be neither flush nor passable — a violation.
+  // With grid-aligned static obstacles gaps are always multiples of 40px, so only
+  // moving obstacles can create intermediate gaps.
+  // ---------------------------------------------------------------------------
+
+  it('static obstacles: any gap between obstacles is 0 (flush) or ≥ GRID px (passable)', () => {
+    // Level 4 — no moving obstacles, pure static case
+    level = 4;
+    score = 0;
+    for (let s = 0; s < 8; s++) {
+      globalSeed = s * 1337;
+      obstacles.length = 0; bonuses.length = 0; occupiedCells.clear();
+      generateLevel();
+
+      const b = getPlayBounds();
+      for (let i = 0; i < obstacles.length; i++) {
+        for (let j = i + 1; j < obstacles.length; j++) {
+          const a = obstacles[i], bOb = obstacles[j];
+          // Horizontal gap (only meaningful when they overlap vertically)
+          const vertOverlap = a.y < bOb.y + bOb.height && a.y + a.height > bOb.y;
+          if (vertOverlap) {
+            const gapRight  = bOb.x - (a.x + a.width);   // B is to the right of A
+            const gapLeft   = a.x - (bOb.x + bOb.width); // A is to the right of B
+            const hGap = Math.max(gapRight, gapLeft);
+            if (hGap > 0) {
+              expect(hGap, `seed=${s}: horizontal gap ${hGap}px between ${a.id} and ${bOb.id} is not passable (< GRID=${GRID})`).toBeGreaterThanOrEqual(GRID);
+            }
+          }
+          // Vertical gap (only meaningful when they overlap horizontally)
+          const horizOverlap = a.x < bOb.x + bOb.width && a.x + a.width > bOb.x;
+          if (horizOverlap) {
+            const gapDown = bOb.y - (a.y + a.height);   // B is below A
+            const gapUp   = a.y - (bOb.y + bOb.height); // A is below B
+            const vGap = Math.max(gapDown, gapUp);
+            if (vGap > 0) {
+              expect(vGap, `seed=${s}: vertical gap ${vGap}px between ${a.id} and ${bOb.id} is not passable (< GRID=${GRID})`).toBeGreaterThanOrEqual(GRID);
+            }
+          }
+        }
+      }
+    }
+  });
+
+  it('moving obstacles: at extreme position gap to any neighbor is 0 (flush) or ≥ GRID px (passable)', () => {
+    // Level 5+ — moving obstacles present
+    level = 5;
+    score = 0;
+    let testedMoving = false;
+    for (let s = 0; s < 15; s++) {
+      globalSeed = s * 999;
+      obstacles.length = 0; bonuses.length = 0; occupiedCells.clear();
+      generateLevel();
+
+      const movingObs = obstacles.filter(o => o.moving);
+      if (movingObs.length === 0) continue;
+      testedMoving = true;
+
+      for (const mov of movingObs) {
+        // Simulate extreme positions: +range and -range along axis
+        const extremes = [
+          { x: mov.baseX + (mov.axis === 'x' ? mov.range : 0), y: mov.baseY + (mov.axis === 'y' ? mov.range : 0) },
+          { x: mov.baseX - (mov.axis === 'x' ? mov.range : 0), y: mov.baseY - (mov.axis === 'y' ? mov.range : 0) },
+        ];
+
+        for (const pos of extremes) {
+          const movRect = { x: pos.x, y: pos.y, width: mov.width, height: mov.height };
+
+          for (const other of obstacles) {
+            if (other.id === mov.id) continue;
+            const otherRect = { x: other.baseX, y: other.baseY, width: other.width, height: other.height };
+
+            // Check horizontal gap when vertically overlapping
+            const vertOverlap = movRect.y < otherRect.y + otherRect.height && movRect.y + movRect.height > otherRect.y;
+            if (vertOverlap) {
+              const gapRight = otherRect.x - (movRect.x + movRect.width);
+              const gapLeft  = movRect.x - (otherRect.x + otherRect.width);
+              const hGap = Math.max(gapRight, gapLeft);
+              if (hGap > 0) {
+                expect(hGap, `seed=${s}: moving ${mov.id} at extreme x=${pos.x} has horizontal gap ${hGap}px to ${other.id} — not passable (< GRID=${GRID})`).toBeGreaterThanOrEqual(GRID);
+              }
+            }
+
+            // Check vertical gap when horizontally overlapping
+            const horizOverlap = movRect.x < otherRect.x + otherRect.width && movRect.x + movRect.width > otherRect.x;
+            if (horizOverlap) {
+              const gapDown = otherRect.y - (movRect.y + movRect.height);
+              const gapUp   = movRect.y - (otherRect.y + otherRect.height);
+              const vGap = Math.max(gapDown, gapUp);
+              if (vGap > 0) {
+                expect(vGap, `seed=${s}: moving ${mov.id} at extreme y=${pos.y} has vertical gap ${vGap}px to ${other.id} — not passable (< GRID=${GRID})`).toBeGreaterThanOrEqual(GRID);
+              }
+            }
+          }
+        }
+      }
+    }
+    // Ensure we actually tested at least one moving obstacle
+    expect(testedMoving, 'no moving obstacles found across 15 seeds at level 5').toBe(true);
+  });
+
+  it('moving obstacles: at extreme position gap to play-area boundary is 0 (flush) or ≥ GRID px', () => {
+    level = 5;
+    score = 0;
+    let testedMoving = false;
+    for (let s = 0; s < 15; s++) {
+      globalSeed = s * 1111;
+      obstacles.length = 0; bonuses.length = 0; occupiedCells.clear();
+      generateLevel();
+
+      const movingObs = obstacles.filter(o => o.moving);
+      if (movingObs.length === 0) continue;
+      testedMoving = true;
+
+      const b = getPlayBounds();
+      for (const mov of movingObs) {
+        const extremes = [
+          { x: mov.baseX + (mov.axis === 'x' ? mov.range : 0), y: mov.baseY + (mov.axis === 'y' ? mov.range : 0) },
+          { x: mov.baseX - (mov.axis === 'x' ? mov.range : 0), y: mov.baseY - (mov.axis === 'y' ? mov.range : 0) },
+        ];
+        for (const pos of extremes) {
+          // Must stay within play bounds at extreme position
+          expect(pos.x, `seed=${s}: moving ${mov.id} extreme x=${pos.x} < left bound`).toBeGreaterThanOrEqual(b.left);
+          expect(pos.y, `seed=${s}: moving ${mov.id} extreme y=${pos.y} < top bound`).toBeGreaterThanOrEqual(b.top);
+          expect(pos.x + mov.width,  `seed=${s}: moving ${mov.id} extreme right=${pos.x + mov.width} > right bound`).toBeLessThanOrEqual(b.right);
+          expect(pos.y + mov.height, `seed=${s}: moving ${mov.id} extreme bottom=${pos.y + mov.height} > bottom bound`).toBeLessThanOrEqual(b.bottom);
+        }
+      }
+    }
+    expect(testedMoving, 'no moving obstacles found across 15 seeds at level 5').toBe(true);
+  });
+
   it('all obstacle positions are grid-aligned (x and y are multiples of GRID from play bounds)', () => {
     generateLevel();
     const b = getPlayBounds();

@@ -107,9 +107,22 @@ function generateObstacle(theme, rng, index, movingAllowed) {
 
   const pos = cellToPixel(col, row);
 
-  const moving = movingAllowed && rng() > 0.72;
+  let moving = movingAllowed && rng() > 0.72;
   const axis = rng() > 0.5 ? "x" : "y";
-  // Движущиеся препятствия двигаются на 1 ячейку в каждую сторону
+  // Движущиеся препятствия двигаются на 1 ячейку в каждую сторону.
+  // Инвариант: щель между препятствиями должна быть либо 0 (вплотную),
+  // либо ≥1 ячейка (40px, проходима для кота 36px и хозяина 36px).
+  // Движущееся препятствие с range=GRID создаёт промежуточные позиции
+  // (например, 20px), нарушая инвариант, если соседняя ячейка занята.
+  // Поэтому: движущееся препятствие должно иметь ≥2 свободных ячейки
+  // в направлении движения с каждой стороны (чтобы в крайней точке
+  // оставался зазор ≥1 ячейка).
+  if (moving) {
+    const clearOk = axis === "x"
+      ? cellsFree(col - 2, row, 2, hCells) && cellsFree(col + wCells, row, 2, hCells)
+      : cellsFree(col, row - 2, wCells, 2) && cellsFree(col, row + hCells, wCells, 2);
+    if (!clearOk) moving = false;
+  }
   const range = moving ? GRID : 0;
   const speed = moving ? randRange(rng, 0.008, 0.02) : 0;
 
@@ -148,20 +161,25 @@ function generateDecor(theme, rng, count) {
     const col = randInt(rng, 0, GRID_COLS - wCells);
     const row = randInt(rng, 0, GRID_ROWS - hCells);
 
-    // Проверяем, что ни одна ячейка не занята другим декором
+    // Единый проход: пробуем занять ячейки; при первом конфликте откатываем уже добавленные.
+    // Это вдвое сокращает число Set-операций на happy path (нет отдельного check-прохода).
+    const added = [];
     let overlap = false;
-    outer: for (let r = row; r < row + hCells; r++) {
-      for (let c = col; c < col + wCells; c++) {
-        if (decorCells.has(cellKey(c, r))) { overlap = true; break outer; }
+    for (let r = row; r < row + hCells && !overlap; r++) {
+      for (let c = col; c < col + wCells && !overlap; c++) {
+        const k = cellKey(c, r);
+        if (decorCells.has(k)) {
+          overlap = true;
+        } else {
+          decorCells.add(k);
+          added.push(k);
+        }
       }
     }
-    if (overlap) continue;
-
-    // Занимаем ячейки в decorCells
-    for (let r = row; r < row + hCells; r++) {
-      for (let c = col; c < col + wCells; c++) {
-        decorCells.add(cellKey(c, r));
-      }
+    if (overlap) {
+      // Откат: удаляем только те ячейки, что успели добавить до конфликта
+      for (const k of added) decorCells.delete(k);
+      continue;
     }
 
     const pos = cellToPixel(col, row);
