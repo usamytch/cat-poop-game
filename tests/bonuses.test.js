@@ -17,6 +17,8 @@ beforeEach(() => {
   yarnFreezeTimer = 0;
   comboPopups.length = 0;
   bonuses.length = 0;
+  lives = 3;
+  level = 1;
 });
 
 // ---------------------------------------------------------------------------
@@ -83,6 +85,109 @@ describe('applyBonus("pill")', () => {
     applyBonus('pill');
     expect(comboPopups.length).toBeGreaterThan(0);
     expect(comboPopups[comboPopups.length - 1].text).toContain('-30% срочности!');
+  });
+});
+
+// ---------------------------------------------------------------------------
+describe('applyBonus("pill") — level-aware reduction', () => {
+  it('reduces urge by 30% on level 1 (default)', () => {
+    level = 1;
+    player.urge = 100;
+    applyBonus('pill');
+    expect(player.urge).toBeCloseTo(70);
+  });
+
+  it('reduces urge by 30% on level 6', () => {
+    level = 6;
+    player.urge = 100;
+    applyBonus('pill');
+    expect(player.urge).toBeCloseTo(70);
+  });
+
+  it('reduces urge by 40% on level 7', () => {
+    level = 7;
+    player.urge = 100;
+    applyBonus('pill');
+    expect(player.urge).toBeCloseTo(60);
+  });
+
+  it('reduces urge by 40% on level 9', () => {
+    level = 9;
+    player.urge = 100;
+    applyBonus('pill');
+    expect(player.urge).toBeCloseTo(60);
+  });
+
+  it('reduces urge by 50% on level 10', () => {
+    level = 10;
+    player.urge = 100;
+    applyBonus('pill');
+    expect(player.urge).toBeCloseTo(50);
+  });
+
+  it('reduces urge by 50% on level 15', () => {
+    level = 15;
+    player.urge = 100;
+    applyBonus('pill');
+    expect(player.urge).toBeCloseTo(50);
+  });
+
+  it('popup text shows correct percentage on level 7', () => {
+    level = 7;
+    player.urge = 100;
+    applyBonus('pill');
+    expect(comboPopups[comboPopups.length - 1].text).toContain('40%');
+  });
+
+  it('popup text shows correct percentage on level 10', () => {
+    level = 10;
+    player.urge = 100;
+    applyBonus('pill');
+    expect(comboPopups[comboPopups.length - 1].text).toContain('50%');
+  });
+});
+
+// ---------------------------------------------------------------------------
+describe('applyBonus("life")', () => {
+  it('increments lives by 1', () => {
+    lives = 2;
+    applyBonus('life');
+    expect(lives).toBe(3);
+  });
+
+  it('caps lives at 5', () => {
+    lives = 5;
+    applyBonus('life');
+    expect(lives).toBe(5);
+  });
+
+  it('caps lives at 5 when lives was 4', () => {
+    lives = 4;
+    applyBonus('life');
+    expect(lives).toBe(5);
+  });
+
+  it('does not change speedBoostTimer', () => {
+    speedBoostTimer = 0;
+    applyBonus('life');
+    expect(speedBoostTimer).toBe(0);
+  });
+
+  it('does not change yarnFreezeTimer', () => {
+    yarnFreezeTimer = 0;
+    applyBonus('life');
+    expect(yarnFreezeTimer).toBe(0);
+  });
+
+  it('adds a popup with text containing "+1 жизнь!"', () => {
+    applyBonus('life');
+    expect(comboPopups.length).toBeGreaterThan(0);
+    expect(comboPopups[comboPopups.length - 1].text).toContain('+1 жизнь!');
+  });
+
+  it('popup color is #ef9a9a', () => {
+    applyBonus('life');
+    expect(comboPopups[comboPopups.length - 1].color).toBe('#ef9a9a');
   });
 });
 

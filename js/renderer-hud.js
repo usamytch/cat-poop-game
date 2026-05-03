@@ -183,7 +183,9 @@ function drawUI() {
   const lifeIconSize = 28;
   const lifeY = hudY + 188;
   const lifeStartX = hudX + 18;
-  for (let i = 0; i < 3; i++) {
+  // Показываем минимум 3 слота, но если жизней больше — показываем все
+  const lifeSlots = Math.max(3, lives);
+  for (let i = 0; i < lifeSlots; i++) {
     const lx = lifeStartX + i * (lifeIconSize + 6);
     if (i < lives) {
       ctx.globalAlpha = 1.0;

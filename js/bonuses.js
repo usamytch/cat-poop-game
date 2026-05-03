@@ -14,8 +14,16 @@ function applyBonus(type) {
     yarnFreezeTimer = 300;
     comboPopups.push({x:player.x+player.size/2, y:player.y-20, text:"🧶 Стоп хозяин!", timer:80, color:"#ce93d8"});
   } else if (type === "pill") {
-    player.urge = clamp(player.urge * 0.7, 0, player.maxUrge);
-    comboPopups.push({x:player.x+player.size/2, y:player.y-20, text:"💊 -30% срочности!", timer:80, color:"#a5d6a7"});
+    // На поздних уровнях таблетка снижает срочность сильнее:
+    // уровни 1–6: -30%, уровни 7–9: -40%, уровни 10+: -50%
+    const reduction = level >= 10 ? 0.5 : level >= 7 ? 0.4 : 0.3;
+    player.urge = clamp(player.urge * (1 - reduction), 0, player.maxUrge);
+    const pct = Math.round(reduction * 100);
+    comboPopups.push({x:player.x+player.size/2, y:player.y-20, text:`💊 -${pct}% срочности!`, timer:80, color:"#a5d6a7"});
+  } else if (type === "life") {
+    // Бонус жизни — только на уровне 5+, максимум 5 жизней
+    lives = Math.min(lives + 1, 5);
+    comboPopups.push({x:player.x+player.size/2, y:player.y-20, text:"🐱 +1 жизнь!", timer:80, color:"#ef9a9a"});
   }
 }
 

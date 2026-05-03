@@ -102,19 +102,28 @@ describe('WORLD', () => {
 
 // ---------------------------------------------------------------------------
 describe('BONUS_TYPES', () => {
-  it('contains fish, yarn, pill', () => {
+  it('contains fish, yarn, pill, life', () => {
     expect(BONUS_TYPES).toHaveProperty('fish');
     expect(BONUS_TYPES).toHaveProperty('yarn');
     expect(BONUS_TYPES).toHaveProperty('pill');
+    expect(BONUS_TYPES).toHaveProperty('life');
   });
 
-  for (const type of ['fish', 'yarn', 'pill']) {
+  for (const type of ['fish', 'yarn', 'pill', 'life']) {
     it(`BONUS_TYPES.${type} has emoji, label, color`, () => {
       expect(BONUS_TYPES[type]).toHaveProperty('emoji');
       expect(BONUS_TYPES[type]).toHaveProperty('label');
       expect(BONUS_TYPES[type]).toHaveProperty('color');
     });
   }
+
+  it('BONUS_TYPES.life emoji is 🐱 (cat face, matches HUD life icon)', () => {
+    expect(BONUS_TYPES.life.emoji).toBe('🐱');
+  });
+
+  it('BONUS_TYPES.life color is #ef9a9a', () => {
+    expect(BONUS_TYPES.life.color).toBe('#ef9a9a');
+  });
 });
 
 // ---------------------------------------------------------------------------

@@ -447,16 +447,37 @@ function generateLevel() {
   generateDecor(currentLocation, rng, decorCount);
 
   // Спавн бонусов — на свободных ячейках сетки
-  const bonusKeys = Object.keys(BONUS_TYPES);
-  const bonusCount = 2 + (level > 3 ? 1 : 0);
+  // Количество бонусов растёт с уровнем: больше бонусов на поздних уровнях
+  const bonusCount = level >= 10 ? 5 : level >= 7 ? 4 : level >= 4 ? 3 : 2;
+
+  // Взвешенный пул типов бонусов — на поздних уровнях больше таблеток и жизней.
+  // Жизнь (life) появляется только с уровня 5.
+  // Уровни 1–3:  fish 40%, yarn 30%, pill 30%
+  // Уровни 4–6:  fish 30%, yarn 30%, pill 40%
+  // Уровни 7–9:  fish 20%, yarn 20%, pill 40%, life 20%  (но life-слоты ≤ 1 на уровень)
+  // Уровни 10+:  fish 20%, yarn 10%, pill 40%, life 30%
+  const bonusPool = level >= 10
+    ? ["fish","fish","yarn","pill","pill","pill","pill","life","life","life"]
+    : level >= 7
+      ? ["fish","fish","yarn","yarn","pill","pill","pill","pill","life","life"]
+      : level >= 4
+        ? ["fish","fish","fish","yarn","yarn","yarn","pill","pill","pill","pill"]
+        : ["fish","fish","fish","fish","yarn","yarn","yarn","pill","pill","pill"];
+
   let batt = 0;
+  let lifeSpawned = 0; // не более 1 жизни за уровень
   while (bonuses.length < bonusCount && batt < 200) {
     batt++;
     const bc = randInt(rng, 1, GRID_COLS - 2);
     const br = randInt(rng, 1, GRID_ROWS - 2);
     if (!isCellFree(bc, br)) continue;
     const center = cellToPixelCenter(bc, br);
-    const btype = bonusKeys[randInt(rng, 0, bonusKeys.length - 1)];
+    let btype = bonusPool[randInt(rng, 0, bonusPool.length - 1)];
+    // Ограничиваем жизнь: максимум 1 за уровень
+    if (btype === "life") {
+      if (lifeSpawned >= 1) btype = "pill";
+      else lifeSpawned++;
+    }
     bonuses.push({ x: center.x, y: center.y, type: btype, alive: true, pulse: Math.random() * Math.PI * 2 });
   }
 
