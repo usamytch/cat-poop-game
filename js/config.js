@@ -76,26 +76,27 @@ const locationThemes = [
 // ===== КАТАЛОГ ПРЕПЯТСТВИЙ =====
 // wCells/hCells — размер в ячейках сетки (итоговый px = cells * GRID)
 // color/detail — цвета для рендерера
+// zone — предпочтительная зона размещения: "wall" | "corner" | "center" | "any"
 const obstacleCatalog = {
-  wardrobe:     {label:"Шкаф",           wCells:[2,4], hCells:[2,4], color:"#7b4f2f", detail:"#c89b6d"},
-  dresser:      {label:"Комод",          wCells:[2,4], hCells:[2,2], color:"#8b5e3c", detail:"#d8b07f"},
-  armchair:     {label:"Кресло",         wCells:[2,2], hCells:[2,2], color:"#8e5ea2", detail:"#caa7d8"},
-  plant:        {label:"Фикус",          wCells:[2,2], hCells:[2,4], color:"#4f8a3f", detail:"#8b5a2b"},
-  sink:         {label:"Раковина",       wCells:[2,2], hCells:[2,2], color:"#dfe8ee", detail:"#8aa4b3"},
-  toilet:       {label:"Унитаз",         wCells:[2,2], hCells:[2,2], color:"#f7fbff", detail:"#9bb7c7"},
-  laundry:      {label:"Корзина",        wCells:[2,2], hCells:[2,2], color:"#d8c3a5", detail:"#9c7b5a"},
-  cabinet:      {label:"Шкафчик",        wCells:[2,2], hCells:[2,4], color:"#9bc0d0", detail:"#f5fbff"},
-  table:        {label:"Стол",           wCells:[4,4], hCells:[2,2], color:"#9b6b3f", detail:"#e7c28f"},
-  fridge:       {label:"Холодильник",    wCells:[2,2], hCells:[2,4], color:"#e8f0f4", detail:"#9fb4c0"},
-  stool:        {label:"Табурет",        wCells:[1,2], hCells:[1,2], color:"#b07a45", detail:"#6f4a2a"},
-  counter:      {label:"Тумба",          wCells:[4,4], hCells:[2,2], color:"#c49a6c", detail:"#7d5b3d"},
-  tree:         {label:"Дерево",         wCells:[2,2], hCells:[2,4], color:"#4f8f3f", detail:"#6b4423"},
-  bench:        {label:"Лавка",          wCells:[4,4], hCells:[2,2], color:"#8b5a2b", detail:"#5f3d1f"},
-  bush:         {label:"Куст",           wCells:[2,4], hCells:[2,2], color:"#4f9a4f", detail:"#2f6f2f"},
-  crate:        {label:"Ящик",           wCells:[2,2], hCells:[2,2], color:"#9b6a3a", detail:"#d8b07f"},
-  woodpile:     {label:"Поленница",      wCells:[4,4], hCells:[2,2], color:"#8b5a2b", detail:"#d9a066"},
-  rockingChair: {label:"Кресло-качалка", wCells:[2,2], hCells:[2,2], color:"#7a5230", detail:"#c79a6d"},
-  barrel:       {label:"Бочка",          wCells:[2,2], hCells:[2,2], color:"#8b5a2b", detail:"#5f3d1f"},
+  wardrobe:     {label:"Шкаф",           wCells:[2,4], hCells:[2,4], color:"#7b4f2f", detail:"#c89b6d", zone:"wall"},
+  dresser:      {label:"Комод",          wCells:[2,4], hCells:[2,2], color:"#8b5e3c", detail:"#d8b07f", zone:"wall"},
+  armchair:     {label:"Кресло",         wCells:[2,2], hCells:[2,2], color:"#8e5ea2", detail:"#caa7d8", zone:"corner"},
+  plant:        {label:"Фикус",          wCells:[2,2], hCells:[2,4], color:"#4f8a3f", detail:"#8b5a2b", zone:"wall"},
+  sink:         {label:"Раковина",       wCells:[2,2], hCells:[2,2], color:"#dfe8ee", detail:"#8aa4b3", zone:"wall"},
+  toilet:       {label:"Унитаз",         wCells:[2,2], hCells:[2,2], color:"#f7fbff", detail:"#9bb7c7", zone:"wall"},
+  laundry:      {label:"Корзина",        wCells:[2,2], hCells:[2,2], color:"#d8c3a5", detail:"#9c7b5a", zone:"corner"},
+  cabinet:      {label:"Шкафчик",        wCells:[2,2], hCells:[2,4], color:"#9bc0d0", detail:"#f5fbff", zone:"wall"},
+  table:        {label:"Стол",           wCells:[4,4], hCells:[2,2], color:"#9b6b3f", detail:"#e7c28f", zone:"center"},
+  fridge:       {label:"Холодильник",    wCells:[2,2], hCells:[2,4], color:"#e8f0f4", detail:"#9fb4c0", zone:"wall"},
+  stool:        {label:"Табурет",        wCells:[1,2], hCells:[1,2], color:"#b07a45", detail:"#6f4a2a", zone:"any"},
+  counter:      {label:"Тумба",          wCells:[4,4], hCells:[2,2], color:"#c49a6c", detail:"#7d5b3d", zone:"wall"},
+  tree:         {label:"Дерево",         wCells:[2,2], hCells:[2,4], color:"#4f8f3f", detail:"#6b4423", zone:"any"},
+  bench:        {label:"Лавка",          wCells:[4,4], hCells:[2,2], color:"#8b5a2b", detail:"#5f3d1f", zone:"center"},
+  bush:         {label:"Куст",           wCells:[2,4], hCells:[2,2], color:"#4f9a4f", detail:"#2f6f2f", zone:"any"},
+  crate:        {label:"Ящик",           wCells:[2,2], hCells:[2,2], color:"#9b6a3a", detail:"#d8b07f", zone:"corner"},
+  woodpile:     {label:"Поленница",      wCells:[4,4], hCells:[2,2], color:"#8b5a2b", detail:"#d9a066", zone:"wall"},
+  rockingChair: {label:"Кресло-качалка", wCells:[2,2], hCells:[2,2], color:"#7a5230", detail:"#c79a6d", zone:"corner"},
+  barrel:       {label:"Бочка",          wCells:[2,2], hCells:[2,2], color:"#8b5a2b", detail:"#5f3d1f", zone:"corner"},
 };
 
 // ===== КАТАЛОГ ДЕКОРА (фоновые элементы, без коллизий) =====

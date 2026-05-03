@@ -264,6 +264,249 @@ function drawObstacle(ob) {
   _drawObstacleTo(ctx, ob);
 }
 
+// ===== ПАТТЕРНЫ ПОЛА =====
+// Все паттерны рисуются с низкой прозрачностью поверх базового цвета пола.
+// Это создаёт текстуру без перегруза — едва заметно, но убирает "пустоту".
+
+// Паркет ёлочкой (hall, country) — чередующиеся диагональные полосы 20×20px
+function _drawParquet(bctx, b, floorY) {
+  const size = 20;
+  bctx.strokeStyle = "rgba(0,0,0,1)";
+  bctx.lineWidth = 0.8;
+  for (let gx = b.left; gx < b.right; gx += size) {
+    for (let gy = floorY; gy < WORLD.height; gy += size) {
+      const flip = (((gx - b.left) / size + (gy - floorY) / size) | 0) % 2 === 0;
+      bctx.beginPath();
+      if (flip) {
+        bctx.moveTo(gx, gy);
+        bctx.lineTo(gx + size, gy + size);
+      } else {
+        bctx.moveTo(gx + size, gy);
+        bctx.lineTo(gx, gy + size);
+      }
+      bctx.stroke();
+    }
+  }
+}
+
+// Шахматная плитка (bathroom) — квадраты 30×30px, каждый второй темнее
+function _drawCheckerboard(bctx, b, floorY) {
+  const size = 30;
+  bctx.fillStyle = "rgba(0,0,0,1)";
+  for (let gx = b.left; gx < b.right; gx += size) {
+    for (let gy = floorY; gy < WORLD.height; gy += size) {
+      if ((((gx - b.left) / size + (gy - floorY) / size) | 0) % 2 === 0) {
+        bctx.fillRect(gx, gy, size, size);
+      }
+    }
+  }
+}
+
+// Горизонтальные доски (kitchen) — полосы 18px с тонкими швами
+function _drawPlanks(bctx, b, floorY) {
+  const plankH = 18;
+  bctx.strokeStyle = "rgba(0,0,0,1)";
+  bctx.lineWidth = 1;
+  // Горизонтальные швы между досками
+  for (let gy = floorY; gy < WORLD.height; gy += plankH) {
+    bctx.beginPath();
+    bctx.moveTo(b.left, gy);
+    bctx.lineTo(b.right, gy);
+    bctx.stroke();
+  }
+  // Вертикальные стыки — смещены на каждой доске (кирпичная раскладка)
+  const plankW = 80;
+  let row = 0;
+  for (let gy = floorY; gy < WORLD.height; gy += plankH, row++) {
+    const offset = (row % 2) * (plankW / 2);
+    for (let gx = b.left + offset; gx < b.right; gx += plankW) {
+      bctx.beginPath();
+      bctx.moveTo(gx, gy);
+      bctx.lineTo(gx, gy + plankH);
+      bctx.stroke();
+    }
+  }
+}
+
+// Трава с вариациями (street) — noise-based тёмные пятна
+function _drawGrassNoise(bctx, b, floorY, seed) {
+  const step = 12;
+  bctx.fillStyle = "rgba(0,0,0,1)";
+  for (let gx = b.left; gx < b.right; gx += step) {
+    for (let gy = floorY; gy < WORLD.height; gy += step) {
+      // Используем valueNoise из level.js (доступна глобально)
+      const n = valueNoise(
+        Math.floor((gx - b.left) / step),
+        Math.floor((gy - floorY) / step),
+        seed
+      );
+      if (n > 0.62) {
+        // Маленькое пятно травы
+        bctx.beginPath();
+        bctx.ellipse(gx + step / 2, gy + step / 2, step * 0.35, step * 0.25, n * Math.PI, 0, Math.PI * 2);
+        bctx.fill();
+      }
+    }
+  }
+}
+
+// Деревянные доски с сучками (country) — широкие доски 24px + случайные сучки
+function _drawWoodPlanks(bctx, b, floorY, seed) {
+  const plankH = 24;
+  bctx.strokeStyle = "rgba(0,0,0,1)";
+  bctx.lineWidth = 1.5;
+  // Горизонтальные швы
+  for (let gy = floorY; gy < WORLD.height; gy += plankH) {
+    bctx.beginPath();
+    bctx.moveTo(b.left, gy);
+    bctx.lineTo(b.right, gy);
+    bctx.stroke();
+  }
+  // Сучки — маленькие эллипсы, позиция детерминирована через noise
+  bctx.fillStyle = "rgba(0,0,0,1)";
+  bctx.lineWidth = 0.8;
+  let knotIdx = 0;
+  for (let gy = floorY + plankH / 2; gy < WORLD.height; gy += plankH) {
+    for (let gx = b.left + 40; gx < b.right - 40; gx += 90) {
+      const n = valueNoise(knotIdx, Math.floor((gy - floorY) / plankH), seed + 7);
+      knotIdx++;
+      if (n > 0.55) {
+        const kx = gx + (n - 0.55) * 60;
+        bctx.beginPath();
+        bctx.ellipse(kx, gy, 6, 4, 0, 0, Math.PI * 2);
+        bctx.fill();
+        bctx.strokeStyle = "rgba(0,0,0,1)";
+        bctx.beginPath();
+        bctx.ellipse(kx, gy, 10, 7, 0, 0, Math.PI * 2);
+        bctx.stroke();
+      }
+    }
+  }
+}
+
+// Диспетчер паттернов пола — вызывается из _drawBgTo()
+function _drawFloorPattern(bctx, locationKey, seed) {
+  const b = getPlayBounds();
+  const floorY = WORLD.height - WORLD.floorHeight;
+  bctx.save();
+  bctx.globalAlpha = 0.10; // едва заметно — текстура, не доминанта
+  switch (locationKey) {
+    case "hall":     _drawParquet(bctx, b, floorY);              break;
+    case "bathroom": _drawCheckerboard(bctx, b, floorY);         break;
+    case "kitchen":  _drawPlanks(bctx, b, floorY);               break;
+    case "street":   _drawGrassNoise(bctx, b, floorY, seed);     break;
+    case "country":  _drawWoodPlanks(bctx, b, floorY, seed);     break;
+  }
+  bctx.restore();
+}
+
+// ===== ПАТТЕРНЫ СТЕН =====
+// Все паттерны рисуются с очень низкой прозрачностью (0.07) — фактура, не узор.
+// Обрезаются clip-регионом стены, не заходят на пол.
+
+// Обои с ромбами (hall) — диагональная сетка, образующая ромбы
+function _drawWallDiamonds(bctx) {
+  const wallH = WORLD.height - WORLD.floorHeight - 6;
+  const step = 48;
+  bctx.strokeStyle = "rgba(0,0,0,1)";
+  bctx.lineWidth = 0.7;
+  for (let x = -wallH; x < WORLD.width + wallH; x += step) {
+    bctx.beginPath(); bctx.moveTo(x, 0); bctx.lineTo(x + wallH, wallH); bctx.stroke();
+    bctx.beginPath(); bctx.moveTo(x, 0); bctx.lineTo(x - wallH, wallH); bctx.stroke();
+  }
+}
+
+// Кафельная плитка на стене (bathroom) — крупные квадраты 60×60px, кирпичная раскладка
+function _drawWallTiles(bctx) {
+  const wallH = WORLD.height - WORLD.floorHeight - 6;
+  const size = 60;
+  bctx.strokeStyle = "rgba(0,0,0,1)";
+  bctx.lineWidth = 1.5;
+  for (let y = 0; y < wallH; y += size) {
+    bctx.beginPath(); bctx.moveTo(0, y); bctx.lineTo(WORLD.width, y); bctx.stroke();
+  }
+  let row = 0;
+  for (let y = 0; y < wallH; y += size, row++) {
+    const offset = (row % 2) * (size / 2);
+    for (let x = offset; x < WORLD.width; x += size) {
+      bctx.beginPath(); bctx.moveTo(x, y); bctx.lineTo(x, y + size); bctx.stroke();
+    }
+  }
+}
+
+// Прямоугольные плитки-кафель (kitchen) — фартук 80×40px
+function _drawWallKitchenTiles(bctx) {
+  const wallH = WORLD.height - WORLD.floorHeight - 6;
+  const tileW = 80, tileH = 40;
+  bctx.strokeStyle = "rgba(0,0,0,1)";
+  bctx.lineWidth = 1;
+  for (let y = 0; y < wallH; y += tileH) {
+    bctx.beginPath(); bctx.moveTo(0, y); bctx.lineTo(WORLD.width, y); bctx.stroke();
+  }
+  let row = 0;
+  for (let y = 0; y < wallH; y += tileH, row++) {
+    const offset = (row % 2) * (tileW / 2);
+    for (let x = offset; x < WORLD.width; x += tileW) {
+      bctx.beginPath(); bctx.moveTo(x, y); bctx.lineTo(x, y + tileH); bctx.stroke();
+    }
+  }
+}
+
+// Лёгкие горизонтальные полосы неба (street) — атмосферные слои
+function _drawWallSkyBands(bctx) {
+  const wallH = WORLD.height - WORLD.floorHeight - 6;
+  const bandH = 28;
+  bctx.fillStyle = "rgba(255,255,255,1)";
+  for (let y = 0; y < wallH; y += bandH * 2) {
+    bctx.fillRect(0, y, WORLD.width, bandH * 0.25);
+  }
+}
+
+// Вагонка / горизонтальные доски (country) — широкие доски 32px с тенью
+function _drawWallPlanks(bctx, seed) {
+  const wallH = WORLD.height - WORLD.floorHeight - 6;
+  const plankH = 32;
+  bctx.strokeStyle = "rgba(0,0,0,1)";
+  bctx.lineWidth = 1.2;
+  for (let y = 0; y < wallH; y += plankH) {
+    bctx.beginPath(); bctx.moveTo(0, y); bctx.lineTo(WORLD.width, y); bctx.stroke();
+    // Тонкая тень под каждой доской
+    bctx.lineWidth = 0.4;
+    bctx.beginPath(); bctx.moveTo(0, y + 3); bctx.lineTo(WORLD.width, y + 3); bctx.stroke();
+    bctx.lineWidth = 1.2;
+  }
+  // Редкие вертикальные стыки (как у вагонки)
+  bctx.lineWidth = 0.6;
+  let row = 0;
+  for (let y = 0; y < wallH; y += plankH, row++) {
+    const staggerX = (row % 3) * (WORLD.width / 3);
+    for (let x = staggerX; x < WORLD.width + WORLD.width / 3; x += (WORLD.width / 3) * 2) {
+      if (x > 0 && x < WORLD.width) {
+        bctx.beginPath(); bctx.moveTo(x, y); bctx.lineTo(x, y + plankH); bctx.stroke();
+      }
+    }
+  }
+}
+
+// Диспетчер паттернов стен — вызывается из _drawBgTo() до декораций
+function _drawWallPattern(bctx, locationKey, seed) {
+  const wallH = WORLD.height - WORLD.floorHeight - 6;
+  bctx.save();
+  // Clip: рисуем только в области стены, не заходим на пол
+  bctx.beginPath();
+  bctx.rect(0, 0, WORLD.width, wallH);
+  bctx.clip();
+  bctx.globalAlpha = 0.07; // очень тонко — фактура, не доминанта
+  switch (locationKey) {
+    case "hall":     _drawWallDiamonds(bctx);         break;
+    case "bathroom": _drawWallTiles(bctx);             break;
+    case "kitchen":  _drawWallKitchenTiles(bctx);      break;
+    case "street":   _drawWallSkyBands(bctx);          break;
+    case "country":  _drawWallPlanks(bctx, seed);      break;
+  }
+  bctx.restore();
+}
+
 // ===== ФОН ЛОКАЦИИ =====
 function _drawBgTo(bctx) {
   const p = currentLocation.palette;
@@ -271,6 +514,13 @@ function _drawBgTo(bctx) {
   bctx.fillStyle = p.wall; bctx.fillRect(0,0,WORLD.width,WORLD.height);
   bctx.fillStyle = p.floor; bctx.fillRect(0,WORLD.height-WORLD.floorHeight,WORLD.width,WORLD.floorHeight);
   bctx.fillStyle = p.trim; bctx.fillRect(0,WORLD.height-WORLD.floorHeight-6,WORLD.width,6);
+
+  // Паттерн стены — рисуется поверх базового цвета стены, до декораций
+  _drawWallPattern(bctx, currentLocation.key, levelSeed);
+
+  // Паттерн пола — рисуется поверх базового цвета пола, до декораций стен
+  _drawFloorPattern(bctx, currentLocation.key, levelSeed);
+
   const dec = currentLocation.decorations;
   if (dec.includes("window"))   { _rrectTo(bctx,70,70,170,120,16,"#dff4ff"); bctx.strokeStyle=p.trim; bctx.lineWidth=6; bctx.strokeRect(70,70,170,120); bctx.beginPath(); bctx.moveTo(155,70); bctx.lineTo(155,190); bctx.moveTo(70,130); bctx.lineTo(240,130); bctx.stroke(); }
   if (dec.includes("painting")) { _rrectTo(bctx,WORLD.width-260,80,150,90,12,p.accent); bctx.strokeStyle=p.trim; bctx.lineWidth=5; bctx.strokeRect(WORLD.width-260,80,150,90); bctx.fillStyle="rgba(120,80,40,0.25)"; bctx.beginPath(); bctx.arc(WORLD.width-185,125,24,0,Math.PI*2); bctx.fill(); }

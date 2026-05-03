@@ -381,6 +381,158 @@ describe('generateLevel()', () => {
     }
   });
 
+  // ---------------------------------------------------------------------------
+  // Padding: obstacles must have at least 1-cell gap between each other
+  // (on levels 1-7 where padding=1 is applied during placement check).
+  // ---------------------------------------------------------------------------
+  it('level 1-3: obstacles have at least 1-cell gap between each other (padding enforced)', () => {
+    // On early levels profile.padding=1, so no two obstacles should be placed
+    // with their bounding boxes touching (gap must be ≥ GRID or they don't overlap at all).
+    for (let s = 0; s < 10; s++) {
+      level = 2;
+      score = s * 50;
+      globalSeed = s * 2111;
+      obstacles.length = 0; bonuses.length = 0; occupiedCells.clear();
+      generateLevel();
+
+      const b = getPlayBounds();
+      for (let i = 0; i < obstacles.length; i++) {
+        for (let j = i + 1; j < obstacles.length; j++) {
+          const a = obstacles[i], bOb = obstacles[j];
+          // Convert to cell coords
+          const aCol = Math.round((a.x - b.left) / GRID);
+          const aRow = Math.round((a.y - b.top) / GRID);
+          const bCol = Math.round((bOb.x - b.left) / GRID);
+          const bRow = Math.round((bOb.y - b.top) / GRID);
+
+          // Check cell-level adjacency: expanded boxes (with 1-cell padding) must not overlap
+          // i.e. the gap in cells must be ≥ 1 (not 0 = touching)
+          const colGap = Math.max(bCol - (aCol + a.wCells), aCol - (bCol + bOb.wCells));
+          const rowGap = Math.max(bRow - (aRow + a.hCells), aRow - (bRow + bOb.hCells));
+
+          // If they overlap in one axis, the other axis gap must be ≥ 1 cell
+          const colOverlap = aCol < bCol + bOb.wCells && aCol + a.wCells > bCol;
+          const rowOverlap = aRow < bRow + bOb.hCells && aRow + a.hCells > bRow;
+
+          if (colOverlap && rowGap >= 0) {
+            expect(rowGap, `seed=${s}: ${a.id} and ${bOb.id} are vertically adjacent (rowGap=${rowGap})`).toBeGreaterThanOrEqual(1);
+          }
+          if (rowOverlap && colGap >= 0) {
+            expect(colGap, `seed=${s}: ${a.id} and ${bOb.id} are horizontally adjacent (colGap=${colGap})`).toBeGreaterThanOrEqual(1);
+          }
+        }
+      }
+    }
+  });
+
+  // ---------------------------------------------------------------------------
+  // Level density progression: early levels have fewer obstacles than late levels
+  // ---------------------------------------------------------------------------
+  it('obstacle count grows with level (density progression)', () => {
+    const counts = [];
+    for (const lvl of [1, 4, 8]) {
+      let total = 0;
+      const runs = 5;
+      for (let s = 0; s < runs; s++) {
+        level = lvl;
+        score = s * 30;
+        globalSeed = s * 3333;
+        obstacles.length = 0; bonuses.length = 0; occupiedCells.clear();
+        generateLevel();
+        total += obstacles.length;
+      }
+      counts.push(total / runs);
+    }
+    // Average obstacle count at level 8 should be ≥ level 1
+    expect(counts[2], `level 8 avg (${counts[2]}) should be ≥ level 1 avg (${counts[0]})`).toBeGreaterThanOrEqual(counts[0]);
+  });
+
+  // ---------------------------------------------------------------------------
+  // getLevelProfile: correct profile returned for each phase
+  // ---------------------------------------------------------------------------
+  it('getLevelProfile returns correct padding for each phase', () => {
+    // Early levels (1-3): padding=1
+    for (const lvl of [1, 2, 3]) {
+      level = lvl;
+      const p = getLevelProfile(lvl);
+      expect(p.padding, `level ${lvl} should have padding=1`).toBe(1);
+    }
+    // Mid levels (4-7): padding=1
+    for (const lvl of [4, 5, 7]) {
+      const p = getLevelProfile(lvl);
+      expect(p.padding, `level ${lvl} should have padding=1`).toBe(1);
+    }
+    // Late levels (8+): padding=0
+    for (const lvl of [8, 10, 15]) {
+      const p = getLevelProfile(lvl);
+      expect(p.padding, `level ${lvl} should have padding=0`).toBe(0);
+    }
+  });
+
+  it('getLevelProfile returns higher centerOpen on early levels than late levels', () => {
+    const early = getLevelProfile(1);
+    const late  = getLevelProfile(10);
+    expect(early.centerOpen).toBeGreaterThan(late.centerOpen);
+  });
+
+  // ---------------------------------------------------------------------------
+  // valueNoise: deterministic, in [0..1], varies across positions
+  // ---------------------------------------------------------------------------
+  it('valueNoise returns values in [0..1]', () => {
+    for (let col = 0; col < 28; col += 4) {
+      for (let row = 0; row < 15; row += 3) {
+        const n = valueNoise(col, row, 12345);
+        expect(n).toBeGreaterThanOrEqual(0);
+        expect(n).toBeLessThanOrEqual(1);
+      }
+    }
+  });
+
+  it('valueNoise is deterministic for same inputs', () => {
+    const n1 = valueNoise(5, 7, 99999);
+    const n2 = valueNoise(5, 7, 99999);
+    expect(n1).toBe(n2);
+  });
+
+  it('valueNoise varies across different positions', () => {
+    const values = new Set();
+    for (let col = 0; col < 10; col++) {
+      for (let row = 0; row < 10; row++) {
+        values.add(valueNoise(col, row, 42));
+      }
+    }
+    // Should have many distinct values (not all the same)
+    expect(values.size).toBeGreaterThan(50);
+  });
+
+  // ---------------------------------------------------------------------------
+  // obstacleCatalog: all entries have a zone field
+  // ---------------------------------------------------------------------------
+  it('all obstacleCatalog entries have a valid zone field', () => {
+    const validZones = new Set(["wall", "corner", "center", "any"]);
+    for (const [type, meta] of Object.entries(obstacleCatalog)) {
+      expect(meta.zone, `${type} missing zone`).toBeDefined();
+      expect(validZones.has(meta.zone), `${type} has invalid zone "${meta.zone}"`).toBe(true);
+    }
+  });
+
+  // ---------------------------------------------------------------------------
+  // Decor count: later levels have more decor elements
+  // ---------------------------------------------------------------------------
+  it('decor count is at least 4 on level 1', () => {
+    level = 1; score = 0; globalSeed = 0;
+    obstacles.length = 0; bonuses.length = 0; occupiedCells.clear();
+    generateLevel();
+    expect(decorItems.length).toBeGreaterThanOrEqual(4);
+  });
+
+  it('decor count is at least 5 on level 5', () => {
+    level = 5; score = 0; globalSeed = 0;
+    obstacles.length = 0; bonuses.length = 0; occupiedCells.clear();
+    generateLevel();
+    expect(decorItems.length).toBeGreaterThanOrEqual(5);
+  });
+
   it('decorItems array exists after generateLevel()', () => {
     generateLevel();
     expect(Array.isArray(decorItems)).toBe(true);

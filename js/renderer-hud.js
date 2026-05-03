@@ -5,23 +5,78 @@
 // ===== ЛОТОК =====
 function drawLitterBox() {
   const urgeRatio = player.urge / player.maxUrge;
+  const isPanic = urgeRatio > 0.75;
+
+  // Пульсация при панике
   let pulse = 0;
-  if (urgeRatio > 0.75) pulse = Math.sin(_now*0.015)*4;
-  const lx = litterBox.x-pulse/2, ly = litterBox.y-pulse/2;
-  const lw = litterBox.width+pulse, lh = litterBox.height+pulse;
-  ctx.fillStyle = "#8B6914"; ctx.fillRect(lx,ly+12,lw,lh-12);
-  ctx.fillStyle = "#A0522D"; ctx.fillRect(lx-5,ly,lw+10,16);
-  ctx.fillStyle = "#D2B48C"; ctx.fillRect(lx+6,ly+16,lw-12,lh-24);
-  if (urgeRatio > 0.75) {
-    ctx.fillStyle = `rgba(255,50,50,${0.3+Math.sin(_now*0.015)*0.2})`;
-    ctx.fillRect(lx-5,ly,lw+10,lh+4);
+  if (isPanic) pulse = Math.sin(_now * 0.015) * 4;
+  const lx = litterBox.x - pulse / 2;
+  const ly = litterBox.y - pulse / 2;
+  const lw = litterBox.width + pulse;
+  const lh = litterBox.height + pulse;
+  const r = 10; // радиус скругления
+
+  ctx.save();
+
+  // --- Тень под лотком ---
+  ctx.shadowColor = "rgba(0,0,0,0.45)";
+  ctx.shadowBlur = 14;
+  ctx.shadowOffsetX = 3;
+  ctx.shadowOffsetY = 6;
+
+  // --- Корпус лотка (тёмно-коричневый, скруглённый) ---
+  ctx.fillStyle = "#7a5520";
+  ctx.beginPath(); ctx.roundRect(lx, ly + 10, lw, lh - 10, r); ctx.fill();
+
+  // Сбрасываем тень для внутренних деталей
+  ctx.shadowColor = "transparent";
+  ctx.shadowBlur = 0;
+  ctx.shadowOffsetX = 0;
+  ctx.shadowOffsetY = 0;
+
+  // --- Бортик / ободок (чуть светлее, выступает по бокам) ---
+  ctx.fillStyle = "#a0692a";
+  ctx.beginPath(); ctx.roundRect(lx - 5, ly, lw + 10, 18, r); ctx.fill();
+
+  // Блик на ободке — имитация глянца
+  ctx.fillStyle = "rgba(255,220,150,0.28)";
+  ctx.beginPath(); ctx.roundRect(lx + 4, ly + 2, lw - 8, 6, 4); ctx.fill();
+
+  // --- Наполнитель (песок) — скруглённый прямоугольник внутри ---
+  ctx.fillStyle = "#d9b87a";
+  ctx.beginPath(); ctx.roundRect(lx + 7, ly + 18, lw - 14, lh - 28, 7); ctx.fill();
+
+  // Текстура песка — несколько тёмных точек
+  ctx.fillStyle = "rgba(120,80,30,0.22)";
+  const sandDots = [
+    [lx + 18, ly + 28], [lx + lw*0.4, ly + 32], [lx + lw*0.65, ly + 26],
+    [lx + lw*0.3, ly + lh - 20], [lx + lw*0.7, ly + lh - 18],
+    [lx + lw*0.5, ly + lh*0.55],
+  ];
+  for (const [dx, dy] of sandDots) {
+    ctx.beginPath(); ctx.ellipse(dx, dy, 5, 3, 0.4, 0, Math.PI * 2); ctx.fill();
   }
-  ctx.fillStyle = "#5a3a00";
+
+  // Блик на песке — светлая полоска сверху
+  ctx.fillStyle = "rgba(255,245,200,0.30)";
+  ctx.beginPath(); ctx.roundRect(lx + 12, ly + 20, lw - 24, 7, 4); ctx.fill();
+
+  // --- Паника: красное свечение поверх ---
+  if (isPanic) {
+    const alpha = 0.25 + Math.sin(_now * 0.015) * 0.15;
+    ctx.fillStyle = `rgba(255,40,40,${alpha})`;
+    ctx.beginPath(); ctx.roundRect(lx - 5, ly, lw + 10, lh + 4, r); ctx.fill();
+  }
+
+  // --- Подпись ---
+  ctx.fillStyle = "#4a2800";
   setFont("bold 12px Arial");
   ctx.textAlign = "center";
-  ctx.fillText("🐾 Лоток", litterBox.x+litterBox.width/2, litterBox.y+litterBox.height+20);
+  ctx.fillText("🐾 Лоток", litterBox.x + litterBox.width / 2, litterBox.y + litterBox.height + 20);
 
-  // Прогресс-бар покакания
+  ctx.restore();
+
+  // --- Прогресс-бар покакания ---
   if (isPooping && poopProgress > 0) {
     const poopTime = DIFF[difficulty].poopTime;
     const ratio = poopProgress / poopTime;
@@ -29,13 +84,23 @@ function drawLitterBox() {
     const bx = lx - 5;
     const by = litterBox.y + litterBox.height + 26;
     const bh = 10;
+
+    // Фон бара
     ctx.fillStyle = "rgba(0,0,0,0.35)";
     ctx.beginPath(); ctx.roundRect(bx, by, bw, bh, 5); ctx.fill();
-    const pulse2 = 0.7 + Math.sin(_now*0.02)*0.3;
+
+    // Заполнение с пульсацией
+    const pulse2 = 0.7 + Math.sin(_now * 0.02) * 0.3;
     ctx.fillStyle = `rgba(139,69,19,${pulse2})`;
-    ctx.beginPath(); ctx.roundRect(bx, by, bw*ratio, bh, 5); ctx.fill();
+    ctx.beginPath(); ctx.roundRect(bx, by, bw * ratio, bh, 5); ctx.fill();
+
+    // Блик на баре
+    ctx.fillStyle = "rgba(255,200,100,0.25)";
+    ctx.beginPath(); ctx.roundRect(bx + 2, by + 1, bw * ratio - 4, 4, 3); ctx.fill();
+
     setFont("16px Arial");
-    ctx.fillText("💩", litterBox.x+litterBox.width/2, by - 2);
+    ctx.textAlign = "center";
+    ctx.fillText("💩", litterBox.x + litterBox.width / 2, by - 2);
   }
 
   ctx.textAlign = "left";
@@ -316,14 +381,17 @@ function drawOverlay() {
     ctx.fillText("🏆 НОВЫЙ РЕКОРД!", cx, cy+70);
   }
 
-  const t = _now*0.003;
-  const sc = 1 + Math.sin(t)*0.04;
-  ctx.save(); ctx.translate(cx, cy+120); ctx.scale(sc, sc);
-  ctx.fillStyle = "#ffd54f";
-  ctx.beginPath(); ctx.roundRect(-130,-26,260,52,26); ctx.fill();
-  setFont("bold 22px Arial"); ctx.fillStyle = "#1a1a2e";
-  ctx.fillText("↩  В меню  (Enter)", 0, 8);
-  ctx.restore();
+  // На мобиле кнопку "В меню" рисует drawTouchControls()
+  if (!IS_MOBILE) {
+    const t = _now*0.003;
+    const sc = 1 + Math.sin(t)*0.04;
+    ctx.save(); ctx.translate(cx, cy+120); ctx.scale(sc, sc);
+    ctx.fillStyle = "#ffd54f";
+    ctx.beginPath(); ctx.roundRect(-130,-26,260,52,26); ctx.fill();
+    setFont("bold 22px Arial"); ctx.fillStyle = "#1a1a2e";
+    ctx.fillText("↩  В меню  (Enter)", 0, 8);
+    ctx.restore();
+  }
 
   ctx.restore();
 }

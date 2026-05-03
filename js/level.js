@@ -86,8 +86,108 @@ function cellToPixel(col, row) {
   };
 }
 
+// ===== VALUE NOISE =====
+// Дешёвый seeded hash без зависимостей — даёт [0..1] для любой (col, row, seed).
+// Используется для создания карты "плотности" — естественные кластеры вместо чистого рандома.
+function valueNoise(col, row, seed) {
+  let h = (col * 374761393 + row * 1103515245 + seed * 2246822519) | 0;
+  h = Math.imul(h ^ (h >>> 13), 1540483477);
+  h = h ^ (h >>> 15);
+  return (h & 0x7fffffff) / 0x7fffffff; // [0..1]
+}
+
+// ===== ПРОФИЛЬ УРОВНЯ =====
+// Определяет параметры генерации в зависимости от уровня:
+// - padding: зазор вокруг объекта при проверке свободности (0 = вплотную разрешено)
+// - wallBias: вероятность выбора позиции у стены (для zone="wall"/"corner")
+// - centerOpen: вероятность отклонить позицию в центре (сохраняет открытое пространство)
+// - noiseThreshold: порог noise для принятия позиции (ниже = плотнее кластеры)
+function getLevelProfile(lvl) {
+  if (lvl <= 3) {
+    // Просторно: объекты у стен, центр свободен, большие зазоры
+    return { padding: 1, wallBias: 0.80, centerOpen: 0.70, noiseThreshold: 0.40 };
+  }
+  if (lvl <= 7) {
+    // Обжитое: смешанное размещение, умеренные кластеры
+    return { padding: 1, wallBias: 0.60, centerOpen: 0.35, noiseThreshold: 0.28 };
+  }
+  // Захламлено: плотные кластеры, объекты могут касаться
+  return { padding: 0, wallBias: 0.45, centerOpen: 0.10, noiseThreshold: 0.18 };
+}
+
+// ===== ЗОНАЛЬНОЕ РАЗМЕЩЕНИЕ =====
+// Возвращает {col, row} с учётом предпочтительной зоны объекта и профиля уровня.
+// Зоны:
+//   "wall"   — края сетки (col 0-3 или 24-27, или row 0-2 или 12-14)
+//   "corner" — угловые области (col 0-4 и row 0-4, или аналогичные углы)
+//   "center" — центральная область (col 8-20, row 4-11)
+//   "any"    — любая позиция
+// С вероятностью wallBias выбирает из предпочтительной зоны, иначе — случайно.
+function pickZonedPosition(rng, zone, wCells, hCells, profile) {
+  const maxCol = GRID_COLS - wCells;
+  const maxRow = GRID_ROWS - hCells;
+
+  // Попытка выбрать позицию из предпочтительной зоны
+  const useZone = rng() < profile.wallBias && zone !== "any";
+
+  if (useZone) {
+    let col, row;
+    if (zone === "wall") {
+      // Выбираем случайную стену: левая, правая, верхняя, нижняя
+      const wall = Math.floor(rng() * 4);
+      if (wall === 0) { // левая стена
+        col = randInt(rng, 0, Math.min(3, maxCol));
+        row = randInt(rng, 0, maxRow);
+      } else if (wall === 1) { // правая стена
+        col = randInt(rng, Math.max(0, GRID_COLS - 4 - wCells), maxCol);
+        row = randInt(rng, 0, maxRow);
+      } else if (wall === 2) { // верхняя стена
+        col = randInt(rng, 0, maxCol);
+        row = randInt(rng, 0, Math.min(2, maxRow));
+      } else { // нижняя стена
+        col = randInt(rng, 0, maxCol);
+        row = randInt(rng, Math.max(0, GRID_ROWS - 3 - hCells), maxRow);
+      }
+      return { col, row };
+    } else if (zone === "corner") {
+      // Выбираем случайный угол
+      const corner = Math.floor(rng() * 4);
+      const cw = Math.min(5, maxCol + 1);
+      const ch = Math.min(5, maxRow + 1);
+      if (corner === 0) { // верхний левый
+        col = randInt(rng, 0, Math.min(cw - 1, maxCol));
+        row = randInt(rng, 0, Math.min(ch - 1, maxRow));
+      } else if (corner === 1) { // верхний правый
+        col = randInt(rng, Math.max(0, GRID_COLS - cw - wCells), maxCol);
+        row = randInt(rng, 0, Math.min(ch - 1, maxRow));
+      } else if (corner === 2) { // нижний левый
+        col = randInt(rng, 0, Math.min(cw - 1, maxCol));
+        row = randInt(rng, Math.max(0, GRID_ROWS - ch - hCells), maxRow);
+      } else { // нижний правый
+        col = randInt(rng, Math.max(0, GRID_COLS - cw - wCells), maxCol);
+        row = randInt(rng, Math.max(0, GRID_ROWS - ch - hCells), maxRow);
+      }
+      return { col, row };
+    } else if (zone === "center") {
+      // Центральная зона
+      const cColMin = Math.min(8, maxCol);
+      const cColMax = Math.min(20, maxCol);
+      const cRowMin = Math.min(4, maxRow);
+      const cRowMax = Math.min(11, maxRow);
+      col = randInt(rng, cColMin, cColMax);
+      row = randInt(rng, cRowMin, cRowMax);
+      return { col, row };
+    }
+  }
+
+  // Случайная позиция (fallback или zone="any")
+  const col = randInt(rng, 0, maxCol);
+  const row = randInt(rng, 0, maxRow);
+  return { col, row };
+}
+
 // ===== ГЕНЕРАЦИЯ ПРЕПЯТСТВИЯ =====
-function generateObstacle(theme, rng, index, movingAllowed) {
+function generateObstacle(theme, rng, index, movingAllowed, profile) {
   const type = theme.obstacleTypes[randInt(rng, 0, theme.obstacleTypes.length - 1)];
   const meta = obstacleCatalog[type];
 
@@ -95,15 +195,34 @@ function generateObstacle(theme, rng, index, movingAllowed) {
   const wCells = randInt(rng, meta.wCells[0], meta.wCells[1]);
   const hCells = randInt(rng, meta.hCells[0], meta.hCells[1]);
 
+  // Зональное размещение с учётом профиля уровня
+  const zone = meta.zone || "any";
+  const { col, row } = pickZonedPosition(rng, zone, wCells, hCells, profile);
+
+  // Noise-фильтр: отклоняем позиции в "пустых" зонах карты плотности.
+  // Это создаёт естественные кластеры — где-то густо, где-то пусто.
+  const n = valueNoise(col, row, levelSeed);
+  if (n < profile.noiseThreshold && rng() > 0.35) return null;
+
+  // Для центральных объектов на ранних уровнях — дополнительный шанс отклонить
+  // позицию в центре, чтобы сохранить открытое пространство для манёвра.
+  if (profile.centerOpen > 0) {
+    const inCenter = col >= 7 && col <= 21 && row >= 3 && row <= 12;
+    if (inCenter && rng() < profile.centerOpen && zone !== "center") return null;
+  }
+
   // Пиксельный размер кратен сетке
   const w = wCells * GRID;
   const h = hCells * GRID;
 
-  // Случайная позиция в сетке
-  const col = randInt(rng, 0, GRID_COLS - wCells);
-  const row = randInt(rng, 0, GRID_ROWS - hCells);
-
-  if (!cellsFree(col, row, wCells, hCells)) return null;
+  // Padding при проверке свободности — создаёт "воздух" между объектами.
+  // Маркируем только сам объект (без padding) — коллизии и A* не меняются.
+  const pad = profile.padding;
+  const checkCol = col - pad;
+  const checkRow = row - pad;
+  const checkW = wCells + pad * 2;
+  const checkH = hCells + pad * 2;
+  if (!cellsFree(checkCol, checkRow, checkW, checkH)) return null;
 
   const pos = cellToPixel(col, row);
 
@@ -126,6 +245,7 @@ function generateObstacle(theme, rng, index, movingAllowed) {
   const range = moving ? GRID : 0;
   const speed = moving ? randRange(rng, 0.008, 0.02) : 0;
 
+  // Маркируем только сам объект (без padding) — инвариант коллизий сохраняется
   markCells(col, row, wCells, hCells);
 
   return {
@@ -283,6 +403,9 @@ function generateLevel() {
   const obstCount = Math.min(4 + level, 12);
   const movingAllowed = level >= 5;
 
+  // Профиль уровня — определяет плотность, зазоры и зональные предпочтения
+  const profile = getLevelProfile(level);
+
   // Спавн кота — случайный угол сетки (детерминировано через RNG)
   // 0=левый нижний, 1=правый нижний, 2=левый верхний, 3=правый верхний
   const cornerIdx = randInt(rng, 0, 3);
@@ -297,11 +420,11 @@ function generateLevel() {
   const blockRow = Math.max(0, Math.min(spawnRow - (spawnRow > 0 ? 2 : 0), GRID_ROWS - 3));
   markCells(blockCol, blockRow, 3, 3);
 
-  // Генерация препятствий
+  // Генерация препятствий с профилем уровня
   let att = 0;
-  while (obstacles.length < obstCount && att < obstCount * 60) {
+  while (obstacles.length < obstCount && att < obstCount * 80) {
     att++;
-    const ob = generateObstacle(currentLocation, rng, obstacles.length, movingAllowed);
+    const ob = generateObstacle(currentLocation, rng, obstacles.length, movingAllowed, profile);
     if (ob) obstacles.push(ob);
   }
 
@@ -316,8 +439,11 @@ function generateLevel() {
   player.y = spawn.y;
   levelMessageTimer = 180;
 
-  // Декор (3–5 элементов, не блокируют)
-  const decorCount = randInt(rng, 3, 5);
+  // Декор: больше элементов на поздних уровнях (5–8 вместо 3–5)
+  // Ранние уровни — меньше декора, поздние — богаче
+  const decorMin = level <= 3 ? 4 : level <= 7 ? 5 : 6;
+  const decorMax = level <= 3 ? 6 : level <= 7 ? 7 : 8;
+  const decorCount = randInt(rng, decorMin, decorMax);
   generateDecor(currentLocation, rng, decorCount);
 
   // Спавн бонусов — на свободных ячейках сетки
