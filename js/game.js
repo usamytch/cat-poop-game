@@ -72,6 +72,7 @@ function startGame() {
   comboCount = 0; comboTimer = 0;
   speedBoostTimer = 0; yarnFreezeTimer = 0;
   shootCooldown = 0; panicShake = 0; alarmTimer = 0;
+  panicFlashAlpha = 0; panicFlashTimer = 0;
   puddleAlpha = 0;
   poopProgress = 0; isPooping = false;
   generateLevel();
@@ -92,6 +93,7 @@ function respawnPlayer() {
   comboCount = 0; comboTimer = 0;
   speedBoostTimer = 0; yarnFreezeTimer = 0;
   shootCooldown = 0; panicShake = 0; alarmTimer = 0;
+  panicFlashAlpha = 0; panicFlashTimer = 0;
   puddleAlpha = 0;
   poopProgress = 0; isPooping = false;
   owner.activate();

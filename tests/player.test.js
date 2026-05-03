@@ -20,6 +20,8 @@ function resetCommon() {
   shootCooldown = 0;
   panicShake = 0;
   alarmTimer = 0;
+  panicFlashAlpha = 0;
+  panicFlashTimer = 0;
   score = 0;
   lives = 3;
   level = 1;
@@ -221,6 +223,48 @@ describe('player.update() — panic', () => {
     panicShake = 5;
     player.update();
     expect(panicShake).toBe(0);
+  });
+
+  it('panicFlashTimer increments each frame during panic', () => {
+    player.urge = player.maxUrge * 0.85;
+    player.x = 100;
+    player.y = 300;
+    litterBox.x = 900;
+    litterBox.y = 400;
+    owner.active = false;
+    panicFlashTimer = 0;
+    player.update();
+    expect(panicFlashTimer).toBeGreaterThan(0);
+  });
+
+  it('panicFlashAlpha set > 0 when panicFlashTimer reaches flashInterval', () => {
+    player.urge = player.maxUrge * 0.85;
+    player.x = 100;
+    player.y = 300;
+    litterBox.x = 900;
+    litterBox.y = 400;
+    owner.active = false;
+    // urgeRatio = 0.85 → flashInterval = round(60 - (0.85-0.75)/0.25*30) = round(60-12) = 48
+    // Set timer just at threshold so flash triggers this frame
+    panicFlashTimer = 47;
+    panicFlashAlpha = 0;
+    player.update();
+    // After trigger, panicFlashAlpha is set then decremented by 0.025
+    expect(panicFlashAlpha).toBeGreaterThan(0);
+  });
+
+  it('panicFlashAlpha and panicFlashTimer reset to 0 when panic ends', () => {
+    player.urge = player.maxUrge * 0.5;
+    player.x = 100;
+    player.y = 300;
+    litterBox.x = 900;
+    litterBox.y = 400;
+    owner.active = false;
+    panicFlashAlpha = 0.3;
+    panicFlashTimer = 20;
+    player.update();
+    expect(panicFlashAlpha).toBe(0);
+    expect(panicFlashTimer).toBe(0);
   });
 });
 

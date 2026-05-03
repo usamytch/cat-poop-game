@@ -5,6 +5,8 @@
 // ===== ПАНИКА =====
 let panicShake = 0;
 let alarmTimer = 0;
+let panicFlashAlpha = 0;   // 0..1 — текущая яркость красной вспышки (убывает каждый кадр)
+let panicFlashTimer = 0;   // счётчик для триггера вспышки каждые ~60 кадров
 
 // ===== ЛОТОК — таймер покакания =====
 let poopProgress = 0;   // 0..poopTime — сколько кадров кот стоит на лотке
@@ -74,8 +76,17 @@ const player = {
       if (alarmTimer % 36 === 0) sndAlarm();
       // Переключаем на паника-мелодию при пересечении порога
       if (_panicStartTime === null) startPanicMelody();
+      // Красная вспышка — триггер каждые ~60 кадров, интенсивность растёт с urge
+      panicFlashTimer++;
+      const flashInterval = Math.round(60 - (urgeRatio - 0.75) / 0.25 * 30); // 60→30 кадров
+      if (panicFlashTimer >= flashInterval) {
+        panicFlashAlpha = 0.18 + (urgeRatio - 0.75) / 0.25 * 0.22; // 0.18..0.40
+        panicFlashTimer = 0;
+      }
+      // Убываем вспышку каждый кадр
+      if (panicFlashAlpha > 0) panicFlashAlpha = Math.max(0, panicFlashAlpha - 0.025);
     } else {
-      panicShake = 0; alarmTimer = 0;
+      panicShake = 0; alarmTimer = 0; panicFlashTimer = 0; panicFlashAlpha = 0;
       // Возвращаем обычную мелодию, если паника прошла (напр. таблетка)
       if (_panicStartTime !== null) {
         stopPanicMelody();
