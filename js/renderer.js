@@ -40,6 +40,7 @@ function draw() {
   drawBonuses();
   drawPoops();
   owner.draw();
+  drawPawTrails();
   player.draw();
   drawOverlayParticles();
   drawComboPopups();

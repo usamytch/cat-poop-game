@@ -1,5 +1,5 @@
 // ==========================================
-// PARTICLES — confetti, puddle, combo popups
+// PARTICLES — confetti, puddle, combo popups, paw trails
 // ==========================================
 
 const overlayParticles = [];
@@ -133,4 +133,39 @@ function drawComboPopups() {
     ctx.fillText(p.text, p.x, p.y);
     ctx.restore();
   }
+}
+
+// ===== СЛЕДЫ ЛАПОК =====
+const pawTrails = [];
+let _pawSpawnCounter = 0;
+
+// Спавнит след лапки раз в 7 вызовов (не каждый кадр — экономия объектов)
+function spawnPawTrail(x, y) {
+  _pawSpawnCounter++;
+  if (_pawSpawnCounter % 7 !== 0) return;
+  pawTrails.push({ x, y, alpha: 0.45, fade: 0.007, size: 14 });
+}
+
+function updatePawTrails() {
+  for (const t of pawTrails) { t.alpha -= t.fade; }
+  // OPT 8: swap-and-pop — O(1) вместо O(n) splice
+  for (let i = pawTrails.length - 1; i >= 0; i--) {
+    if (pawTrails[i].alpha <= 0) {
+      pawTrails[i] = pawTrails[pawTrails.length - 1];
+      pawTrails.pop();
+    }
+  }
+}
+
+function drawPawTrails() {
+  for (const t of pawTrails) {
+    if (t.alpha <= 0) continue;
+    ctx.save();
+    ctx.globalAlpha = t.alpha;
+    // OPT 6: emoji-кэш — drawImage вместо fillText
+    const ec = getEmojiCanvas("🐾", t.size);
+    ctx.drawImage(ec, t.x - ec.width / 2, t.y - ec.height / 2);
+    ctx.restore();
+  }
+  ctx.globalAlpha = 1;
 }

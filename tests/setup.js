@@ -185,6 +185,7 @@ export function resetGameState() {
   poops.length = 0;
   overlayParticles.length = 0;
   comboPopups.length = 0;
+  pawTrails.length = 0;
   bonuses.length = 0;
   obstacles.length = 0;
 
@@ -199,6 +200,7 @@ export function resetGameState() {
   puddleAlpha = 0;
   poopProgress = 0;
   isPooping = false;
+  _pawSpawnCounter = 0;
 
   // Лоток — безопасная позиция далеко от игрока
   litterBox.x = 900;

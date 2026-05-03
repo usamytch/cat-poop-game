@@ -56,6 +56,11 @@ const player = {
     if (!hitsObstacles(playerRect(nx, this.y))) this.x = nx;
     if (!hitsObstacles(playerRect(this.x, ny))) this.y = ny;
 
+    // Следы лапок — спавним при движении
+    if (dx !== 0 || dy !== 0) {
+      spawnPawTrail(this.x + this.size / 2, this.y + this.size * 0.75);
+    }
+
     // Срочность
     const urgeRate = diff.urgeRate * (1 + (level-1)*0.08);
     this.urge = clamp(this.urge + urgeRate/60, 0, this.maxUrge);

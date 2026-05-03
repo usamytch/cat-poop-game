@@ -68,7 +68,7 @@ function startGame() {
   globalSeed = Date.now() & 0x7FFFFFFF; // timestamp-based seed, positive 31-bit int
   score = 0; level = 1; lives = 3;
   player.urge = 0; player.pooping = false; player.poopTimer = 0;
-  poops.length = 0; overlayParticles.length = 0; comboPopups.length = 0;
+  poops.length = 0; overlayParticles.length = 0; comboPopups.length = 0; pawTrails.length = 0;
   comboCount = 0; comboTimer = 0;
   speedBoostTimer = 0; yarnFreezeTimer = 0;
   shootCooldown = 0; panicShake = 0; alarmTimer = 0;
@@ -88,7 +88,7 @@ function respawnPlayer() {
   player.x = b.left + 60;
   player.y = b.top + (b.bottom - b.top) / 2 - player.size / 2;
   player.urge = 0; player.pooping = false; player.poopTimer = 0;
-  poops.length = 0;
+  poops.length = 0; pawTrails.length = 0;
   comboCount = 0; comboTimer = 0;
   speedBoostTimer = 0; yarnFreezeTimer = 0;
   shootCooldown = 0; panicShake = 0; alarmTimer = 0;
@@ -120,6 +120,7 @@ function update() {
   updatePoops();
   updateBonuses();
   updateObstacles();
+  updatePawTrails();
   updateOverlayParticles();
   updateComboPopups();
 }
