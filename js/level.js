@@ -16,7 +16,7 @@ const litterBox = { x:620, y:310, width: GRID*2, height: GRID*2 };
 
 // ===== СЕТКА =====
 // OPT 2: Целочисленный ключ вместо строки `${col},${row}`.
-// GRID_ROWS=13, GRID_COLS=28 → max key = 27*100+12 = 2712 (уникален при col<100, row<100)
+// GRID_ROWS=15, GRID_COLS=28 → max key = 27*100+14 = 2714 (уникален при col<100, row<100)
 // occupiedCells хранит числовые ключи col*100+row для всех занятых ячеек.
 // Декор не занимает ячейки.
 const occupiedCells = new Set();

@@ -11,14 +11,14 @@ const ctx = canvas.getContext("2d");
 canvas.width = 1200;
 canvas.height = 700;
 
-const WORLD = { width: 1200, height: 700, floorHeight: 90, topPadding: 70, sidePadding: 40 };
+const WORLD = { width: 1200, height: 700, floorHeight: 90, topPadding: 10, sidePadding: 40 };
 
 // ===== СЕТКА УРОВНЯ =====
-// Play area: x=[40..1160], y=[70..610]  →  1120 × 540 px
-// GRID=40 → 28 cols × 13 rows = 364 cells
+// Play area: x=[40..1160], y=[10..610]  →  1120 × 600 px
+// GRID=40 → 28 cols × 15 rows = 420 cells
 const GRID = 40;
 const GRID_COLS = 28; // Math.floor(1120 / 40)
-const GRID_ROWS = 13; // Math.floor(540 / 40)
+const GRID_ROWS = 15; // Math.floor(600 / 40)
 
 const catImage = new Image(); catImage.src = "cat.png";
 const masterImage = new Image(); masterImage.src = "master.png";
