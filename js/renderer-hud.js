@@ -112,7 +112,7 @@ function drawUI() {
   const urgeRatio = player.urge / player.maxUrge;
   const panic = urgeRatio > 0.75;
 
-  const hudX=14, hudY=14, hudW=310, hudH=220;
+  const hudX=14, hudY=14, hudW=310, hudH=188;
   ctx.fillStyle = p.ui || "rgba(30,20,10,0.72)";
   ctx.beginPath(); ctx.roundRect(hudX, hudY, hudW, hudH, 18); ctx.fill();
 
@@ -180,34 +180,6 @@ function drawUI() {
   ctx.fillStyle = muted ? "rgba(255,100,100,0.9)" : "rgba(255,255,255,0.7)";
   ctx.fillText(muteIcon + " M", hudX+hudW-14, hudY+174);
 
-  const lifeIconSize = 28;
-  const lifeY = hudY + 188;
-  const lifeStartX = hudX + 18;
-  // Показываем минимум 3 слота, но если жизней больше — показываем все
-  const lifeSlots = Math.max(3, lives);
-  for (let i = 0; i < lifeSlots; i++) {
-    const lx = lifeStartX + i * (lifeIconSize + 6);
-    if (i < lives) {
-      ctx.globalAlpha = 1.0;
-      if (typeof lifeImage !== "undefined" && lifeImage.complete && lifeImage.naturalWidth > 0) {
-        ctx.drawImage(lifeImage, lx, lifeY, lifeIconSize, lifeIconSize);
-      } else {
-        setFont(lifeIconSize + "px Arial"); ctx.textAlign = "left";
-        ctx.fillText("🐱", lx, lifeY + lifeIconSize - 2);
-      }
-    } else {
-      ctx.globalAlpha = 0.28;
-      if (typeof lifeImage !== "undefined" && lifeImage.complete && lifeImage.naturalWidth > 0) {
-        ctx.drawImage(lifeImage, lx, lifeY, lifeIconSize, lifeIconSize);
-      } else {
-        setFont(lifeIconSize + "px Arial"); ctx.textAlign = "left";
-        ctx.fillText("🐱", lx, lifeY + lifeIconSize - 2);
-      }
-      ctx.globalAlpha = 1.0;
-    }
-  }
-  ctx.globalAlpha = 1.0;
-
   if (levelMessageTimer > 0) {
     const alpha = Math.min(1, levelMessageTimer/40);
     ctx.save();
@@ -223,6 +195,41 @@ function drawUI() {
     levelMessageTimer--;
   }
 
+  ctx.textAlign = "left";
+}
+
+// ===== ЖИЗНИ (нижний левый угол) =====
+function drawLivesHUD() {
+  const lifeIconSize = 26;
+  const gap = 5;
+  // Максимум 9 слотов (кошек 9 жизней)
+  const lifeSlots = 9;
+  const totalW = lifeSlots * lifeIconSize + (lifeSlots - 1) * gap;
+  const panelPad = 10;
+  const panelX = 14;
+  const panelY = WORLD.height - WORLD.floorHeight + 8;
+  const panelW = totalW + panelPad * 2;
+  const panelH = lifeIconSize + panelPad * 2;
+
+  // Фон панели
+  ctx.fillStyle = "rgba(0,0,0,0.52)";
+  ctx.beginPath(); ctx.roundRect(panelX, panelY, panelW, panelH, 12); ctx.fill();
+
+  const iconsStartX = panelX + panelPad;
+  const iconsY = panelY + panelPad;
+  const useImg = typeof lifeImage !== "undefined" && lifeImage.complete && lifeImage.naturalWidth > 0;
+
+  for (let i = 0; i < lifeSlots; i++) {
+    const ix = iconsStartX + i * (lifeIconSize + gap);
+    ctx.globalAlpha = i < lives ? 1.0 : 0.22;
+    if (useImg) {
+      ctx.drawImage(lifeImage, ix, iconsY, lifeIconSize, lifeIconSize);
+    } else {
+      setFont(lifeIconSize + "px Arial"); ctx.textAlign = "left";
+      ctx.fillText("🐱", ix, iconsY + lifeIconSize - 2);
+    }
+  }
+  ctx.globalAlpha = 1.0;
   ctx.textAlign = "left";
 }
 
@@ -322,17 +329,16 @@ function drawOverlay() {
     setFont("bold 36px Arial"); ctx.fillStyle = "#fff";
     ctx.fillText("💔 −1 жизнь", cx, cy - 10);
 
-    const lifeIconSize = 36;
-    const totalW = 3 * lifeIconSize + 2 * 10;
+    const lifeIconSize = 30;
+    const lifeGap = 6;
+    const lifeSlots = 9;
+    const totalW = lifeSlots * lifeIconSize + (lifeSlots - 1) * lifeGap;
     const lifeStartX = cx - totalW / 2;
-    for (let i = 0; i < 3; i++) {
-      const lx = lifeStartX + i * (lifeIconSize + 10);
-      if (i < lives) {
-        ctx.globalAlpha = 1.0;
-      } else {
-        ctx.globalAlpha = 0.22;
-      }
-      if (typeof lifeImage !== "undefined" && lifeImage.complete && lifeImage.naturalWidth > 0) {
+    const useImg = typeof lifeImage !== "undefined" && lifeImage.complete && lifeImage.naturalWidth > 0;
+    for (let i = 0; i < lifeSlots; i++) {
+      const lx = lifeStartX + i * (lifeIconSize + lifeGap);
+      ctx.globalAlpha = i < lives ? 1.0 : 0.22;
+      if (useImg) {
         ctx.drawImage(lifeImage, lx, cy + 20, lifeIconSize, lifeIconSize);
       } else {
         setFont(lifeIconSize + "px Arial");

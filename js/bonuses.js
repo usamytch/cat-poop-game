@@ -21,9 +21,9 @@ function applyBonus(type) {
     const pct = Math.round(reduction * 100);
     comboPopups.push({x:player.x+player.size/2, y:player.y-20, text:`💊 -${pct}% срочности!`, timer:80, color:"#a5d6a7"});
   } else if (type === "life") {
-    // Бонус жизни — только на уровне 5+, максимум 5 жизней
-    lives = Math.min(lives + 1, 5);
-    comboPopups.push({x:player.x+player.size/2, y:player.y-20, text:"🐱 +1 жизнь!", timer:80, color:"#ef9a9a"});
+    // Бонус жизни — только на уровне 5+, максимум 9 жизней
+    lives = Math.min(lives + 1, 9);
+    comboPopups.push({x:player.x+player.size/2, y:player.y-20, text:"❤️ +1 жизнь!", timer:80, color:"#ef9a9a"});
   }
 }
 

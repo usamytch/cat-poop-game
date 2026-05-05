@@ -155,16 +155,16 @@ describe('applyBonus("life")', () => {
     expect(lives).toBe(3);
   });
 
-  it('caps lives at 5', () => {
-    lives = 5;
+  it('caps lives at 9', () => {
+    lives = 9;
     applyBonus('life');
-    expect(lives).toBe(5);
+    expect(lives).toBe(9);
   });
 
-  it('caps lives at 5 when lives was 4', () => {
-    lives = 4;
+  it('caps lives at 9 when lives was 8', () => {
+    lives = 8;
     applyBonus('life');
-    expect(lives).toBe(5);
+    expect(lives).toBe(9);
   });
 
   it('does not change speedBoostTimer', () => {

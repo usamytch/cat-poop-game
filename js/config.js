@@ -114,5 +114,5 @@ const BONUS_TYPES = {
   fish: {emoji:"🐟", label:"Ускорение!",     color:"#4fc3f7"},
   yarn: {emoji:"🧶", label:"Хозяин стоит!",  color:"#ce93d8"},
   pill: {emoji:"💊", label:"-30% срочности!", color:"#a5d6a7"},
-  life: {emoji:"🐱", label:"+1 жизнь!",      color:"#ef9a9a"},
+  life: {emoji:"❤️", label:"+1 жизнь!",      color:"#ef9a9a"},
 };

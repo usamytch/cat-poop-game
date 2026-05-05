@@ -117,8 +117,8 @@ describe('BONUS_TYPES', () => {
     });
   }
 
-  it('BONUS_TYPES.life emoji is 🐱 (cat face, matches HUD life icon)', () => {
-    expect(BONUS_TYPES.life.emoji).toBe('🐱');
+  it('BONUS_TYPES.life emoji is ❤️ (heart, bonus pickup on field)', () => {
+    expect(BONUS_TYPES.life.emoji).toBe('❤️');
   });
 
   it('BONUS_TYPES.life color is #ef9a9a', () => {
