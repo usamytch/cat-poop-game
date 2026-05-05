@@ -398,6 +398,7 @@ function generateLevel() {
 
   obstacles.length = 0;
   bonuses.length = 0;
+  catnipTimer = 0;  // сброс котовника при старте нового уровня
   occupiedCells.clear();
 
   const obstCount = Math.min(4 + level, 12);
@@ -448,18 +449,19 @@ function generateLevel() {
 
   // Спавн бонусов — на свободных ячейках сетки
   // Количество бонусов растёт с уровнем: больше бонусов на поздних уровнях
-  const bonusCount = level >= 10 ? 5 : level >= 7 ? 4 : level >= 4 ? 3 : 2;
+  const bonusCount = level >= 12 ? 6 : level >= 10 ? 5 : level >= 7 ? 4 : level >= 4 ? 3 : 2;
 
-  // Взвешенный пул типов бонусов — на поздних уровнях больше таблеток и жизней.
+  // Взвешенный пул типов бонусов — на поздних уровнях больше таблеток, жизней и котовника.
   // Жизнь (life) появляется только с уровня 5.
+  // Котовник (catnip) появляется только с уровня 7.
   // Уровни 1–3:  fish 40%, yarn 30%, pill 30%
   // Уровни 4–6:  fish 30%, yarn 30%, pill 40%
-  // Уровни 7–9:  fish 20%, yarn 20%, pill 40%, life 20%  (но life-слоты ≤ 1 на уровень)
-  // Уровни 10+:  fish 20%, yarn 10%, pill 40%, life 30%
+  // Уровни 7–9:  fish 18%, yarn 18%, pill 36%, life 18%, catnip 9%
+  // Уровни 10+:  fish 9%, yarn 18%, pill 27%, life 27%, catnip 18%
   const bonusPool = level >= 10
-    ? ["fish","fish","yarn","pill","pill","pill","pill","life","life","life"]
+    ? ["fish","yarn","yarn","pill","pill","pill","catnip","catnip","life","life","life"]
     : level >= 7
-      ? ["fish","fish","yarn","yarn","pill","pill","pill","pill","life","life"]
+      ? ["fish","fish","yarn","yarn","pill","pill","pill","pill","catnip","life","life"]
       : level >= 4
         ? ["fish","fish","fish","yarn","yarn","yarn","pill","pill","pill","pill"]
         : ["fish","fish","fish","fish","yarn","yarn","yarn","pill","pill","pill"];

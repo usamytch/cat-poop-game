@@ -15,6 +15,7 @@ beforeEach(() => {
   player.y = 200;
   speedBoostTimer = 0;
   yarnFreezeTimer = 0;
+  catnipTimer = 0;
   comboPopups.length = 0;
   bonuses.length = 0;
   lives = 3;
@@ -188,6 +189,49 @@ describe('applyBonus("life")', () => {
   it('popup color is #ef9a9a', () => {
     applyBonus('life');
     expect(comboPopups[comboPopups.length - 1].color).toBe('#ef9a9a');
+  });
+});
+
+// ---------------------------------------------------------------------------
+describe('applyBonus("catnip")', () => {
+  it('sets catnipTimer to 600', () => {
+    applyBonus('catnip');
+    expect(catnipTimer).toBe(600);
+  });
+
+  it('does not change speedBoostTimer', () => {
+    speedBoostTimer = 0;
+    applyBonus('catnip');
+    expect(speedBoostTimer).toBe(0);
+  });
+
+  it('does not change yarnFreezeTimer', () => {
+    yarnFreezeTimer = 0;
+    applyBonus('catnip');
+    expect(yarnFreezeTimer).toBe(0);
+  });
+
+  it('does not change player.urge', () => {
+    player.urge = 50;
+    applyBonus('catnip');
+    expect(player.urge).toBe(50);
+  });
+
+  it('adds a popup with text containing "Хозяин ушёл!"', () => {
+    applyBonus('catnip');
+    expect(comboPopups.length).toBeGreaterThan(0);
+    expect(comboPopups[comboPopups.length - 1].text).toContain('Хозяин ушёл!');
+  });
+
+  it('popup color is #80cbc4', () => {
+    applyBonus('catnip');
+    expect(comboPopups[comboPopups.length - 1].color).toBe('#80cbc4');
+  });
+
+  it('stacking catnip resets timer to 600', () => {
+    catnipTimer = 300;
+    applyBonus('catnip');
+    expect(catnipTimer).toBe(600);
   });
 });
 

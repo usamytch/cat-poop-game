@@ -207,7 +207,7 @@ function drawLivesHUD() {
   const totalW = lifeSlots * lifeIconSize + (lifeSlots - 1) * gap;
   const panelPad = 10;
   const panelX = 14;
-  const panelY = WORLD.height - WORLD.floorHeight + 8;
+  const panelY = WORLD.height - WORLD.floorHeight + 28;
   const panelW = totalW + panelPad * 2;
   const panelH = lifeIconSize + panelPad * 2;
 

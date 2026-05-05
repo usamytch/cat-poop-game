@@ -306,3 +306,65 @@ describe('escapeObstacles — player is never inside obstacles', () => {
     expect(overlaps).toBe(false);
   });
 });
+
+// ---------------------------------------------------------------------------
+describe('player.update() — urge rate soft cap', () => {
+  it('urge rate at level 11 equals diff.urgeRate * 1.8 (cap reached)', () => {
+    difficulty = 'normal';
+    level = 11;
+    player.urge = 0;
+    owner.active = false;
+    litterBox.x = 900; litterBox.y = 400;
+    player.update();
+    // urgeRate = DIFF.normal.urgeRate * min(1 + 10*0.08, 1.8) = urgeRate * 1.8
+    const expectedRate = DIFF.normal.urgeRate * 1.8 / 60;
+    expect(player.urge).toBeCloseTo(expectedRate, 5);
+  });
+
+  it('urge rate at level 15 equals same as level 11 (cap holds)', () => {
+    difficulty = 'normal';
+    player.urge = 0;
+    owner.active = false;
+    litterBox.x = 900; litterBox.y = 400;
+
+    level = 11;
+    player.update();
+    const urgeAt11 = player.urge;
+
+    player.urge = 0;
+    level = 15;
+    player.update();
+    const urgeAt15 = player.urge;
+
+    expect(urgeAt15).toBeCloseTo(urgeAt11, 5);
+  });
+
+  it('urge rate at level 20 equals same as level 11 (cap holds)', () => {
+    difficulty = 'chaos';
+    player.urge = 0;
+    owner.active = false;
+    litterBox.x = 900; litterBox.y = 400;
+
+    level = 11;
+    player.update();
+    const urgeAt11 = player.urge;
+
+    player.urge = 0;
+    level = 20;
+    player.update();
+    const urgeAt20 = player.urge;
+
+    expect(urgeAt20).toBeCloseTo(urgeAt11, 5);
+  });
+
+  it('urge rate at level 5 is below cap (1 + 4*0.08 = 1.32 < 1.8)', () => {
+    difficulty = 'normal';
+    level = 5;
+    player.urge = 0;
+    owner.active = false;
+    litterBox.x = 900; litterBox.y = 400;
+    player.update();
+    const expectedRate = DIFF.normal.urgeRate * 1.32 / 60;
+    expect(player.urge).toBeCloseTo(expectedRate, 5);
+  });
+});

@@ -168,6 +168,7 @@ export function resetGameState() {
   owner.speed = 1.0;
   owner.fleeTimer = 0;
   owner.fleeTarget = null;
+  owner.catnipTarget = null;
   owner.poopHits = 0;
   owner.facePoops = [];
   owner.stuckTimer = 0;
@@ -194,6 +195,7 @@ export function resetGameState() {
   comboTimer = 0;
   speedBoostTimer = 0;
   yarnFreezeTimer = 0;
+  catnipTimer = 0;
   shootCooldown = 0;
   panicShake = 0;
   alarmTimer = 0;

@@ -16,7 +16,7 @@ describe('DIFF — difficulty modes', () => {
     expect(DIFF).toHaveProperty('chaos');
   });
 
-  const requiredFields = ['urgeRate', 'baseSpd', 'spdPerLvl', 'firstLvl', 'poopTime', 'hitUrgeReduce', 'shootUrgeReduce'];
+  const requiredFields = ['urgeRate', 'baseSpd', 'spdPerLvl', 'maxSpd', 'firstLvl', 'poopTime', 'hitUrgeReduce', 'shootUrgeReduce'];
   for (const mode of ['easy', 'normal', 'chaos']) {
     for (const field of requiredFields) {
       it(`DIFF.${mode} has field "${field}"`, () => {
@@ -61,6 +61,24 @@ describe('DIFF — difficulty modes', () => {
   it('chaos.shootUrgeReduce === 0 (no urge reduction on shoot in chaos)', () => {
     expect(DIFF.chaos.shootUrgeReduce).toBe(0);
   });
+
+  it('easy.maxSpd === 3.5', () => {
+    expect(DIFF.easy.maxSpd).toBe(3.5);
+  });
+
+  it('normal.maxSpd === 4.5', () => {
+    expect(DIFF.normal.maxSpd).toBe(4.5);
+  });
+
+  it('chaos.maxSpd === 6.5', () => {
+    expect(DIFF.chaos.maxSpd).toBe(6.5);
+  });
+
+  it('maxSpd > baseSpd for all modes (cap is above starting speed)', () => {
+    expect(DIFF.easy.maxSpd).toBeGreaterThan(DIFF.easy.baseSpd);
+    expect(DIFF.normal.maxSpd).toBeGreaterThan(DIFF.normal.baseSpd);
+    expect(DIFF.chaos.maxSpd).toBeGreaterThan(DIFF.chaos.baseSpd);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -102,20 +120,29 @@ describe('WORLD', () => {
 
 // ---------------------------------------------------------------------------
 describe('BONUS_TYPES', () => {
-  it('contains fish, yarn, pill, life', () => {
+  it('contains fish, yarn, pill, life, catnip', () => {
     expect(BONUS_TYPES).toHaveProperty('fish');
     expect(BONUS_TYPES).toHaveProperty('yarn');
     expect(BONUS_TYPES).toHaveProperty('pill');
     expect(BONUS_TYPES).toHaveProperty('life');
+    expect(BONUS_TYPES).toHaveProperty('catnip');
   });
 
-  for (const type of ['fish', 'yarn', 'pill', 'life']) {
+  for (const type of ['fish', 'yarn', 'pill', 'life', 'catnip']) {
     it(`BONUS_TYPES.${type} has emoji, label, color`, () => {
       expect(BONUS_TYPES[type]).toHaveProperty('emoji');
       expect(BONUS_TYPES[type]).toHaveProperty('label');
       expect(BONUS_TYPES[type]).toHaveProperty('color');
     });
   }
+
+  it('BONUS_TYPES.catnip emoji is 🌿', () => {
+    expect(BONUS_TYPES.catnip.emoji).toBe('🌿');
+  });
+
+  it('BONUS_TYPES.catnip color is #80cbc4', () => {
+    expect(BONUS_TYPES.catnip.color).toBe('#80cbc4');
+  });
 
   it('BONUS_TYPES.life emoji is ❤️ (heart, bonus pickup on field)', () => {
     expect(BONUS_TYPES.life.emoji).toBe('❤️');

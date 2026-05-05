@@ -15,6 +15,9 @@ const owner = {
   fleeTimer: 0,
   fleeTarget: null,
 
+  // Котовник — хозяин уходит в угол и игнорирует кота
+  catnipTarget: null,
+
   // Какашки на лице
   poopHits: 0,
   facePoops: [],
@@ -35,7 +38,7 @@ const owner = {
     const diff = DIFF[difficulty];
     if (level < diff.firstLvl) { this.active = false; return; }
     this.active = true;
-    this.speed = diff.baseSpd + (level-1)*diff.spdPerLvl;
+    this.speed = Math.min(diff.baseSpd + (level-1)*diff.spdPerLvl, diff.maxSpd);
     const b = getPlayBounds();
     const corners = [
       {x:b.right-this.width-20, y:b.top+20},
@@ -82,6 +85,7 @@ const owner = {
     this.path = [];
     this.pathTimer = 0;
     this.fleeTimer = 0; this.fleeTarget = null;
+    this.catnipTarget = null;
     this.poopHits = 0; this.facePoops = [];
     this.stuckTimer = 0; this.stuckNudge = null;
     this.lastX = this.x; this.lastY = this.y;
@@ -157,7 +161,15 @@ const owner = {
       const bounce = Math.sin(_now / 180) * 3;
       const cy = this.y - 10;
 
-      if (this.shotReactTimer > 0) {
+      if (catnipTimer > 0) {
+        // Котовник — хозяин одурманен
+        ctx.save();
+        ctx.font = "20px Arial";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "bottom";
+        ctx.fillText("😵", cx, cy + bounce);
+        ctx.restore();
+      } else if (this.shotReactTimer > 0) {
         // Реакция на выстрел — эмодзи паники
         ctx.save();
         ctx.font = "20px Arial";
@@ -282,6 +294,38 @@ const owner = {
   update() {
     if (!this.active) return;
     if (yarnFreezeTimer > 0) return;
+
+    // ===== КОТОВНИК: хозяин уходит в угол и игнорирует кота =====
+    if (catnipTimer > 0) {
+      catnipTimer--;
+      // Выбираем цель один раз — дальний угол от кота
+      if (!this.catnipTarget) {
+        const b = getPlayBounds();
+        const corners = [
+          {x:b.right-this.width-20, y:b.top+20},
+          {x:b.right-this.width-20, y:b.bottom-this.height-20},
+          {x:b.left+20,             y:b.top+20},
+          {x:b.left+20,             y:b.bottom-this.height-20},
+        ];
+        let best = corners[0], bestDist = 0;
+        for (const c of corners) {
+          const dx = c.x - player.x, dy = c.y - player.y;
+          const d2 = dx*dx + dy*dy;
+          if (d2 > bestDist) { bestDist = d2; best = c; }
+        }
+        this.catnipTarget = best;
+      }
+      // Медленно бредёт к углу (0.6 от обычной скорости)
+      const cdx = this.catnipTarget.x - this.x;
+      const cdy = this.catnipTarget.y - this.y;
+      const cdist2 = cdx*cdx + cdy*cdy;
+      if (cdist2 > 4) {
+        this._moveTowardTarget(this.catnipTarget.x, this.catnipTarget.y, this.speed * 0.6);
+      }
+      // Таймер истёк — сбрасываем цель
+      if (catnipTimer === 0) this.catnipTarget = null;
+      return; // не преследует кота
+    }
 
     const b = getPlayBounds();
 

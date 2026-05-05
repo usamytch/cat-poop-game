@@ -5,6 +5,7 @@
 const bonuses = [];
 let speedBoostTimer = 0;
 let yarnFreezeTimer = 0;
+let catnipTimer = 0;  // хозяин уходит в угол и игнорирует кота
 
 function applyBonus(type) {
   if (type === "fish") {
@@ -24,6 +25,10 @@ function applyBonus(type) {
     // Бонус жизни — только на уровне 5+, максимум 9 жизней
     lives = Math.min(lives + 1, 9);
     comboPopups.push({x:player.x+player.size/2, y:player.y-20, text:"❤️ +1 жизнь!", timer:80, color:"#ef9a9a"});
+  } else if (type === "catnip") {
+    // Котовник: хозяин уходит в дальний угол на 10 секунд и игнорирует кота
+    catnipTimer = 600;
+    comboPopups.push({x:player.x+player.size/2, y:player.y-20, text:"🌿 Хозяин ушёл!", timer:80, color:"#80cbc4"});
   }
 }
 

@@ -17,6 +17,7 @@ function resetCommon() {
   comboTimer = 0;
   speedBoostTimer = 0;
   yarnFreezeTimer = 0;
+  catnipTimer = 0;
   shootCooldown = 0;
   panicShake = 0;
   alarmTimer = 0;
@@ -53,6 +54,7 @@ function resetCommon() {
   owner.shotReactTimer = 0;
   owner.path = [];
   owner.pathTimer = 0;
+  owner.catnipTarget = null;
   poopProgress = 0;
   isPooping = false;
   bonuses.length = 0;
@@ -157,6 +159,42 @@ describe('owner.activate()', () => {
     owner.activate();
     const expected = DIFF.normal.baseSpd + (3 - 1) * DIFF.normal.spdPerLvl;
     expect(owner.speed).toBeCloseTo(expected);
+  });
+
+  it('speed is capped at maxSpd on very high level (normal)', () => {
+    difficulty = 'normal';
+    level = 50; // far beyond cap
+    owner.activate();
+    expect(owner.speed).toBeCloseTo(DIFF.normal.maxSpd);
+  });
+
+  it('speed is capped at maxSpd on very high level (easy)', () => {
+    difficulty = 'easy';
+    level = 50;
+    owner.activate();
+    expect(owner.speed).toBeCloseTo(DIFF.easy.maxSpd);
+  });
+
+  it('speed is capped at maxSpd on very high level (chaos)', () => {
+    difficulty = 'chaos';
+    level = 50;
+    owner.activate();
+    expect(owner.speed).toBeCloseTo(DIFF.chaos.maxSpd);
+  });
+
+  it('speed does not exceed maxSpd at level 20 (normal)', () => {
+    difficulty = 'normal';
+    level = 20;
+    owner.activate();
+    expect(owner.speed).toBeLessThanOrEqual(DIFF.normal.maxSpd + 0.001);
+  });
+
+  it('catnipTarget reset to null after activate', () => {
+    owner.catnipTarget = { x: 100, y: 100 };
+    difficulty = 'normal';
+    level = 2;
+    owner.activate();
+    expect(owner.catnipTarget).toBeNull();
   });
 
   it('poopHits reset to 0', () => {
@@ -496,6 +534,71 @@ describe('owner.update() — hesitateTimer', () => {
     // Owner should not have moved (hesitate returns early)
     expect(owner.x).toBe(prevX);
     expect(owner.y).toBe(prevY);
+  });
+});
+
+// ---------------------------------------------------------------------------
+describe('owner.update() — catnip mode', () => {
+  it('catnipTimer > 0 → owner does not catch cat even when overlapping', () => {
+    owner.active = true;
+    owner.fleeTimer = 0;
+    catnipTimer = 100;
+    // Place owner directly on player
+    owner.x = player.x;
+    owner.y = player.y;
+    gameState = 'playing';
+    owner.update();
+    // Should still be playing (catnip mode skips catch check)
+    expect(gameState).toBe('playing');
+  });
+
+  it('catnipTimer decrements each frame', () => {
+    owner.active = true;
+    owner.fleeTimer = 0;
+    catnipTimer = 50;
+    player.x = 100; player.y = 100;
+    owner.x = 900; owner.y = 500;
+    owner.update();
+    expect(catnipTimer).toBe(49);
+  });
+
+  it('catnipTarget is set on first catnip frame', () => {
+    owner.active = true;
+    owner.fleeTimer = 0;
+    catnipTimer = 100;
+    owner.catnipTarget = null;
+    player.x = 100; player.y = 100;
+    owner.x = 900; owner.y = 500;
+    owner.update();
+    expect(owner.catnipTarget).not.toBeNull();
+    expect(owner.catnipTarget).toHaveProperty('x');
+    expect(owner.catnipTarget).toHaveProperty('y');
+  });
+
+  it('catnipTarget is cleared when catnipTimer reaches 0', () => {
+    owner.active = true;
+    owner.fleeTimer = 0;
+    catnipTimer = 1;
+    owner.catnipTarget = { x: 100, y: 100 };
+    player.x = 100; player.y = 100;
+    owner.x = 900; owner.y = 500;
+    owner.update();
+    expect(catnipTimer).toBe(0);
+    expect(owner.catnipTarget).toBeNull();
+  });
+
+  it('catnipTimer=0 → owner resumes pursuit (can catch cat)', () => {
+    owner.active = true;
+    owner.fleeTimer = 0;
+    catnipTimer = 0;
+    lives = 1;
+    // Place owner directly on player
+    owner.x = player.x;
+    owner.y = player.y;
+    gameState = 'playing';
+    owner.update();
+    // Should catch cat (gameState changes)
+    expect(gameState).toBe('caught');
   });
 });
 
