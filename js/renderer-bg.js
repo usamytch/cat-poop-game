@@ -102,6 +102,21 @@ function _drawDecorItemTo(bctx, d) {
       bctx.beginPath(); bctx.ellipse(x + w/2 - 4, y + h/2 - 4, w/4, h/4, 0.3, 0, Math.PI*2); bctx.fill();
       break;
     }
+    case "stone_patch": {
+      // Каменная плитка подвала — тёмные прямоугольники с трещинами
+      bctx.fillStyle = "#2a2420";
+      bctx.beginPath(); bctx.roundRect(x + 4, y + 4, w - 8, h - 8, 4); bctx.fill();
+      bctx.strokeStyle = "#3e3530"; bctx.lineWidth = 1;
+      // Сетка плит
+      const ps = Math.floor(w / 2);
+      for (let px = x + 4; px < x + w - 4; px += ps) {
+        bctx.beginPath(); bctx.moveTo(px, y + 4); bctx.lineTo(px, y + h - 4); bctx.stroke();
+      }
+      for (let py = y + 4; py < y + h - 4; py += ps) {
+        bctx.beginPath(); bctx.moveTo(x + 4, py); bctx.lineTo(x + w - 4, py); bctx.stroke();
+      }
+      break;
+    }
     default:
       break;
   }
@@ -255,6 +270,107 @@ function _drawObstacleTo(bctx, ob) {
         });
       }
       break;
+    // ===== ПОДВАЛ =====
+    case "wall_h": case "wall_v": {
+      // Кирпичная стена — тёмный блок с кирпичными швами
+      _rrectTo(bctx, 0, 0, w, h, 4, meta.color);
+      bctx.strokeStyle = meta.detail; bctx.lineWidth = 1;
+      if (type === "wall_h") {
+        // Горизонтальные швы
+        const bH = 10;
+        for (let by = bH; by < h; by += bH) {
+          bctx.beginPath(); bctx.moveTo(0, by); bctx.lineTo(w, by); bctx.stroke();
+        }
+        // Вертикальные швы — кирпичная раскладка
+        const bW = 20;
+        let row = 0;
+        for (let by = 0; by < h; by += bH, row++) {
+          const off = (row % 2) * (bW / 2);
+          for (let bx = off; bx < w; bx += bW) {
+            bctx.beginPath(); bctx.moveTo(bx, by); bctx.lineTo(bx, by + bH); bctx.stroke();
+          }
+        }
+      } else {
+        // Вертикальная стена — горизонтальные кирпичи
+        const bH = 20, bW = 10;
+        for (let by = bH; by < h; by += bH) {
+          bctx.beginPath(); bctx.moveTo(0, by); bctx.lineTo(w, by); bctx.stroke();
+        }
+        let row = 0;
+        for (let by = 0; by < h; by += bH, row++) {
+          const off = (row % 2) * (bW / 2);
+          for (let bx = off; bx < w; bx += bW) {
+            bctx.beginPath(); bctx.moveTo(bx, by); bctx.lineTo(bx, by + bH); bctx.stroke();
+          }
+        }
+      }
+      break;
+    }
+    case "pipe": {
+      // Вертикальная труба — серый цилиндр с фланцами и бликом
+      _rrectTo(bctx, w/2 - 6, 0, 12, h, 4, meta.color);
+      // Фланцы сверху и снизу
+      _rrectTo(bctx, w/2 - 10, 0, 20, 8, 3, meta.detail);
+      _rrectTo(bctx, w/2 - 10, h - 8, 20, 8, 3, meta.detail);
+      // Блик
+      _rrectTo(bctx, w/2 - 3, 10, 3, h - 20, 2, "rgba(255,255,255,0.18)");
+      break;
+    }
+    case "crate_stack": {
+      // Стопка ящиков — несколько смещённых прямоугольников
+      const boxH = Math.max(16, Math.floor(h / 3));
+      for (let i = 0; i < 3 && i * boxH < h; i++) {
+        const by = h - (i + 1) * boxH;
+        const bx = (i % 2) * 4;
+        _rrectTo(bctx, bx, by, w - bx - 2, boxH - 2, 4, meta.color);
+        bctx.strokeStyle = meta.detail; bctx.lineWidth = 2;
+        bctx.strokeRect(bx + 4, by + 4, w - bx - 10, boxH - 10);
+        bctx.beginPath();
+        bctx.moveTo(bx + 4, by + 4); bctx.lineTo(w - bx - 6, by + boxH - 6);
+        bctx.moveTo(w - bx - 6, by + 4); bctx.lineTo(bx + 4, by + boxH - 6);
+        bctx.stroke();
+      }
+      break;
+    }
+    case "barrel_stack": {
+      // Стопка бочек — ряд бочек
+      const barrelW = Math.max(20, Math.floor(w / 2));
+      const barrelH = Math.min(h, 36);
+      const count = Math.max(1, Math.floor(w / barrelW));
+      for (let i = 0; i < count; i++) {
+        const bx = i * barrelW + 2;
+        _rrectTo(bctx, bx, h - barrelH, barrelW - 4, barrelH, 8, meta.color);
+        bctx.strokeStyle = meta.detail; bctx.lineWidth = 2;
+        bctx.strokeRect(bx + 4, h - barrelH + 6, barrelW - 12, barrelH - 12);
+        bctx.strokeRect(bx + 4, h - barrelH + barrelH / 2 - 4, barrelW - 12, 8);
+      }
+      // Второй ряд если высота позволяет
+      if (h > barrelH + 10) {
+        for (let i = 0; i < count - 1; i++) {
+          const bx = i * barrelW + barrelW / 2 + 2;
+          _rrectTo(bctx, bx, h - barrelH * 2 + 4, barrelW - 4, barrelH, 8, meta.color);
+          bctx.strokeStyle = meta.detail; bctx.lineWidth = 2;
+          bctx.strokeRect(bx + 4, h - barrelH * 2 + 10, barrelW - 12, barrelH - 12);
+        }
+      }
+      break;
+    }
+    case "chain": {
+      // Цепь — серия соединённых звеньев по вертикали
+      const linkH = 10, linkW = 8;
+      bctx.strokeStyle = meta.color; bctx.lineWidth = 2.5;
+      for (let cy = 4; cy < h - 4; cy += linkH) {
+        const isEven = Math.floor(cy / linkH) % 2 === 0;
+        if (isEven) {
+          bctx.beginPath(); bctx.ellipse(w/2, cy + linkH/2, linkW/2, linkH/2, 0, 0, Math.PI*2); bctx.stroke();
+        } else {
+          bctx.beginPath(); bctx.ellipse(w/2, cy + linkH/2, linkH/2, linkW/2, 0, 0, Math.PI*2); bctx.stroke();
+        }
+      }
+      // Крюк сверху
+      _rrectTo(bctx, w/2 - 5, 0, 10, 6, 3, meta.detail);
+      break;
+    }
   }
   bctx.restore();
 }
@@ -350,6 +466,40 @@ function _drawGrassNoise(bctx, b, floorY, seed) {
   }
 }
 
+// Каменная плитка с трещинами (basement) — квадраты 40×40px + noise-трещины
+function _drawBasementFloor(bctx, b, floorY, seed) {
+  const size = GRID; // 40px — совпадает с сеткой
+  bctx.strokeStyle = "rgba(255,255,255,1)";
+  bctx.lineWidth = 0.8;
+  // Горизонтальные швы
+  for (let gy = floorY; gy < WORLD.height; gy += size) {
+    bctx.beginPath(); bctx.moveTo(b.left, gy); bctx.lineTo(b.right, gy); bctx.stroke();
+  }
+  // Вертикальные швы
+  for (let gx = b.left; gx < b.right; gx += size) {
+    bctx.beginPath(); bctx.moveTo(gx, floorY); bctx.lineTo(gx, WORLD.height); bctx.stroke();
+  }
+  // Трещины — noise-based короткие линии внутри некоторых плит
+  bctx.strokeStyle = "rgba(255,255,255,1)";
+  bctx.lineWidth = 0.5;
+  let crackIdx = 0;
+  for (let gx = b.left; gx < b.right; gx += size) {
+    for (let gy = floorY; gy < WORLD.height; gy += size) {
+      const n = valueNoise(crackIdx, Math.floor((gy - floorY) / size), seed + 3);
+      crackIdx++;
+      if (n > 0.72) {
+        // Диагональная трещина внутри плиты
+        const cx = gx + size * 0.3 + n * size * 0.2;
+        const cy = gy + size * 0.2;
+        bctx.beginPath();
+        bctx.moveTo(cx, cy);
+        bctx.lineTo(cx + size * 0.35, cy + size * 0.55);
+        bctx.stroke();
+      }
+    }
+  }
+}
+
 // Деревянные доски с сучками (country) — широкие доски 24px + случайные сучки
 function _drawWoodPlanks(bctx, b, floorY, seed) {
   const plankH = 24;
@@ -396,6 +546,7 @@ function _drawFloorPattern(bctx, locationKey, seed) {
     case "kitchen":  _drawPlanks(bctx, b, floorY);               break;
     case "street":   _drawGrassNoise(bctx, b, floorY, seed);     break;
     case "country":  _drawWoodPlanks(bctx, b, floorY, seed);     break;
+    case "basement": _drawBasementFloor(bctx, b, floorY, seed);  break;
   }
   bctx.restore();
 }
@@ -462,6 +613,40 @@ function _drawWallSkyBands(bctx) {
   }
 }
 
+// Кирпичная кладка (basement) — кирпичи 60×20px, кирпичная раскладка, тёмная
+function _drawBasementWall(bctx, seed) {
+  const wallH = WORLD.height - WORLD.floorHeight - 6;
+  const brickW = 60, brickH = 20;
+  bctx.strokeStyle = "rgba(255,255,255,1)";
+  bctx.lineWidth = 1;
+  // Горизонтальные швы
+  for (let y = 0; y < wallH; y += brickH) {
+    bctx.beginPath(); bctx.moveTo(0, y); bctx.lineTo(WORLD.width, y); bctx.stroke();
+  }
+  // Вертикальные швы — кирпичная раскладка (offset через строку)
+  let row = 0;
+  for (let y = 0; y < wallH; y += brickH, row++) {
+    const offset = (row % 2) * (brickW / 2);
+    for (let x = offset; x < WORLD.width; x += brickW) {
+      bctx.beginPath(); bctx.moveTo(x, y); bctx.lineTo(x, y + brickH); bctx.stroke();
+    }
+  }
+  // Пятна сырости — noise-based тёмные эллипсы
+  bctx.fillStyle = "rgba(0,0,0,1)";
+  let moistIdx = 0;
+  for (let x = 40; x < WORLD.width - 40; x += 120) {
+    for (let y = 10; y < wallH - 10; y += 80) {
+      const n = valueNoise(moistIdx, Math.floor(y / 80), seed + 11);
+      moistIdx++;
+      if (n > 0.68) {
+        bctx.beginPath();
+        bctx.ellipse(x + n * 40, y + n * 20, 18 + n * 12, 10 + n * 8, n * Math.PI, 0, Math.PI * 2);
+        bctx.fill();
+      }
+    }
+  }
+}
+
 // Вагонка / горизонтальные доски (country) — широкие доски 32px с тенью
 function _drawWallPlanks(bctx, seed) {
   const wallH = WORLD.height - WORLD.floorHeight - 6;
@@ -503,6 +688,7 @@ function _drawWallPattern(bctx, locationKey, seed) {
     case "kitchen":  _drawWallKitchenTiles(bctx);      break;
     case "street":   _drawWallSkyBands(bctx);          break;
     case "country":  _drawWallPlanks(bctx, seed);      break;
+    case "basement": _drawBasementWall(bctx, seed);    break;
   }
   bctx.restore();
 }
@@ -536,4 +722,55 @@ function _drawBgTo(bctx) {
   if (dec.includes("sun"))      { bctx.fillStyle="#ffd54f"; bctx.beginPath(); bctx.arc(WORLD.width-120,90,34,0,Math.PI*2); bctx.fill(); }
   if (dec.includes("fireplace")){ _rrectTo(bctx,WORLD.width-260,90,170,150,14,"#c79a6d"); _rrectTo(bctx,WORLD.width-220,130,90,80,10,"#5a3420"); bctx.fillStyle="#ffb347"; bctx.beginPath(); bctx.arc(WORLD.width-175,185,18,0,Math.PI*2); bctx.fill(); }
   if (dec.includes("rack"))     { bctx.fillStyle=p.trim; bctx.fillRect(90,80,10,170); bctx.fillRect(90,80,120,10); bctx.fillRect(90,160,120,10); }
+  // ===== ПОДВАЛ =====
+  if (dec.includes("cobweb")) {
+    // Паутина в верхнем левом углу
+    bctx.save();
+    bctx.strokeStyle = "rgba(200,200,200,0.45)"; bctx.lineWidth = 0.8;
+    const cx = 60, cy = 20, cr = 55;
+    // Радиальные нити
+    for (let a = 0; a < Math.PI / 2; a += Math.PI / 8) {
+      bctx.beginPath(); bctx.moveTo(cx, cy); bctx.lineTo(cx + Math.cos(a) * cr, cy + Math.sin(a) * cr); bctx.stroke();
+    }
+    // Концентрические дуги
+    for (let r = 12; r <= cr; r += 14) {
+      bctx.beginPath(); bctx.arc(cx, cy, r, 0, Math.PI / 2); bctx.stroke();
+    }
+    bctx.restore();
+  }
+  if (dec.includes("wallpipe")) {
+    // Горизонтальная труба вдоль стены
+    bctx.save();
+    const py = 110;
+    bctx.fillStyle = "#4a4a4a"; bctx.fillRect(0, py - 7, WORLD.width, 14);
+    bctx.fillStyle = "#606060"; bctx.fillRect(0, py - 5, WORLD.width, 4); // блик
+    // Фланцы
+    for (let fx = 80; fx < WORLD.width - 80; fx += 220) {
+      bctx.fillStyle = "#3a3a3a"; bctx.fillRect(fx - 8, py - 12, 16, 24);
+      bctx.fillStyle = "#555"; bctx.fillRect(fx - 6, py - 10, 12, 20);
+    }
+    bctx.restore();
+  }
+  if (dec.includes("bulb")) {
+    // Тусклая лампочка по центру потолка
+    bctx.save();
+    const bx = WORLD.width / 2, by = 18;
+    // Провод
+    bctx.strokeStyle = "#3a3a3a"; bctx.lineWidth = 2;
+    bctx.beginPath(); bctx.moveTo(bx, 0); bctx.lineTo(bx, by); bctx.stroke();
+    // Патрон
+    _rrectTo(bctx, bx - 6, by, 12, 10, 3, "#4a4a4a");
+    // Колба
+    bctx.fillStyle = "#c8a840";
+    bctx.beginPath(); bctx.arc(bx, by + 22, 12, 0, Math.PI * 2); bctx.fill();
+    // Конус света
+    bctx.fillStyle = "rgba(200,160,40,0.07)";
+    bctx.beginPath();
+    bctx.moveTo(bx - 12, by + 22);
+    bctx.lineTo(bx - 90, WORLD.height - WORLD.floorHeight - 6);
+    bctx.lineTo(bx + 90, WORLD.height - WORLD.floorHeight - 6);
+    bctx.lineTo(bx + 12, by + 22);
+    bctx.closePath(); bctx.fill();
+    bctx.restore();
+  }
 }

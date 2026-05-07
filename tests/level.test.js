@@ -586,6 +586,187 @@ describe('generateLevel()', () => {
 });
 
 // ---------------------------------------------------------------------------
+// Basement level tests
+// ---------------------------------------------------------------------------
+describe('basement level', () => {
+  // Helper: force basement corridor mode by setting level and scanning seeds
+  function forceBasementLevel(mode) {
+    // Set level to trigger the desired mode, then scan seeds until basement appears
+    if (mode === 'dfs') {
+      level = BASEMENT.dfsMinLevel;
+    } else {
+      level = BASEMENT.corridorMinLevel;
+      // Make sure we're below dfs threshold so corridor is tested
+      if (level >= BASEMENT.dfsMinLevel) level = BASEMENT.dfsMinLevel - 1;
+    }
+    score = 0;
+    for (let s = 0; s < 200; s++) {
+      globalSeed = s * 7919;
+      obstacles.length = 0; bonuses.length = 0; occupiedCells.clear();
+      generateLevel();
+      if (currentLocation.key === 'basement' && basementMode === mode) return true;
+    }
+    return false;
+  }
+
+  it('BASEMENT config has required fields with correct types', () => {
+    expect(typeof BASEMENT.corridorMinLevel).toBe('number');
+    expect(typeof BASEMENT.corridorProb).toBe('number');
+    expect(typeof BASEMENT.dfsMinLevel).toBe('number');
+    expect(typeof BASEMENT.dfsProb).toBe('number');
+    expect(BASEMENT.corridorMinLevel).toBeGreaterThan(0);
+    expect(BASEMENT.dfsMinLevel).toBeGreaterThan(BASEMENT.corridorMinLevel);
+    expect(BASEMENT.corridorProb).toBeGreaterThan(0);
+    expect(BASEMENT.corridorProb).toBeLessThanOrEqual(1);
+    expect(BASEMENT.dfsProb).toBeGreaterThan(0);
+    expect(BASEMENT.dfsProb).toBeLessThanOrEqual(1);
+  });
+
+  it('basement does NOT appear on levels below corridorMinLevel', () => {
+    for (let lvl = 1; lvl < BASEMENT.corridorMinLevel; lvl++) {
+      for (let s = 0; s < 10; s++) {
+        level = lvl; score = 0; globalSeed = s * 1234;
+        obstacles.length = 0; bonuses.length = 0; occupiedCells.clear();
+        generateLevel();
+        expect(currentLocation.key, `basement appeared at level ${lvl}`).not.toBe('basement');
+      }
+    }
+  });
+
+  it('basement can appear at corridorMinLevel+ (corridor mode)', () => {
+    const found = forceBasementLevel('corridor');
+    expect(found, `corridor basement not found across 200 seeds at level ${BASEMENT.corridorMinLevel}`).toBe(true);
+  });
+
+  it('basement can appear at dfsMinLevel+ (dfs mode)', () => {
+    const found = forceBasementLevel('dfs');
+    expect(found, `dfs basement not found across 200 seeds at level ${BASEMENT.dfsMinLevel}`).toBe(true);
+  });
+
+  it('corridor maze: obstacles array has wall_h or wall_v entries', () => {
+    const found = forceBasementLevel('corridor');
+    expect(found).toBe(true);
+    const wallObs = obstacles.filter(o => o.type === 'wall_h' || o.type === 'wall_v');
+    expect(wallObs.length, 'corridor maze should have wall segments').toBeGreaterThan(0);
+  });
+
+  it('corridor maze: all obstacles within play bounds', () => {
+    const found = forceBasementLevel('corridor');
+    expect(found).toBe(true);
+    const b = getPlayBounds();
+    for (const ob of obstacles) {
+      expect(ob.x, `${ob.id} x < left`).toBeGreaterThanOrEqual(b.left - 1);
+      expect(ob.y, `${ob.id} y < top`).toBeGreaterThanOrEqual(b.top - 1);
+      expect(ob.x + ob.width, `${ob.id} right > right`).toBeLessThanOrEqual(b.right + 1);
+      expect(ob.y + ob.height, `${ob.id} bottom > bottom`).toBeLessThanOrEqual(b.bottom + 1);
+    }
+  });
+
+  it('corridor maze: no two obstacles share a grid cell', () => {
+    const found = forceBasementLevel('corridor');
+    expect(found).toBe(true);
+    const b = getPlayBounds();
+    const cellMap = new Map();
+    for (const ob of obstacles) {
+      const col = Math.round((ob.x - b.left) / GRID);
+      const row = Math.round((ob.y - b.top) / GRID);
+      for (let r = row; r < row + ob.hCells; r++) {
+        for (let c = col; c < col + ob.wCells; c++) {
+          const key = `${c},${r}`;
+          expect(cellMap.has(key), `cell ${key} shared by ${cellMap.get(key)} and ${ob.id}`).toBe(false);
+          cellMap.set(key, ob.id);
+        }
+      }
+    }
+  });
+
+  it('corridor maze: litterBox does not overlap any obstacle', () => {
+    const found = forceBasementLevel('corridor');
+    expect(found).toBe(true);
+    const lb = { x: litterBox.x, y: litterBox.y, width: litterBox.width, height: litterBox.height };
+    for (const ob of obstacles) {
+      expect(rectsOverlap(ob, lb), `obstacle ${ob.id} overlaps litterBox`).toBe(false);
+    }
+  });
+
+  it('corridor maze: A* finds path from player spawn to litterBox', () => {
+    const found = forceBasementLevel('corridor');
+    expect(found).toBe(true);
+    const start = pixelToCell(player.x + GRID / 2, player.y + GRID / 2);
+    const end   = pixelToCell(litterBox.x + litterBox.width / 2, litterBox.y + litterBox.height / 2);
+    const path  = aStarPath(start.col, start.row, end.col, end.row);
+    expect(path, 'A* should find path from spawn to litterBox in corridor maze').not.toBeNull();
+    expect(path.length, 'path should have at least 1 step').toBeGreaterThan(0);
+  });
+
+  it('dfs maze: obstacles array has wall_h or wall_v entries', () => {
+    const found = forceBasementLevel('dfs');
+    expect(found).toBe(true);
+    const wallObs = obstacles.filter(o => o.type === 'wall_h' || o.type === 'wall_v');
+    expect(wallObs.length, 'dfs maze should have many wall segments').toBeGreaterThan(5);
+  });
+
+  it('dfs maze: all obstacles within play bounds', () => {
+    const found = forceBasementLevel('dfs');
+    expect(found).toBe(true);
+    const b = getPlayBounds();
+    for (const ob of obstacles) {
+      expect(ob.x, `${ob.id} x < left`).toBeGreaterThanOrEqual(b.left - 1);
+      expect(ob.y, `${ob.id} y < top`).toBeGreaterThanOrEqual(b.top - 1);
+      expect(ob.x + ob.width, `${ob.id} right > right`).toBeLessThanOrEqual(b.right + 1);
+      expect(ob.y + ob.height, `${ob.id} bottom > bottom`).toBeLessThanOrEqual(b.bottom + 1);
+    }
+  });
+
+  it('dfs maze: no two obstacles share a grid cell', () => {
+    const found = forceBasementLevel('dfs');
+    expect(found).toBe(true);
+    const b = getPlayBounds();
+    const cellMap = new Map();
+    for (const ob of obstacles) {
+      const col = Math.round((ob.x - b.left) / GRID);
+      const row = Math.round((ob.y - b.top) / GRID);
+      for (let r = row; r < row + ob.hCells; r++) {
+        for (let c = col; c < col + ob.wCells; c++) {
+          const key = `${c},${r}`;
+          expect(cellMap.has(key), `cell ${key} shared by ${cellMap.get(key)} and ${ob.id}`).toBe(false);
+          cellMap.set(key, ob.id);
+        }
+      }
+    }
+  });
+
+  it('dfs maze: A* finds path from player spawn to litterBox', () => {
+    const found = forceBasementLevel('dfs');
+    expect(found).toBe(true);
+    const start = pixelToCell(player.x + GRID / 2, player.y + GRID / 2);
+    const end   = pixelToCell(litterBox.x + litterBox.width / 2, litterBox.y + litterBox.height / 2);
+    const path  = aStarPath(start.col, start.row, end.col, end.row);
+    expect(path, 'A* should find path from spawn to litterBox in dfs maze').not.toBeNull();
+    expect(path.length, 'path should have at least 1 step').toBeGreaterThan(0);
+  });
+
+  it('dfs maze: litterBox does not overlap any obstacle', () => {
+    const found = forceBasementLevel('dfs');
+    expect(found).toBe(true);
+    const lb = { x: litterBox.x, y: litterBox.y, width: litterBox.width, height: litterBox.height };
+    for (const ob of obstacles) {
+      expect(rectsOverlap(ob, lb), `obstacle ${ob.id} overlaps litterBox`).toBe(false);
+    }
+  });
+
+  it('basement location is not selected for normal levels (no contamination)', () => {
+    // Run 50 seeds at level 1 — basement must never appear
+    for (let s = 0; s < 50; s++) {
+      level = 1; score = 0; globalSeed = s * 3571;
+      obstacles.length = 0; bonuses.length = 0; occupiedCells.clear();
+      generateLevel();
+      expect(currentLocation.key).not.toBe('basement');
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
 describe('updateObstacles()', () => {
   it('moving obstacles change movingOffset', () => {
     const ob = {

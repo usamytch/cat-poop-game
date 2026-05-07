@@ -4,6 +4,8 @@
 
 let currentLocation = locationThemes[0];
 let levelSeed = 1;
+// "corridor" | "dfs" | "" — режим подвала для текущего уровня
+let basementMode = "";
 // Per-run random seed set from Date.now() at startGame().
 // Mixing it into levelSeed makes every game run produce a unique map
 // while keeping tests deterministic (tests set globalSeed = 0).
@@ -390,22 +392,294 @@ function placeLitterBox(rng, spawnCol, spawnRow) {
   litterBox.height = lbH * GRID;
 }
 
+// ===== ПОДВАЛ: CORRIDOR MAZE =====
+// Размещает горизонтальные и вертикальные стены с проходами.
+// Стены — объекты типа wall_h / wall_v в массиве obstacles.
+// Гарантирует проходимость: каждая стена имеет минимум 2 прохода шириной 2 ячейки.
+function generateCorridorMaze(rng) {
+  const b = getPlayBounds();
+
+  // Вспомогательная функция: добавить wall-сегмент в obstacles
+  function addWall(col, row, wCells, hCells) {
+    if (!cellsFree(col, row, wCells, hCells)) return;
+    markCells(col, row, wCells, hCells);
+    const pos = cellToPixel(col, row);
+    const type = hCells === 1 ? "wall_h" : "wall_v";
+    obstacles.push({
+      id: `${type}-${obstacles.length}-${col}-${row}`,
+      type, col, row, wCells, hCells,
+      x: pos.x, y: pos.y,
+      width: wCells * GRID, height: hCells * GRID,
+      moving: false, axis: "x", range: 0, speed: 0,
+      phase: 0, movingOffset: 0, baseX: pos.x, baseY: pos.y,
+    });
+  }
+
+  // Горизонтальные стены на строках 3, 6, 9, 12
+  // Каждая стена — полная ширина с 2 проходами по 2 ячейки
+  const hWallRows = [3, 6, 9, 12];
+  for (const row of hWallRows) {
+    // Генерируем 2 прохода: случайные позиции, не перекрывающиеся
+    const gapWidth = 2;
+    const totalCols = GRID_COLS; // 28
+    // Делим на 3 зоны, в каждой зоне один проход
+    const zoneW = Math.floor(totalCols / 3);
+    const gaps = [];
+    for (let z = 0; z < 3; z++) {
+      // Берём 2 из 3 зон для проходов (случайно пропускаем одну)
+      if (z === Math.floor(rng() * 3)) continue;
+      const zoneStart = z * zoneW;
+      const gapCol = zoneStart + randInt(rng, 0, zoneW - gapWidth - 1);
+      gaps.push(gapCol);
+    }
+    // Строим стену: сегменты между проходами
+    let col = 0;
+    // Сортируем проходы
+    gaps.sort((a, b) => a - b);
+    for (const gapCol of gaps) {
+      if (col < gapCol) {
+        addWall(col, row, gapCol - col, 1);
+      }
+      col = gapCol + gapWidth;
+    }
+    if (col < GRID_COLS) {
+      addWall(col, row, GRID_COLS - col, 1);
+    }
+  }
+
+  // Вертикальные стены в колонках 7, 14, 21
+  // Каждая — высота 3–4 ячейки с проходом
+  const vWallCols = [7, 14, 21];
+  for (const col of vWallCols) {
+    // Размещаем 2–3 вертикальных сегмента с проходами между ними
+    let row = 1;
+    while (row < GRID_ROWS - 2) {
+      const segH = randInt(rng, 2, 3);
+      if (row + segH > GRID_ROWS - 1) break;
+      addWall(col, row, 1, segH);
+      row += segH + randInt(rng, 1, 2); // проход 1–2 ячейки
+    }
+  }
+
+  // Боковые граничные стены (левый и правый края) — делают края играбельными.
+  // Стены разбиты на секции между горизонтальными стенами (hWallRows).
+  // В каждой секции — один проход шириной 2 ячейки, чтобы игрок мог
+  // перемещаться между коридорами через боковые края.
+  // Секции: [0..hWallRows[0]-1], [hWallRows[0]+1..hWallRows[1]-1], ..., [hWallRows[last]+1..GRID_ROWS-1]
+  const gapW = 2; // ширина прохода в ячейках
+  const sectionBounds = [];
+  {
+    let prev = 0;
+    for (const wr of hWallRows) {
+      // секция от prev до wr-1 (не включая саму горизонтальную стену)
+      if (wr - 1 >= prev) sectionBounds.push({ from: prev, to: wr - 1 });
+      prev = wr + 1; // пропускаем строку горизонтальной стены
+    }
+    // последняя секция после последней горизонтальной стены
+    if (prev < GRID_ROWS) sectionBounds.push({ from: prev, to: GRID_ROWS - 1 });
+  }
+
+  for (const boundCol of [0, GRID_COLS - 1]) {
+    for (const { from, to } of sectionBounds) {
+      const segLen = to - from + 1;
+      if (segLen <= gapW) {
+        // Секция слишком короткая — оставляем полностью открытой (проход)
+        continue;
+      }
+      // Случайная позиция прохода внутри секции
+      const gapStart = from + randInt(rng, 0, segLen - gapW - 1);
+      // Сегмент до прохода
+      if (gapStart > from) {
+        addWall(boundCol, from, 1, gapStart - from);
+      }
+      // Сегмент после прохода
+      const afterGap = gapStart + gapW;
+      if (afterGap <= to) {
+        addWall(boundCol, afterGap, 1, to - afterGap + 1);
+      }
+    }
+  }
+
+  // Несколько декоративных препятствий из obstacleTypes подвала
+  const decorTypes = currentLocation.obstacleTypes;
+  let decorAtt = 0;
+  let decorPlaced = 0;
+  while (decorPlaced < 4 && decorAtt < 120) {
+    decorAtt++;
+    const type = decorTypes[randInt(rng, 0, decorTypes.length - 1)];
+    const meta = obstacleCatalog[type];
+    const wCells = randInt(rng, meta.wCells[0], meta.wCells[1]);
+    const hCells = randInt(rng, meta.hCells[0], meta.hCells[1]);
+    const col = randInt(rng, 0, GRID_COLS - wCells);
+    const row = randInt(rng, 0, GRID_ROWS - hCells);
+    if (!cellsFree(col, row, wCells, hCells)) continue;
+    markCells(col, row, wCells, hCells);
+    const pos = cellToPixel(col, row);
+    obstacles.push({
+      id: `${type}-${obstacles.length}-${col}-${row}`,
+      type, col, row, wCells, hCells,
+      x: pos.x, y: pos.y,
+      width: wCells * GRID, height: hCells * GRID,
+      moving: false, axis: "x", range: 0, speed: 0,
+      phase: 0, movingOffset: 0, baseX: pos.x, baseY: pos.y,
+    });
+    decorPlaced++;
+  }
+}
+
+// ===== ПОДВАЛ: DFS MAZE =====
+// Классический лабиринт на основе DFS (Recursive Backtracker).
+// Сетка комнат: каждая комната = 2×2 ячейки, стена между комнатами = 1 ячейка.
+// Итого: 9 комнат по горизонтали × 5 по вертикали (при GRID_COLS=28, GRID_ROWS=15).
+// Коридоры шириной 2 ячейки (80px) — гарантированно проходимы.
+function generateDfsMaze(rng) {
+  // Размер комнаты в ячейках (коридор + стена)
+  const ROOM = 2;  // ячейки на комнату (коридор)
+  const WALL = 1;  // ячейки на стену между комнатами
+  const CELL = ROOM + WALL; // 3 ячейки на "шаг" сетки комнат
+
+  // Количество комнат по горизонтали и вертикали
+  // Оставляем по 1 ячейке отступа с каждой стороны
+  const mCols = Math.floor((GRID_COLS - 1) / CELL); // ~9
+  const mRows = Math.floor((GRID_ROWS - 1) / CELL); // ~4
+
+  // Матрица посещённых комнат
+  const visited = new Array(mCols * mRows).fill(false);
+  // Матрица стен: true = стена стоит (закрыта)
+  // Горизонтальные стены (между комнатами по вертикали): (mCols) × (mRows-1)
+  const hWalls = new Array(mCols * (mRows - 1)).fill(true);
+  // Вертикальные стены (между комнатами по горизонтали): (mCols-1) × mRows
+  const vWalls = new Array((mCols - 1) * mRows).fill(true);
+
+  function roomIdx(c, r) { return r * mCols + c; }
+
+  // DFS с явным стеком (не рекурсия — избегаем stack overflow)
+  const startC = randInt(rng, 0, mCols - 1);
+  const startR = randInt(rng, 0, mRows - 1);
+  const stack = [{ c: startC, r: startR }];
+  visited[roomIdx(startC, startR)] = true;
+
+  const dirs = [
+    { dc: 0, dr: -1, name: "up" },
+    { dc: 1, dr:  0, name: "right" },
+    { dc: 0, dr:  1, name: "down" },
+    { dc: -1, dr: 0, name: "left" },
+  ];
+
+  while (stack.length > 0) {
+    const { c, r } = stack[stack.length - 1];
+    // Перемешиваем направления через rng
+    const shuffled = [...dirs].sort(() => rng() - 0.5);
+    let moved = false;
+    for (const { dc, dr, name } of shuffled) {
+      const nc = c + dc, nr = r + dr;
+      if (nc < 0 || nc >= mCols || nr < 0 || nr >= mRows) continue;
+      if (visited[roomIdx(nc, nr)]) continue;
+      // Убираем стену между (c,r) и (nc,nr)
+      if (name === "right") vWalls[(mCols - 1) * r + c] = false;
+      else if (name === "left") vWalls[(mCols - 1) * r + (nc)] = false;
+      else if (name === "down") hWalls[mCols * r + c] = false;
+      else if (name === "up")   hWalls[mCols * (nr) + c] = false;
+      visited[roomIdx(nc, nr)] = true;
+      stack.push({ c: nc, r: nr });
+      moved = true;
+      break;
+    }
+    if (!moved) stack.pop();
+  }
+
+  // Конвертируем стены в объекты obstacles
+  // Начальный offset: 1 ячейка отступа от края
+  const offC = 1, offR = 1;
+
+  function addWallSeg(col, row, wCells, hCells) {
+    if (col < 0 || row < 0 || col + wCells > GRID_COLS || row + hCells > GRID_ROWS) return;
+    if (!cellsFree(col, row, wCells, hCells)) return;
+    markCells(col, row, wCells, hCells);
+    const pos = cellToPixel(col, row);
+    const type = hCells <= wCells ? "wall_h" : "wall_v";
+    obstacles.push({
+      id: `${type}-${obstacles.length}-${col}-${row}`,
+      type, col, row, wCells, hCells,
+      x: pos.x, y: pos.y,
+      width: wCells * GRID, height: hCells * GRID,
+      moving: false, axis: "x", range: 0, speed: 0,
+      phase: 0, movingOffset: 0, baseX: pos.x, baseY: pos.y,
+    });
+  }
+
+  // Внешние стены (периметр)
+  // Верхняя и нижняя
+  addWallSeg(offC, offR - 1, mCols * CELL - WALL, 1);
+  addWallSeg(offC, offR + mRows * CELL - WALL, mCols * CELL - WALL, 1);
+  // Левая и правая
+  addWallSeg(offC - 1, offR, 1, mRows * CELL - WALL);
+  addWallSeg(offC + mCols * CELL - WALL, offR, 1, mRows * CELL - WALL);
+
+  // Внутренние вертикальные стены (между комнатами по горизонтали)
+  for (let r = 0; r < mRows; r++) {
+    for (let c = 0; c < mCols - 1; c++) {
+      if (vWalls[(mCols - 1) * r + c]) {
+        // Стена между комнатой (c,r) и (c+1,r)
+        const wallCol = offC + (c + 1) * CELL - WALL;
+        const wallRow = offR + r * CELL;
+        addWallSeg(wallCol, wallRow, WALL, ROOM);
+      }
+    }
+  }
+
+  // Внутренние горизонтальные стены (между комнатами по вертикали)
+  for (let r = 0; r < mRows - 1; r++) {
+    for (let c = 0; c < mCols; c++) {
+      if (hWalls[mCols * r + c]) {
+        // Стена между комнатой (c,r) и (c,r+1)
+        const wallCol = offC + c * CELL;
+        const wallRow = offR + (r + 1) * CELL - WALL;
+        addWallSeg(wallCol, wallRow, ROOM, WALL);
+      }
+    }
+  }
+
+  // Угловые столбики на пересечениях стен
+  for (let r = 0; r <= mRows; r++) {
+    for (let c = 0; c <= mCols; c++) {
+      const col = offC + c * CELL - (c > 0 ? WALL : 0) - (c === 0 ? 1 : 0);
+      const row = offR + r * CELL - (r > 0 ? WALL : 0) - (r === 0 ? 1 : 0);
+      // Только угловые точки на пересечениях внутренних стен
+      if (c > 0 && c < mCols && r > 0 && r < mRows) {
+        const wallCol = offC + c * CELL - WALL;
+        const wallRow = offR + r * CELL - WALL;
+        addWallSeg(wallCol, wallRow, WALL, WALL);
+      }
+    }
+  }
+}
+
 // ===== ГЕНЕРАЦИЯ УРОВНЯ =====
 function generateLevel() {
   levelSeed = level * 9973 + score * 17 + globalSeed * 31 + 13;
   const rng = createRng(levelSeed);
-  currentLocation = locationThemes[randInt(rng, 0, locationThemes.length - 1)];
+
+  // ===== ВЫБОР ЛОКАЦИИ =====
+  // Подвал — закрытая локация, появляется только с уровня 9+.
+  // DFS-режим (сложнее) проверяется первым — он перекрывает corridor при level>=20.
+  // Обычные локации выбираются из 5 тем (без подвала).
+  const normalThemes = locationThemes.filter(t => t.key !== "basement");
+  basementMode = "";
+  if (level >= BASEMENT.dfsMinLevel && rng() < BASEMENT.dfsProb) {
+    currentLocation = locationThemes.find(t => t.key === "basement");
+    basementMode = "dfs";
+  } else if (level >= BASEMENT.corridorMinLevel && rng() < BASEMENT.corridorProb) {
+    currentLocation = locationThemes.find(t => t.key === "basement");
+    basementMode = "corridor";
+  } else {
+    currentLocation = normalThemes[randInt(rng, 0, normalThemes.length - 1)];
+  }
 
   obstacles.length = 0;
   bonuses.length = 0;
   catnipTimer = 0;  // сброс котовника при старте нового уровня
   occupiedCells.clear();
-
-  const obstCount = Math.min(4 + level, 12);
-  const movingAllowed = level >= 5;
-
-  // Профиль уровня — определяет плотность, зазоры и зональные предпочтения
-  const profile = getLevelProfile(level);
 
   // Спавн кота — случайный угол сетки (детерминировано через RNG)
   // 0=левый нижний, 1=правый нижний, 2=левый верхний, 3=правый верхний
@@ -421,12 +695,24 @@ function generateLevel() {
   const blockRow = Math.max(0, Math.min(spawnRow - (spawnRow > 0 ? 2 : 0), GRID_ROWS - 3));
   markCells(blockCol, blockRow, 3, 3);
 
-  // Генерация препятствий с профилем уровня
-  let att = 0;
-  while (obstacles.length < obstCount && att < obstCount * 80) {
-    att++;
-    const ob = generateObstacle(currentLocation, rng, obstacles.length, movingAllowed, profile);
-    if (ob) obstacles.push(ob);
+  if (currentLocation.key === "basement") {
+    // ===== ПОДВАЛ: лабиринт =====
+    if (basementMode === "dfs") {
+      generateDfsMaze(rng);
+    } else {
+      generateCorridorMaze(rng);
+    }
+  } else {
+    // ===== ОБЫЧНЫЙ УРОВЕНЬ: препятствия =====
+    const obstCount = Math.min(4 + level, 12);
+    const movingAllowed = level >= 5;
+    const profile = getLevelProfile(level);
+    let att = 0;
+    while (obstacles.length < obstCount && att < obstCount * 80) {
+      att++;
+      const ob = generateObstacle(currentLocation, rng, obstacles.length, movingAllowed, profile);
+      if (ob) obstacles.push(ob);
+    }
   }
 
   // Размещение лотка
