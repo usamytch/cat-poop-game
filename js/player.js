@@ -35,6 +35,28 @@ const player = {
     let iconX = this.x;
     if (speedBoostTimer > 0) { drawEmoji("🐟", iconX + 9, this.y - 6 + 9, 18); iconX += 22; }
     if (yarnFreezeTimer > 0) { drawEmoji("🧶", iconX + 9, this.y - 6 + 9, 18); }
+
+    // Светящиеся глаза в подвале
+    if (basementMode !== "") {
+      // Моргание: ~раз в 3.5 сек глаза закрыты на мгновение
+      const blinking = Math.sin(_now * 0.0018) > 0.96;
+      if (!blinking) {
+        ctx.save();
+        ctx.shadowColor = "rgba(180,255,80,0.9)";
+        ctx.shadowBlur = 8;
+        ctx.fillStyle = "rgba(200,255,100,0.92)";
+        // Абсолютные пиксели по спрайту cat.png (36×36px):
+        // левый глаз ≈ (11, 16), правый глаз ≈ (25, 16)
+        ctx.beginPath();
+        ctx.ellipse(this.x + 11, this.y + 16, 3.5, 2.5, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.beginPath();
+        ctx.ellipse(this.x + 25, this.y + 16, 3.5, 2.5, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      }
+    }
+
     ctx.restore();
   },
 

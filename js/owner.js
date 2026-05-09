@@ -6,6 +6,10 @@ const owner = {
   x: 800, y: 300, width: 36, height: 52,
   active: false, speed: 1.0,
 
+  // Направление взгляда (нормализованный вектор) — для фонарика в подвале
+  facingX: 1,
+  facingY: 0,
+
   // A* навигация
   path: [],           // [{col, row}, ...] — текущий путь по сетке
   pathTimer: 0,       // пересчитываем путь каждые N кадров
@@ -123,8 +127,48 @@ const owner = {
     this.shotReactTimer = 30; // ~0.5 сек показываем знак паники ‼
   },
 
+  // Конус фонарика — рисуется ДО спрайта хозяина (под ним)
+  _drawFlashlight() {
+    if (basementMode === "") return; // только в подвале
+
+    const cx = this.x + this.width / 2;
+    const cy = this.y + this.height / 2;
+    const angle = Math.atan2(this.facingY, this.facingX);
+    const coneAngle = Math.PI / 4.5; // ~40° полуугол
+    const coneLen = 220;
+
+    ctx.save();
+
+    // Радиальный градиент — тёплый жёлтый свет, затухает к краям
+    const grad = ctx.createRadialGradient(cx, cy, 8, cx, cy, coneLen);
+    grad.addColorStop(0,   "rgba(255,230,140,0.42)");
+    grad.addColorStop(0.4, "rgba(255,210,100,0.22)");
+    grad.addColorStop(1,   "rgba(255,190,60,0)");
+
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.moveTo(cx, cy);
+    ctx.arc(cx, cy, coneLen, angle - coneAngle, angle + coneAngle);
+    ctx.closePath();
+    ctx.fill();
+
+    // Маленький кружок — сам фонарик (источник света)
+    ctx.fillStyle = "rgba(255,240,180,0.75)";
+    ctx.beginPath();
+    ctx.arc(
+      cx + this.facingX * (this.width / 2 + 2),
+      cy + this.facingY * (this.height / 2 + 2),
+      5, 0, Math.PI * 2
+    );
+    ctx.fill();
+
+    ctx.restore();
+  },
+
   draw() {
     if (!this.active) return;
+    // Фонарик рисуется под спрайтом хозяина
+    this._drawFlashlight();
     // Мигание во время бегства
     if (this.fleeTimer > 0 && Math.floor(this.fleeTimer / 8) % 2 === 0) {
       ctx.globalAlpha = 0.55;
@@ -259,6 +303,9 @@ const owner = {
         const dist = Math.sqrt(dist2);
         dx /= dist;
         dy /= dist;
+        // Обновляем направление взгляда только из нормализованного вектора
+        this.facingX = dx;
+        this.facingY = dy;
       }
 
       // Применяем дрейф (человечность) — небольшое угловое отклонение
@@ -277,6 +324,9 @@ const owner = {
       if (dist2 > 1) {
         const dist = Math.sqrt(dist2);
         dx /= dist; dy /= dist;
+        // Обновляем направление взгляда из нормализованного вектора
+        this.facingX = dx;
+        this.facingY = dy;
       }
     }
 

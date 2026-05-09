@@ -52,8 +52,22 @@ window.addEventListener("keydown", e => {
       difficulty = order[(idx + (e.key === "ArrowDown" ? 1 : -1) + 3) % 3];
     }
     if (e.key === "Enter" || e.key === " ") startGame();
+    // Чит-код: Shift+B (латинская) — форсировать подвал
+    if (e.key === "B") {
+      cheatBasement = true;
+      level = 9;
+      startGame();
+    }
   } else if (gameState === "playing") {
     if (e.key === " " || e.key === "x" || e.key === "X") shootPoop();
+    // Чит-код: Shift+B — телепорт в подвал без сброса счёта/жизней
+    if (e.key === "B") {
+      cheatBasement = true;
+      level = Math.max(level, 9);
+      generateLevel();
+      owner.activate();
+      levelMessageTimer = 180;
+    }
   } else if (gameState === "lifeLost") {
     // Enter/пробел — пропустить ожидание и сразу возобновить
     if (e.key === "Enter" || e.key === " ") respawnPlayer();

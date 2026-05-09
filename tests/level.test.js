@@ -855,3 +855,46 @@ describe('updateObstacles()', () => {
     expect(ob.y).toBe(prevY);
   });
 });
+
+// ---------------------------------------------------------------------------
+describe('cheatBasement', () => {
+  it('cheatBasement=true forces basement location regardless of level', () => {
+    level = 1; // уровень ниже порога подвала (9)
+    globalSeed = 0;
+    obstacles.length = 0; bonuses.length = 0; occupiedCells.clear();
+    cheatBasement = true;
+    generateLevel();
+    expect(currentLocation.key).toBe('basement');
+    expect(basementMode).toBe('corridor');
+  });
+
+  it('cheatBasement is reset to false after generateLevel()', () => {
+    level = 1;
+    globalSeed = 0;
+    obstacles.length = 0; bonuses.length = 0; occupiedCells.clear();
+    cheatBasement = true;
+    generateLevel();
+    expect(cheatBasement).toBe(false);
+  });
+
+  it('cheatBasement=false does not force basement on low level', () => {
+    level = 1;
+    globalSeed = 0;
+    obstacles.length = 0; bonuses.length = 0; occupiedCells.clear();
+    cheatBasement = false;
+    generateLevel();
+    expect(currentLocation.key).not.toBe('basement');
+  });
+
+  it('after cheatBasement, second generateLevel() uses normal logic', () => {
+    level = 1;
+    globalSeed = 0;
+    obstacles.length = 0; bonuses.length = 0; occupiedCells.clear();
+    cheatBasement = true;
+    generateLevel(); // первый — подвал
+    // второй вызов — cheatBasement уже false, level=1 → не подвал
+    obstacles.length = 0; bonuses.length = 0; occupiedCells.clear();
+    generateLevel();
+    expect(currentLocation.key).not.toBe('basement');
+  });
+});

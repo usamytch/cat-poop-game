@@ -6,6 +6,8 @@ let currentLocation = locationThemes[0];
 let levelSeed = 1;
 // "corridor" | "dfs" | "" — режим подвала для текущего уровня
 let basementMode = "";
+// Флаг чит-кода: при true следующий generateLevel() форсирует подвал (corridor)
+let cheatBasement = false;
 // Per-run random seed set from Date.now() at startGame().
 // Mixing it into levelSeed makes every game run produce a unique map
 // while keeping tests deterministic (tests set globalSeed = 0).
@@ -706,7 +708,12 @@ function generateLevel() {
   // Обычные локации выбираются из 5 тем (без подвала).
   const normalThemes = locationThemes.filter(t => t.key !== "basement");
   basementMode = "";
-  if (level >= BASEMENT.dfsMinLevel && rng() < BASEMENT.dfsProb) {
+  if (cheatBasement) {
+    // Чит-код Shift+B: форсируем подвал (corridor) независимо от уровня
+    currentLocation = locationThemes.find(t => t.key === "basement");
+    basementMode = "corridor";
+    cheatBasement = false; // сбрасываем после использования
+  } else if (level >= BASEMENT.dfsMinLevel && rng() < BASEMENT.dfsProb) {
     currentLocation = locationThemes.find(t => t.key === "basement");
     basementMode = "dfs";
   } else if (level >= BASEMENT.corridorMinLevel && rng() < BASEMENT.corridorProb) {

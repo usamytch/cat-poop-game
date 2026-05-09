@@ -6,6 +6,7 @@
 function drawLitterBox() {
   const urgeRatio = player.urge / player.maxUrge;
   const isPanic = urgeRatio > 0.75;
+  const isBasement = currentLocation.key === "basement";
 
   // Пульсация при панике
   let pulse = 0;
@@ -16,16 +17,24 @@ function drawLitterBox() {
   const lh = litterBox.height + pulse;
   const r = 10; // радиус скругления
 
+  // Палитра: тёмная для подвала, обычная для остальных локаций
+  const bodyColor = isBasement ? "#1e1510" : "#7a5520";
+  const rimColor  = isBasement ? "#2e2018" : "#a0692a";
+  const sandColor = isBasement ? "#3a2e1e" : "#d9b87a";
+  const dotColor  = isBasement ? "rgba(15,10,5,0.60)"   : "rgba(120,80,30,0.22)";
+  const sandShine = isBasement ? "rgba(80,65,45,0.20)"  : "rgba(255,245,200,0.30)";
+  const labelColor = isBasement ? "rgba(160,140,100,0.65)" : "#4a2800";
+
   ctx.save();
 
   // --- Тень под лотком ---
-  ctx.shadowColor = "rgba(0,0,0,0.45)";
+  ctx.shadowColor = isBasement ? "rgba(0,0,0,0.70)" : "rgba(0,0,0,0.45)";
   ctx.shadowBlur = 14;
   ctx.shadowOffsetX = 3;
   ctx.shadowOffsetY = 6;
 
-  // --- Корпус лотка (тёмно-коричневый, скруглённый) ---
-  ctx.fillStyle = "#7a5520";
+  // --- Корпус лотка (скруглённый) ---
+  ctx.fillStyle = bodyColor;
   ctx.beginPath(); ctx.roundRect(lx, ly + 10, lw, lh - 10, r); ctx.fill();
 
   // Сбрасываем тень для внутренних деталей
@@ -34,20 +43,22 @@ function drawLitterBox() {
   ctx.shadowOffsetX = 0;
   ctx.shadowOffsetY = 0;
 
-  // --- Бортик / ободок (чуть светлее, выступает по бокам) ---
-  ctx.fillStyle = "#a0692a";
+  // --- Бортик / ободок (выступает по бокам) ---
+  ctx.fillStyle = rimColor;
   ctx.beginPath(); ctx.roundRect(lx - 5, ly, lw + 10, 18, r); ctx.fill();
 
-  // Блик на ободке — имитация глянца
-  ctx.fillStyle = "rgba(255,220,150,0.28)";
-  ctx.beginPath(); ctx.roundRect(lx + 4, ly + 2, lw - 8, 6, 4); ctx.fill();
+  // Блик на ободке — только не в подвале
+  if (!isBasement) {
+    ctx.fillStyle = "rgba(255,220,150,0.28)";
+    ctx.beginPath(); ctx.roundRect(lx + 4, ly + 2, lw - 8, 6, 4); ctx.fill();
+  }
 
-  // --- Наполнитель (песок) — скруглённый прямоугольник внутри ---
-  ctx.fillStyle = "#d9b87a";
+  // --- Наполнитель — скруглённый прямоугольник внутри ---
+  ctx.fillStyle = sandColor;
   ctx.beginPath(); ctx.roundRect(lx + 7, ly + 18, lw - 14, lh - 28, 7); ctx.fill();
 
-  // Текстура песка — несколько тёмных точек
-  ctx.fillStyle = "rgba(120,80,30,0.22)";
+  // Текстура наполнителя — несколько тёмных точек
+  ctx.fillStyle = dotColor;
   const sandDots = [
     [lx + 18, ly + 28], [lx + lw*0.4, ly + 32], [lx + lw*0.65, ly + 26],
     [lx + lw*0.3, ly + lh - 20], [lx + lw*0.7, ly + lh - 18],
@@ -57,9 +68,36 @@ function drawLitterBox() {
     ctx.beginPath(); ctx.ellipse(dx, dy, 5, 3, 0.4, 0, Math.PI * 2); ctx.fill();
   }
 
-  // Блик на песке — светлая полоска сверху
-  ctx.fillStyle = "rgba(255,245,200,0.30)";
+  // Блик на наполнителе — светлая полоска сверху
+  ctx.fillStyle = sandShine;
   ctx.beginPath(); ctx.roundRect(lx + 12, ly + 20, lw - 24, 7, 4); ctx.fill();
+
+  // --- Плесень (только в подвале) ---
+  if (isBasement) {
+    const moldSpots = [
+      { rx: lw * 0.15, ry: lh * 0.40, rx2: 7, ry2: 4, rot: 0.3  },
+      { rx: lw * 0.70, ry: lh * 0.60, rx2: 5, ry2: 3, rot: -0.5 },
+      { rx: lw * 0.45, ry: lh * 0.75, rx2: 8, ry2: 3, rot: 0.8  },
+      { rx: lw * 0.85, ry: lh * 0.35, rx2: 4, ry2: 4, rot: 0.1  },
+    ];
+    ctx.fillStyle = "rgba(35,65,25,0.60)";
+    for (const m of moldSpots) {
+      ctx.save();
+      ctx.translate(lx + m.rx, ly + 10 + m.ry);
+      ctx.rotate(m.rot);
+      ctx.beginPath();
+      ctx.ellipse(0, 0, m.rx2, m.ry2, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+    // Маленькие точки плесени
+    ctx.fillStyle = "rgba(50,90,30,0.45)";
+    [[lw*0.25, lh*0.50], [lw*0.60, lh*0.30], [lw*0.80, lh*0.65]].forEach(([rx, ry]) => {
+      ctx.beginPath();
+      ctx.arc(lx + rx, ly + 10 + ry, 2.5, 0, Math.PI * 2);
+      ctx.fill();
+    });
+  }
 
   // --- Паника: красное свечение поверх ---
   if (isPanic) {
@@ -69,7 +107,7 @@ function drawLitterBox() {
   }
 
   // --- Подпись ---
-  ctx.fillStyle = "#4a2800";
+  ctx.fillStyle = labelColor;
   setFont("bold 12px Arial");
   ctx.textAlign = "center";
   ctx.fillText("🐾 Лоток", litterBox.x + litterBox.width / 2, litterBox.y + litterBox.height + 20);
@@ -296,6 +334,8 @@ function drawStartScreen() {
 
     setFont("15px Arial"); ctx.fillStyle = "rgba(255,255,255,0.45)";
     ctx.fillText("WASD / Стрелки — движение  |  Пробел — стрелять  |  M — " + (muted ? "🔇 выкл" : "🔊 вкл"), WORLD.width/2, 650);
+    setFont("13px Arial"); ctx.fillStyle = "rgba(255,200,80,0.50)";
+    ctx.fillText("[Shift+B] — 🏚️ Подвал (чит)", WORLD.width/2, 672);
   }
 
   ctx.restore();

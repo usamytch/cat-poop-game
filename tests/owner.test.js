@@ -622,3 +622,78 @@ describe('escapeObstacles — owner is never inside obstacles', () => {
     expect(overlaps).toBe(false);
   });
 });
+
+// ---------------------------------------------------------------------------
+describe('owner.facingX/facingY — normalized direction vector', () => {
+  it('initial facingX=1, facingY=0 is a unit vector', () => {
+    const len = Math.sqrt(owner.facingX ** 2 + owner.facingY ** 2);
+    expect(len).toBeCloseTo(1.0, 5);
+  });
+
+  it('facingX/facingY remain unit vector after direct-movement update (no path)', () => {
+    owner.active = true;
+    owner.fleeTimer = 0;
+    owner.path = [];
+    owner.pathTimer = 0;
+    // Place player far away so owner moves toward it without catching
+    player.x = 700;
+    player.y = 100;
+    owner.x = 100;
+    owner.y = 500;
+    // Run several frames
+    for (let i = 0; i < 10; i++) owner.update();
+    const len = Math.sqrt(owner.facingX ** 2 + owner.facingY ** 2);
+    expect(len).toBeCloseTo(1.0, 2);
+  });
+
+  it('facingX/facingY remain unit vector after A* path following', () => {
+    owner.active = true;
+    owner.fleeTimer = 0;
+    obstacles.length = 0;
+    // Place player far away diagonally
+    player.x = 800;
+    player.y = 100;
+    owner.x = 100;
+    owner.y = 500;
+    owner.path = [];
+    owner.pathTimer = 0;
+    // Run enough frames for A* to compute a path and follow it
+    for (let i = 0; i < 30; i++) owner.update();
+    const len = Math.sqrt(owner.facingX ** 2 + owner.facingY ** 2);
+    expect(len).toBeCloseTo(1.0, 2);
+  });
+
+  it('facingX/facingY are never set from un-normalized dx/dy (length never > 1.01)', () => {
+    owner.active = true;
+    owner.fleeTimer = 0;
+    obstacles.length = 0;
+    player.x = 750;
+    player.y = 150;
+    owner.x = 150;
+    owner.y = 450;
+    owner.path = [];
+    owner.pathTimer = 0;
+    // Run many frames and check every frame
+    for (let i = 0; i < 60; i++) {
+      owner.update();
+      const len = Math.sqrt(owner.facingX ** 2 + owner.facingY ** 2);
+      expect(len).toBeLessThanOrEqual(1.01);
+    }
+  });
+
+  it('facingX/facingY stay unit vector during flee mode movement', () => {
+    owner.active = true;
+    owner.fleeTimer = 60;
+    const b = getPlayBounds();
+    owner.fleeTarget = { x: b.right - owner.width - 20, y: b.top + 20 };
+    player.x = 100;
+    player.y = 400;
+    owner.x = 200;
+    owner.y = 400;
+    owner.path = [];
+    owner.pathTimer = 0;
+    for (let i = 0; i < 20; i++) owner.update();
+    const len = Math.sqrt(owner.facingX ** 2 + owner.facingY ** 2);
+    expect(len).toBeCloseTo(1.0, 2);
+  });
+});
