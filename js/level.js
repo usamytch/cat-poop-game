@@ -434,21 +434,25 @@ function generateCorridorMaze(rng) {
   // Каждая стена — полная ширина с 2 проходами по 2 ячейки
   const hWallRows = [3, 6, 9, 12];
   for (const row of hWallRows) {
-    // Генерируем 2 прохода: случайные позиции, не перекрывающиеся
+    // Генерируем 2 прохода: случайные позиции, не перекрывающиеся.
+    // Горизонтальные стены занимают cols wallStart..wallEnd-1 (не трогают col 0 и col 29),
+    // чтобы боковые стены (код ниже) могли гарантированно поставить проходы на краях.
     const gapWidth = 2;
-    const totalCols = GRID_COLS; // 28
+    const wallStart = 1;            // col 0 оставляем для боковой стены
+    const wallEnd = GRID_COLS - 1;  // col 29 оставляем для боковой стены
+    const totalCols = wallEnd - wallStart; // 28
     // Делим на 3 зоны, в каждой зоне один проход
-    const zoneW = Math.floor(totalCols / 3);
+    const zoneW = Math.floor(totalCols / 3); // 9
     const gaps = [];
     for (let z = 0; z < 3; z++) {
       // Берём 2 из 3 зон для проходов (случайно пропускаем одну)
       if (z === Math.floor(rng() * 3)) continue;
-      const zoneStart = z * zoneW;
+      const zoneStart = wallStart + z * zoneW;
       const gapCol = zoneStart + randInt(rng, 0, zoneW - gapWidth - 1);
       gaps.push(gapCol);
     }
     // Строим стену: сегменты между проходами
-    let col = 0;
+    let col = wallStart;
     // Сортируем проходы
     gaps.sort((a, b) => a - b);
     for (const gapCol of gaps) {
@@ -457,8 +461,8 @@ function generateCorridorMaze(rng) {
       }
       col = gapCol + gapWidth;
     }
-    if (col < GRID_COLS) {
-      addWall(col, row, GRID_COLS - col, 1);
+    if (col < wallEnd) {
+      addWall(col, row, wallEnd - col, 1);
     }
   }
 
@@ -515,7 +519,8 @@ function generateCorridorMaze(rng) {
     }
   }
 
-  // Несколько декоративных препятствий из obstacleTypes подвала
+  // Несколько декоративных препятствий из obstacleTypes подвала.
+  // Исключаем col 0 и col GRID_COLS-1 — они зарезервированы для боковых проходов.
   const decorTypes = currentLocation.obstacleTypes;
   let decorAtt = 0;
   let decorPlaced = 0;
@@ -525,7 +530,9 @@ function generateCorridorMaze(rng) {
     const meta = obstacleCatalog[type];
     const wCells = randInt(rng, meta.wCells[0], meta.wCells[1]);
     const hCells = randInt(rng, meta.hCells[0], meta.hCells[1]);
-    const col = randInt(rng, 0, GRID_COLS - wCells);
+    // Не ставим декор на боковые колонки (col 0 и col GRID_COLS-1) —
+    // они должны оставаться доступными для прохода игрока.
+    const col = randInt(rng, 1, GRID_COLS - wCells - 1);
     const row = randInt(rng, 0, GRID_ROWS - hCells);
     if (!_makeWallObstacle(col, row, wCells, hCells)) continue;
     decorPlaced++;

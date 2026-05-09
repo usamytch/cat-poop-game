@@ -27,6 +27,11 @@ function rebuildBgLayer() {
   for (const ob of obstacles) {
     if (!ob.moving) _drawObstacleTo(bctx, ob);
   }
+  // Лампочка подвала рисуется ПОСЛЕ стен — конус света поверх кирпичей
+  if (currentLocation.key === "basement" &&
+      currentLocation.decorations.includes("bulb")) {
+    _drawBasementBulb(bctx);
+  }
 }
 
 // Вспомогательная rrect для произвольного контекста
@@ -291,11 +296,15 @@ function _drawObstacleTo(bctx, ob) {
           }
         }
       } else {
-        // Вертикальная стена — горизонтальные кирпичи
-        const bH = 20, bW = 10;
+        // Вертикальная стена — те же кирпичи 20×10px, что и у wall_h (running bond)
+        // Одинаковые пропорции делают горизонтальные и вертикальные стены частью
+        // одной кирпичной кладки.
+        const bH = 10, bW = 20;
+        // Горизонтальные швы
         for (let by = bH; by < h; by += bH) {
           bctx.beginPath(); bctx.moveTo(0, by); bctx.lineTo(w, by); bctx.stroke();
         }
+        // Вертикальные швы — кирпичная раскладка (offset через строку)
         let row = 0;
         for (let by = 0; by < h; by += bH, row++) {
           const off = (row % 2) * (bW / 2);
@@ -751,26 +760,43 @@ function _drawBgTo(bctx) {
     }
     bctx.restore();
   }
-  if (dec.includes("bulb")) {
-    // Тусклая лампочка по центру потолка
-    bctx.save();
-    const bx = WORLD.width / 2, by = 18;
-    // Провод
-    bctx.strokeStyle = "#3a3a3a"; bctx.lineWidth = 2;
-    bctx.beginPath(); bctx.moveTo(bx, 0); bctx.lineTo(bx, by); bctx.stroke();
-    // Патрон
-    _rrectTo(bctx, bx - 6, by, 12, 10, 3, "#4a4a4a");
-    // Колба
-    bctx.fillStyle = "#c8a840";
-    bctx.beginPath(); bctx.arc(bx, by + 22, 12, 0, Math.PI * 2); bctx.fill();
-    // Конус света
-    bctx.fillStyle = "rgba(200,160,40,0.07)";
-    bctx.beginPath();
-    bctx.moveTo(bx - 12, by + 22);
-    bctx.lineTo(bx - 90, WORLD.height - WORLD.floorHeight - 6);
-    bctx.lineTo(bx + 90, WORLD.height - WORLD.floorHeight - 6);
-    bctx.lineTo(bx + 12, by + 22);
-    bctx.closePath(); bctx.fill();
-    bctx.restore();
-  }
+  // Лампочка (bulb) намеренно НЕ рисуется здесь — она рисуется в _drawBasementBulb()
+  // ПОСЛЕ стен, чтобы конус света был поверх кирпичей, а не под ними.
+}
+
+// ===== ЛАМПОЧКА ПОДВАЛА — рисуется поверх всех стен =====
+// Вызывается из rebuildBgLayer() после отрисовки статичных препятствий.
+// Это гарантирует:
+//   1. Конус света поверх кирпичных стен (не закрывается ими)
+//   2. Зона вокруг лампочки визуально чистая — патрон и колба перекрывают кирпичи
+function _drawBasementBulb(bctx) {
+  bctx.save();
+  const bx = WORLD.width / 2, by = 18;
+
+  // Конус света — рисуем первым, он самый нижний слой лампочки
+  bctx.fillStyle = "rgba(200,160,40,0.07)";
+  bctx.beginPath();
+  bctx.moveTo(bx - 12, by + 22);
+  bctx.lineTo(bx - 90, WORLD.height - WORLD.floorHeight - 6);
+  bctx.lineTo(bx + 90, WORLD.height - WORLD.floorHeight - 6);
+  bctx.lineTo(bx + 12, by + 22);
+  bctx.closePath(); bctx.fill();
+
+  // Зачищаем кирпичи вокруг патрона и колбы — небольшой прямоугольник у потолка
+  // Используем цвет стены подвала, чтобы "стереть" кирпичный паттерн
+  bctx.fillStyle = "#1e1c1a"; // palette.wall подвала
+  bctx.fillRect(bx - 20, 0, 40, by + 36);
+
+  // Провод
+  bctx.strokeStyle = "#3a3a3a"; bctx.lineWidth = 2;
+  bctx.beginPath(); bctx.moveTo(bx, 0); bctx.lineTo(bx, by); bctx.stroke();
+
+  // Патрон
+  _rrectTo(bctx, bx - 6, by, 12, 10, 3, "#4a4a4a");
+
+  // Колба
+  bctx.fillStyle = "#c8a840";
+  bctx.beginPath(); bctx.arc(bx, by + 22, 12, 0, Math.PI * 2); bctx.fill();
+
+  bctx.restore();
 }
