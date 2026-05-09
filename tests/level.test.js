@@ -479,7 +479,7 @@ describe('generateLevel()', () => {
   // valueNoise: deterministic, in [0..1], varies across positions
   // ---------------------------------------------------------------------------
   it('valueNoise returns values in [0..1]', () => {
-    for (let col = 0; col < 28; col += 4) {
+    for (let col = 0; col < 30; col += 4) {
       for (let row = 0; row < 15; row += 3) {
         const n = valueNoise(col, row, 12345);
         expect(n).toBeGreaterThanOrEqual(0);
@@ -762,6 +762,53 @@ describe('basement level', () => {
       obstacles.length = 0; bonuses.length = 0; occupiedCells.clear();
       generateLevel();
       expect(currentLocation.key).not.toBe('basement');
+    }
+  });
+
+  it('dfs maze: columns outside maze footprint are fully blocked by walls', () => {
+    // DFS-сетка: offC=1, mCols=9, CELL=3, WALL=1 → правый край = 1+9*3-1 = 27
+    // Колонки 28..GRID_COLS-1 должны быть полностью заблокированы
+    const found = forceBasementLevel('dfs');
+    expect(found, 'dfs basement not found').toBe(true);
+    const ROOM = 2, WALL_W = 1, CELL_W = ROOM + WALL_W;
+    const offC = 1;
+    const mCols = Math.floor((GRID_COLS - 1) / CELL_W);
+    const mazeRightEdge = offC + mCols * CELL_W - WALL_W; // = 27 при GRID_COLS=30
+    for (let c = mazeRightEdge + 1; c < GRID_COLS; c++) {
+      for (let r = 0; r < GRID_ROWS; r++) {
+        expect(
+          isCellFree(c, r),
+          `DFS maze: col ${c} row ${r} should be blocked (outside maze footprint)`
+        ).toBe(false);
+      }
+    }
+  });
+
+  it('corridor maze: side columns (0 and GRID_COLS-1) have at least one passable gap', () => {
+    // Граничные стены коридорного лабиринта должны иметь проходы
+    const found = forceBasementLevel('corridor');
+    expect(found, 'corridor basement not found').toBe(true);
+    let freeLeft = 0, freeRight = 0;
+    for (let r = 0; r < GRID_ROWS; r++) {
+      if (isCellFree(0, r)) freeLeft++;
+      if (isCellFree(GRID_COLS - 1, r)) freeRight++;
+    }
+    expect(freeLeft, 'left boundary column should have at least one gap').toBeGreaterThan(0);
+    expect(freeRight, 'right boundary column should have at least one gap').toBeGreaterThan(0);
+  });
+
+  it('basement: A* with cat-sized entity finds path to litterBox after reachability fix', () => {
+    // Проверяем оба режима: _ensureBasementReachable() гарантирует проходимость
+    for (const mode of ['corridor', 'dfs']) {
+      const found = forceBasementLevel(mode);
+      if (!found) continue;
+      const start = pixelToCell(player.x + player.size / 2, player.y + player.size / 2);
+      const end   = pixelToCell(litterBox.x + litterBox.width / 2, litterBox.y + litterBox.height / 2);
+      const path  = aStarPath(start.col, start.row, end.col, end.row, player.size, player.size);
+      expect(
+        path,
+        `${mode}: A* with cat size (${player.size}x${player.size}) should find path to litterBox`
+      ).not.toBeNull();
     }
   });
 });

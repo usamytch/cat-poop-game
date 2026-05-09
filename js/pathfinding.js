@@ -55,7 +55,8 @@ const _astarClosed = new Set();  // key
 // Возвращает массив {col, row} от startCell до goalCell, или null если пути нет.
 // Использует 4-связную сетку (вверх/вниз/влево/вправо).
 // entityW/entityH — физический размер сущности (px) для проверки проходимости ячеек.
-function aStarPath(startCol, startRow, goalCol, goalRow, entityW, entityH) {
+// maxIter — лимит итераций (по умолчанию 600 для рантайма; передавай 2000 при генерации уровня).
+function aStarPath(startCol, startRow, goalCol, goalRow, entityW, entityH, maxIter = 600) {
   const heuristic = (c, r) => Math.abs(c - goalCol) + Math.abs(r - goalRow);
 
   // Проверяет, может ли сущность физически находиться в центре ячейки (nc, nr)
@@ -89,7 +90,7 @@ function aStarPath(startCol, startRow, goalCol, goalRow, entityW, entityH) {
   const dirs = [{dc:1,dr:0},{dc:-1,dr:0},{dc:0,dr:1},{dc:0,dr:-1}];
 
   let iterations = 0;
-  while (!heap.isEmpty() && iterations < 600) {
+  while (!heap.isEmpty() && iterations < maxIter) {
     iterations++;
 
     // OPT 1: O(log n) вместо O(n)

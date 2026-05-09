@@ -25,7 +25,7 @@ describe('Grid utility functions', () => {
     // Это в 3-5x быстрее при использовании в Map/Set
     expect(cellKey(3, 5)).toBe(305);
     expect(cellKey(0, 0)).toBe(0);
-    expect(cellKey(27, 14)).toBe(2714); // max valid key (GRID_COLS-1, GRID_ROWS-1)
+    expect(cellKey(29, 14)).toBe(2914); // max valid key (GRID_COLS-1, GRID_ROWS-1)
     // Уникальность: разные (col,row) дают разные ключи при col<100, row<100
     expect(cellKey(1, 0)).not.toBe(cellKey(0, 1));
   });

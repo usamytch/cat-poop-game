@@ -18,7 +18,7 @@ const litterBox = { x:620, y:310, width: GRID*2, height: GRID*2 };
 
 // ===== СЕТКА =====
 // OPT 2: Целочисленный ключ вместо строки `${col},${row}`.
-// GRID_ROWS=15, GRID_COLS=28 → max key = 27*100+14 = 2714 (уникален при col<100, row<100)
+// GRID_ROWS=15, GRID_COLS=30 → max key = 29*100+14 = 2914 (уникален при col<100, row<100)
 // occupiedCells хранит числовые ключи col*100+row для всех занятых ячеек.
 // Декор не занимает ячейки.
 const occupiedCells = new Set();
@@ -315,6 +315,38 @@ function generateDecor(theme, rng, count) {
   }
 }
 
+// ===== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ =====
+
+// Создаёт объект стены-препятствия и добавляет его в obstacles.
+// Тип определяется автоматически: wall_h (горизонталь) или wall_v (вертикаль).
+// Возвращает true если стена добавлена, false если ячейки заняты.
+function _makeWallObstacle(col, row, wCells, hCells) {
+  if (!cellsFree(col, row, wCells, hCells)) return false;
+  markCells(col, row, wCells, hCells);
+  const pos = cellToPixel(col, row);
+  const type = hCells <= wCells ? "wall_h" : "wall_v";
+  obstacles.push({
+    id: `${type}-${obstacles.length}-${col}-${row}`,
+    type, col, row, wCells, hCells,
+    x: pos.x, y: pos.y,
+    width: wCells * GRID, height: hCells * GRID,
+    moving: false, axis: "x", range: 0, speed: 0,
+    phase: 0, movingOffset: 0, baseX: pos.x, baseY: pos.y,
+  });
+  return true;
+}
+
+// Размещает лоток в ячейке (c, r) и обновляет litterBox.
+// Предполагает, что ячейки уже проверены как свободные.
+function _placeLitterBoxAt(c, r, lbW, lbH) {
+  markCells(c, r, lbW, lbH);
+  const pos = cellToPixel(c, r);
+  litterBox.x = pos.x;
+  litterBox.y = pos.y;
+  litterBox.width  = lbW * GRID;
+  litterBox.height = lbH * GRID;
+}
+
 // ===== РАЗМЕЩЕНИЕ ЛОТКА =====
 function placeLitterBox(rng, spawnCol, spawnRow) {
   // Лоток занимает 2×2 ячейки (80×80px при GRID=40)
@@ -351,13 +383,7 @@ function placeLitterBox(rng, spawnCol, spawnRow) {
     const mw = (c - mc) + lbW + rightPad;
     const mh = (r - mr) + lbH + bottomPad;
     if (!cellsFree(mc, mr, mw, mh)) continue;
-
-    markCells(c, r, lbW, lbH);
-    const pos = cellToPixel(c, r);
-    litterBox.x = pos.x;
-    litterBox.y = pos.y;
-    litterBox.width  = lbW * GRID;
-    litterBox.height = lbH * GRID;
+    _placeLitterBoxAt(c, r, lbW, lbH);
     return;
   }
 
@@ -373,23 +399,21 @@ function placeLitterBox(rng, spawnCol, spawnRow) {
       const mw = (c - mc) + lbW + rightPad;
       const mh = (r - mr) + lbH + bottomPad;
       if (!cellsFree(mc, mr, mw, mh)) continue;
-      markCells(c, r, lbW, lbH);
-      const pos = cellToPixel(c, r);
-      litterBox.x = pos.x;
-      litterBox.y = pos.y;
-      litterBox.width  = lbW * GRID;
-      litterBox.height = lbH * GRID;
+      _placeLitterBoxAt(c, r, lbW, lbH);
       return;
     }
   }
-  // Абсолютный fallback — правый нижний угол (без проверок, крайний случай)
-  const fc = GRID_COLS - lbW;
-  const fr = GRID_ROWS - lbH;
-  const pos = cellToPixel(fc, fr);
-  litterBox.x = pos.x;
-  litterBox.y = pos.y;
-  litterBox.width  = lbW * GRID;
-  litterBox.height = lbH * GRID;
+  // Абсолютный fallback — ищем первую свободную позицию без ограничений по дистанции
+  // и без отступа. Проверяем occupiedCells, чтобы не попасть в DFS-полосы или стены.
+  for (let r = 0; r < GRID_ROWS - lbH + 1; r++) {
+    for (let c = 0; c < GRID_COLS - lbW + 1; c++) {
+      if (!cellsFree(c, r, lbW, lbH)) continue;
+      _placeLitterBoxAt(c, r, lbW, lbH);
+      return;
+    }
+  }
+  // Последний резерв — фиксированная позиция (на практике не должна достигаться)
+  _placeLitterBoxAt(Math.max(0, GRID_COLS - lbW - 2), Math.max(0, GRID_ROWS - lbH - 2), lbW, lbH);
 }
 
 // ===== ПОДВАЛ: CORRIDOR MAZE =====
@@ -401,18 +425,7 @@ function generateCorridorMaze(rng) {
 
   // Вспомогательная функция: добавить wall-сегмент в obstacles
   function addWall(col, row, wCells, hCells) {
-    if (!cellsFree(col, row, wCells, hCells)) return;
-    markCells(col, row, wCells, hCells);
-    const pos = cellToPixel(col, row);
-    const type = hCells === 1 ? "wall_h" : "wall_v";
-    obstacles.push({
-      id: `${type}-${obstacles.length}-${col}-${row}`,
-      type, col, row, wCells, hCells,
-      x: pos.x, y: pos.y,
-      width: wCells * GRID, height: hCells * GRID,
-      moving: false, axis: "x", range: 0, speed: 0,
-      phase: 0, movingOffset: 0, baseX: pos.x, baseY: pos.y,
-    });
+    _makeWallObstacle(col, row, wCells, hCells);
   }
 
   // Горизонтальные стены на строках 3, 6, 9, 12
@@ -512,17 +525,7 @@ function generateCorridorMaze(rng) {
     const hCells = randInt(rng, meta.hCells[0], meta.hCells[1]);
     const col = randInt(rng, 0, GRID_COLS - wCells);
     const row = randInt(rng, 0, GRID_ROWS - hCells);
-    if (!cellsFree(col, row, wCells, hCells)) continue;
-    markCells(col, row, wCells, hCells);
-    const pos = cellToPixel(col, row);
-    obstacles.push({
-      id: `${type}-${obstacles.length}-${col}-${row}`,
-      type, col, row, wCells, hCells,
-      x: pos.x, y: pos.y,
-      width: wCells * GRID, height: hCells * GRID,
-      moving: false, axis: "x", range: 0, speed: 0,
-      phase: 0, movingOffset: 0, baseX: pos.x, baseY: pos.y,
-    });
+    if (!_makeWallObstacle(col, row, wCells, hCells)) continue;
     decorPlaced++;
   }
 }
@@ -530,7 +533,7 @@ function generateCorridorMaze(rng) {
 // ===== ПОДВАЛ: DFS MAZE =====
 // Классический лабиринт на основе DFS (Recursive Backtracker).
 // Сетка комнат: каждая комната = 2×2 ячейки, стена между комнатами = 1 ячейка.
-// Итого: 9 комнат по горизонтали × 5 по вертикали (при GRID_COLS=28, GRID_ROWS=15).
+// Итого: 9 комнат по горизонтали × 4 по вертикали (при GRID_COLS=30, GRID_ROWS=15).
 // Коридоры шириной 2 ячейки (80px) — гарантированно проходимы.
 function generateDfsMaze(rng) {
   // Размер комнаты в ячейках (коридор + стена)
@@ -594,18 +597,7 @@ function generateDfsMaze(rng) {
 
   function addWallSeg(col, row, wCells, hCells) {
     if (col < 0 || row < 0 || col + wCells > GRID_COLS || row + hCells > GRID_ROWS) return;
-    if (!cellsFree(col, row, wCells, hCells)) return;
-    markCells(col, row, wCells, hCells);
-    const pos = cellToPixel(col, row);
-    const type = hCells <= wCells ? "wall_h" : "wall_v";
-    obstacles.push({
-      id: `${type}-${obstacles.length}-${col}-${row}`,
-      type, col, row, wCells, hCells,
-      x: pos.x, y: pos.y,
-      width: wCells * GRID, height: hCells * GRID,
-      moving: false, axis: "x", range: 0, speed: 0,
-      phase: 0, movingOffset: 0, baseX: pos.x, baseY: pos.y,
-    });
+    _makeWallObstacle(col, row, wCells, hCells);
   }
 
   // Внешние стены (периметр)
@@ -653,6 +645,54 @@ function generateDfsMaze(rng) {
       }
     }
   }
+
+  // Вернуть границы DFS-сетки для последующего заполнения полос в generateLevel().
+  // DFS-сетка занимает cols [offC-1 .. mazeRightEdge].
+  // При GRID_COLS=30 и offC=1: mazeRightEdge = 1 + 9*3 - 1 = 27.
+  // Колонки 28..29 остаются вне лабиринта и должны быть заполнены кирпичами.
+  // Заполнение делается в generateLevel() ПОСЛЕ unmarkCells(spawn), чтобы
+  // unmarkCells не снял маркировку полос.
+  return { offC, mazeRightEdge: offC + mCols * CELL - WALL };
+}
+
+// Заполняет колонки вне DFS-сетки сплошными стенами.
+// Вызывается из generateLevel() ПОСЛЕ unmarkCells(spawn).
+function _fillDfsStrips(offC, mazeRightEdge) {
+  function addSolidStrip(col) {
+    if (col < 0 || col >= GRID_COLS) return;
+    _makeWallObstacle(col, 0, 1, GRID_ROWS);
+  }
+  for (let c = mazeRightEdge + 1; c < GRID_COLS; c++) addSolidStrip(c);
+  for (let c = 0; c < offC - 1; c++) addSolidStrip(c);
+}
+
+// ===== ПРОВЕРКА ПРОХОДИМОСТИ ПОДВАЛА =====
+// После генерации лабиринта + размещения лотка проверяем, что A* находит путь
+// от спавна кота до лотка. Если нет — удаляем декоративные препятствия по одному.
+// Это гарантирует, что ящик/бочка не заблокирует единственный путь в DFS-лабиринте.
+function _ensureBasementReachable(spawnCol, spawnRow) {
+  const lbCell = pixelToCell(
+    litterBox.x + litterBox.width / 2,
+    litterBox.y + litterBox.height / 2
+  );
+
+  // Собираем декоративные препятствия (не стены лабиринта)
+  const decorObs = obstacles.filter(o => o.type !== 'wall_h' && o.type !== 'wall_v');
+
+  // Проверяем проходимость; если заблокировано — удаляем декор по одному.
+  // Используем увеличенный лимит итераций (2000) — вызывается только при генерации уровня,
+  // не в рантайме, поэтому производительность не критична.
+  for (let attempt = 0; attempt <= decorObs.length; attempt++) {
+    const path = aStarPath(spawnCol, spawnRow, lbCell.col, lbCell.row, undefined, undefined, 2000);
+    if (path) break; // путь найден — готово
+
+    if (decorObs.length === 0) break; // нечего удалять
+    // Удаляем последний декоративный объект
+    const toRemove = decorObs.pop();
+    const idx = obstacles.indexOf(toRemove);
+    if (idx !== -1) obstacles.splice(idx, 1);
+    unmarkCells(toRemove.col, toRemove.row, toRemove.wCells, toRemove.hCells);
+  }
 }
 
 // ===== ГЕНЕРАЦИЯ УРОВНЯ =====
@@ -684,8 +724,20 @@ function generateLevel() {
   // Спавн кота — случайный угол сетки (детерминировано через RNG)
   // 0=левый нижний, 1=правый нижний, 2=левый верхний, 3=правый верхний
   const cornerIdx = randInt(rng, 0, 3);
-  const spawnCol = (cornerIdx === 1 || cornerIdx === 3) ? GRID_COLS - 1 : 0;
+  let spawnCol = (cornerIdx === 1 || cornerIdx === 3) ? GRID_COLS - 1 : 0;
   const spawnRow = (cornerIdx === 0 || cornerIdx === 1) ? GRID_ROWS - 1 : 0;
+
+  // В DFS-режиме лабиринт занимает cols offC..mazeRightEdge (1..27 при GRID_COLS=30).
+  // Cols 28..29 будут заполнены сплошными стенами — спавн там невозможен.
+  // Зажимаем spawnCol в пределы лабиринта, чтобы кот не оказался замурован.
+  if (basementMode === "dfs") {
+    const _dfsOffC = 1;
+    const _dfsCELL = 3; // ROOM(2) + WALL(1)
+    const _dfsMCols = Math.floor((GRID_COLS - 1) / _dfsCELL); // 9
+    const _dfsMazeRight = _dfsOffC + _dfsMCols * _dfsCELL - 1; // 27
+    spawnCol = Math.min(spawnCol, _dfsMazeRight - 1); // не дальше col 26 (с запасом)
+  }
+
   const b = getPlayBounds();
   const spawnPos = cellToPixel(spawnCol, spawnRow);
   const spawn = { x: spawnPos.x, y: spawnPos.y, width: player.size, height: player.size };
@@ -695,10 +747,11 @@ function generateLevel() {
   const blockRow = Math.max(0, Math.min(spawnRow - (spawnRow > 0 ? 2 : 0), GRID_ROWS - 3));
   markCells(blockCol, blockRow, 3, 3);
 
+  let _dfsStrips = null; // данные для заполнения полос DFS после unmarkCells
   if (currentLocation.key === "basement") {
     // ===== ПОДВАЛ: лабиринт =====
     if (basementMode === "dfs") {
-      generateDfsMaze(rng);
+      _dfsStrips = generateDfsMaze(rng);
     } else {
       generateCorridorMaze(rng);
     }
@@ -716,10 +769,24 @@ function generateLevel() {
   }
 
   // Размещение лотка
-  placeLitterBox(rng, spawnCol, spawnRow);
-
   // Снять блокировку спавна (кот может туда вернуться)
   unmarkCells(blockCol, blockRow, 3, 3);
+
+  // DFS: заполнить колонки вне сетки лабиринта сплошными стенами.
+  // Делается ПОСЛЕ unmarkCells (чтобы unmarkCells не снял маркировку полос)
+  // и ДО placeLitterBox (чтобы лоток не попал в заблокированные колонки).
+  if (_dfsStrips) {
+    _fillDfsStrips(_dfsStrips.offC, _dfsStrips.mazeRightEdge);
+  }
+
+  // Размещение лотка — после заполнения DFS-полос, чтобы лоток не попал туда
+  placeLitterBox(rng, spawnCol, spawnRow);
+
+  // Гарантия проходимости подвала: если ящик/бочка заблокировали единственный
+  // путь к лотку — удаляем декоративные препятствия по одному до восстановления пути.
+  if (currentLocation.key === "basement") {
+    _ensureBasementReachable(spawnCol, spawnRow);
+  }
 
   // Позиция игрока
   player.x = spawn.x;

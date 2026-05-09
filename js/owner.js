@@ -221,7 +221,13 @@ const owner = {
     this.pathTimer--;
     if (this.pathTimer <= 0 || this.path.length === 0) {
       this.pathTimer = this.PATH_RECALC;
-      const newPath = aStarPath(ownerCell.col, ownerCell.row, goalCell.col, goalCell.row, this.width, this.height);
+        // В подвале используем размер кота (36×36) для A*.
+        // Коридоры шириной 2 ячейки (80px) физически вмещают хозяина (52px),
+        // но canPass центрирует прямоугольник 36×52 на ячейке 40px — это выходит
+        // за пределы ячейки и ложно видит коллизию со стеной.
+        const pathW = (basementMode !== "") ? player.size : this.width;
+        const pathH = (basementMode !== "") ? player.size : this.height;
+        const newPath = aStarPath(ownerCell.col, ownerCell.row, goalCell.col, goalCell.row, pathW, pathH);
       if (newPath) {
         this.path = newPath;
       } else {

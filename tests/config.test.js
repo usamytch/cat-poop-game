@@ -1,4 +1,4 @@
-// ==========================================
+ // ==========================================
 // config.test.js — constants and structures
 // ==========================================
 import { describe, it, expect, beforeAll } from 'vitest';
@@ -109,13 +109,18 @@ describe('DIFF — balance: urge reduction vs urge growth per cooldown', () => {
 
 // ---------------------------------------------------------------------------
 describe('WORLD', () => {
-  const fields = ['width', 'height', 'floorHeight', 'topPadding', 'sidePadding'];
-  for (const f of fields) {
+  // sidePadding может быть 0 (игровая зона = весь экран) — проверяем >= 0
+  const fieldsPositive = ['width', 'height', 'floorHeight', 'topPadding'];
+  for (const f of fieldsPositive) {
     it(`WORLD.${f} is a number > 0`, () => {
       expect(typeof WORLD[f]).toBe('number');
       expect(WORLD[f]).toBeGreaterThan(0);
     });
   }
+  it('WORLD.sidePadding is a non-negative number', () => {
+    expect(typeof WORLD.sidePadding).toBe('number');
+    expect(WORLD.sidePadding).toBeGreaterThanOrEqual(0);
+  });
 });
 
 // ---------------------------------------------------------------------------
