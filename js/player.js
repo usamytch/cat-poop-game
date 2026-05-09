@@ -46,12 +46,12 @@ const player = {
         ctx.shadowBlur = 8;
         ctx.fillStyle = "rgba(200,255,100,0.92)";
         // Абсолютные пиксели по спрайту cat.png (36×36px):
-        // левый глаз ≈ (11, 16), правый глаз ≈ (25, 16)
+        // левый глаз ≈ (16, 21), правый глаз ≈ (28, 20)
         ctx.beginPath();
-        ctx.ellipse(this.x + 11, this.y + 16, 3.5, 2.5, 0, 0, Math.PI * 2);
+        ctx.ellipse(this.x + 16, this.y + 21, 3.5, 2.5, 0, 0, Math.PI * 2);
         ctx.fill();
         ctx.beginPath();
-        ctx.ellipse(this.x + 25, this.y + 16, 3.5, 2.5, 0, 0, Math.PI * 2);
+        ctx.ellipse(this.x + 28, this.y + 20, 3.5, 2.5, 0, 0, Math.PI * 2);
         ctx.fill();
         ctx.restore();
       }
