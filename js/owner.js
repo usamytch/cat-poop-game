@@ -315,9 +315,19 @@ const owner = {
   // ===== УЛУЧШЕНИЕ 2: Path Smoothing =====
   // Пропускает промежуточные waypoints если есть прямая видимость до более дальнего.
   // Устраняет «зигзаг» на прямых коридорах — хозяин идёт прямо, не тормозя у каждой ячейки.
+  // На поворотах smoothing НЕ применяется — иначе хозяин пытается идти через стену.
   _smoothPath(ownerCol, ownerRow) {
     if (this.path.length < 3) return;
-    // Ищем самый дальний waypoint с прямой видимостью от текущей позиции
+    // Проверяем: следующий шаг — поворот или прямо?
+    // Если поворот — не трогаем путь, хозяин должен обойти угол по waypoints.
+    const prev = this.path[0];
+    const cur  = this.path[1];
+    const next = this.path[2];
+    const curDc  = cur.col  - prev.col,  curDr  = cur.row  - prev.row;
+    const nextDc = next.col - cur.col,   nextDr = next.row - cur.row;
+    const isTurn = (curDc !== nextDc || curDr !== nextDr);
+    if (isTurn) return; // на повороте — не срезаем угол
+    // На прямом участке — ищем самый дальний waypoint с прямой видимостью
     for (let k = this.path.length - 1; k >= 2; k--) {
       if (this._hasLineOfSight(ownerCol, ownerRow, this.path[k].col, this.path[k].row)) {
         // Удаляем промежуточные waypoints [1..k-1]
@@ -344,7 +354,7 @@ const owner = {
     // На открытых уровнях: 30 кадров (0.5 сек) — без изменений.
     const recalcInterval = (basementMode !== "") ? 15 : this.PATH_RECALC;
 
-    // Пересчитываем путь по таймеру или если путь кончился
+    // Пересчитываем путь по таймеру или если путь кончился (0 элементов — нет следующего waypoint)
     this.pathTimer--;
     if (this.pathTimer <= 0 || this.path.length === 0) {
       this.pathTimer = recalcInterval;
@@ -383,34 +393,41 @@ const owner = {
       // OPT 10: сравниваем квадраты дистанций вместо sqrt
       const dist2 = dx*dx + dy*dy;
 
-      // ===== УЛУЧШЕНИЕ 3: Адаптивный waypoint threshold =====
-      // На прямом коридоре: threshold = spd+2 (~6.5px) — плавное движение без рывков.
-      // На повороте: threshold = GRID/2 (20px) — хозяин срезает угол заранее, не застревая.
-      // На открытых уровнях: threshold = spd+2 — без изменений.
-      let threshold;
-      if (basementMode !== "") {
-        if (this.path.length >= 3) {
-          // Определяем: следующий шаг — поворот или прямо?
-          const cur  = this.path[1];
-          const next = this.path[2];
-          const prev = this.path[0];
-          const curDc = cur.col - prev.col, curDr = cur.row - prev.row;
-          const nextDc = next.col - cur.col, nextDr = next.row - cur.row;
-          const isTurn = (curDc !== nextDc || curDr !== nextDr);
-          // На повороте — большой threshold (срезаем угол)
-          // На прямой — маленький threshold (плавное движение)
-          threshold = isTurn ? Math.max(spd + 2, GRID / 2) : spd + 2;
-        } else {
-          // Последний waypoint — используем большой threshold чтобы не застрять
-          threshold = Math.max(spd + 2, GRID / 2);
-        }
-      } else {
-        threshold = spd + 2;
-      }
+      // ===== FIX: Единый маленький threshold вместо адаптивного =====
+      // Старый подход (threshold = GRID/2 = 20px на поворотах) вызывал застревание:
+      // wall sliding блокировал одну ось → хозяин никогда не достигал 20px порога →
+      // path.shift() не срабатывал → бесконечная осцилляция у угла.
+      //
+      // Новый подход: единый threshold = spd+2 (~6.5px) для всех случаев.
+      // Хозяин скользит вдоль стены и за несколько кадров оказывается в 6.5px от waypoint.
+      // Работает одинаково на открытых уровнях и в подвале — без адаптации.
+      const threshold = spd + 2;
 
-      // Если достигли центра следующей ячейки — переходим к следующей
       if (dist2 < threshold * threshold) {
         this.path.shift();
+        // Немедленно вычисляем направление к новому waypoint — не теряем кадр.
+        // Пропускаем waypoints совпадающие с текущей ячейкой хозяина (дубликаты в пути).
+        while (this.path.length >= 2) {
+          const newNext = this.path[1];
+          // Если следующий waypoint — та же ячейка что и текущая позиция, пропускаем
+          if (newNext.col === ownerCell.col && newNext.row === ownerCell.row) {
+            this.path.shift();
+            continue;
+          }
+          const newPx = cellToPixelCenter(newNext.col, newNext.row);
+          dx = newPx.x - ownerCx;
+          dy = newPx.y - ownerCy;
+          const nd2 = dx*dx + dy*dy;
+          if (nd2 > 0.01) {
+            const nd = Math.sqrt(nd2);
+            dx /= nd; dy /= nd;
+            this.facingX = dx; this.facingY = dy;
+          }
+          break;
+        }
+        // Если после сдвига путь опустел до 1 элемента — форсируем пересчёт на следующем кадре.
+        // Это предотвращает зависание в direct-movement режиме при наличии стен.
+        if (this.path.length <= 1) this.pathTimer = 0;
       } else {
         const dist = Math.sqrt(dist2);
         dx /= dist;
@@ -430,11 +447,11 @@ const owner = {
         dx = ndx; dy = ndy;
       }
     } else {
-      // Нет пути или уже в цели — двигаемся напрямую
+      // Нет пути или уже в цели — двигаемся напрямую к цели
       dx = tx - this.x;
       dy = ty - this.y;
       const dist2 = dx*dx + dy*dy;
-      if (dist2 > 1) {
+      if (dist2 > 0.01) {
         const dist = Math.sqrt(dist2);
         dx /= dist; dy /= dist;
         // Обновляем направление взгляда из нормализованного вектора
