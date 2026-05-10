@@ -334,8 +334,6 @@ function drawStartScreen() {
 
     setFont("15px Arial"); ctx.fillStyle = "rgba(255,255,255,0.45)";
     ctx.fillText("WASD / Стрелки — движение  |  Пробел — стрелять  |  M — " + (muted ? "🔇 выкл" : "🔊 вкл"), WORLD.width/2, 650);
-    setFont("13px Arial"); ctx.fillStyle = "rgba(255,200,80,0.50)";
-    ctx.fillText("[Shift+B] — 🏚️ Подвал (чит)", WORLD.width/2, 672);
   }
 
   ctx.restore();

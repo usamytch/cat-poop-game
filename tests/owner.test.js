@@ -696,4 +696,36 @@ describe('owner.facingX/facingY — normalized direction vector', () => {
     const len = Math.sqrt(owner.facingX ** 2 + owner.facingY ** 2);
     expect(len).toBeCloseTo(1.0, 2);
   });
+
+  it('waypoint threshold is at least GRID/2 so owner advances past obstacle edges', () => {
+    // Фикс: threshold = Math.max(spd+2, GRID/2) = 20px при GRID=40.
+    // Хозяин должен засчитывать достижение waypoint при расстоянии ≤20px,
+    // не упираясь в стену у края препятствия.
+    owner.active = true;
+    owner.fleeTimer = 0;
+    obstacles.length = 0;
+    owner.speed = 4.5; // нормал-скорость
+
+    // path[1] — следующий waypoint — это ячейка (6,5).
+    // Ставим хозяина так, чтобы его центр был в 19px от центра ячейки (6,5).
+    // threshold = Math.max(4.5+2, 40/2) = 20px → dist2 < 20^2=400 → path.shift()
+    const nextCenter = cellToPixelCenter(6, 5);
+    owner.x = nextCenter.x - GRID / 2 + 1 - owner.width / 2; // ownerCx = nextCenter.x - 19px
+    owner.y = nextCenter.y - owner.height / 2;
+
+    // Путь: текущая ячейка → следующая (path[1] = col 6)
+    owner.path = [
+      { col: 5, row: 5 },
+      { col: 6, row: 5 },
+      { col: 7, row: 5 },
+    ];
+    owner.pathTimer = 100; // не пересчитываем путь
+
+    const pathLenBefore = owner.path.length;
+    // _moveTowardTarget вызывается с целью (не важно куда — путь уже задан)
+    owner._moveTowardTarget(player.x, player.y, owner.speed);
+
+    // Waypoint должен быть засчитан (path.shift() вызван) — path стал короче
+    expect(owner.path.length, 'waypoint should be advanced when within GRID/2 of center').toBeLessThan(pathLenBefore);
+  });
 });

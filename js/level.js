@@ -8,6 +8,8 @@ let levelSeed = 1;
 let basementMode = "";
 // Флаг чит-кода: при true следующий generateLevel() форсирует подвал (corridor)
 let cheatBasement = false;
+// Флаг чит-кода: при true следующий generateLevel() форсирует подвал (dfs)
+let cheatDfs = false;
 // Per-run random seed set from Date.now() at startGame().
 // Mixing it into levelSeed makes every game run produce a unique map
 // while keeping tests deterministic (tests set globalSeed = 0).
@@ -435,11 +437,11 @@ function generateCorridorMaze(rng) {
   const hWallRows = [3, 6, 9, 12];
   for (const row of hWallRows) {
     // Генерируем 2 прохода: случайные позиции, не перекрывающиеся.
-    // Горизонтальные стены занимают cols wallStart..wallEnd-1 (не трогают col 0 и col 29),
-    // чтобы боковые стены (код ниже) могли гарантированно поставить проходы на краях.
+    // Горизонтальные стены занимают cols 1..GRID_COLS-2 (не трогают col 0 и col GRID_COLS-1),
+    // чтобы боковые полосы оставались полностью свободными для прохода.
     const gapWidth = 2;
-    const wallStart = 1;            // col 0 оставляем для боковой стены
-    const wallEnd = GRID_COLS - 1;  // col 29 оставляем для боковой стены
+    const wallStart = 1;
+    const wallEnd = GRID_COLS - 1;
     const totalCols = wallEnd - wallStart; // 28
     // Делим на 3 зоны, в каждой зоне один проход
     const zoneW = Math.floor(totalCols / 3); // 9
@@ -477,45 +479,6 @@ function generateCorridorMaze(rng) {
       if (row + segH > GRID_ROWS - 1) break;
       addWall(col, row, 1, segH);
       row += segH + randInt(rng, 1, 2); // проход 1–2 ячейки
-    }
-  }
-
-  // Боковые граничные стены (левый и правый края) — делают края играбельными.
-  // Стены разбиты на секции между горизонтальными стенами (hWallRows).
-  // В каждой секции — один проход шириной 2 ячейки, чтобы игрок мог
-  // перемещаться между коридорами через боковые края.
-  // Секции: [0..hWallRows[0]-1], [hWallRows[0]+1..hWallRows[1]-1], ..., [hWallRows[last]+1..GRID_ROWS-1]
-  const gapW = 2; // ширина прохода в ячейках
-  const sectionBounds = [];
-  {
-    let prev = 0;
-    for (const wr of hWallRows) {
-      // секция от prev до wr-1 (не включая саму горизонтальную стену)
-      if (wr - 1 >= prev) sectionBounds.push({ from: prev, to: wr - 1 });
-      prev = wr + 1; // пропускаем строку горизонтальной стены
-    }
-    // последняя секция после последней горизонтальной стены
-    if (prev < GRID_ROWS) sectionBounds.push({ from: prev, to: GRID_ROWS - 1 });
-  }
-
-  for (const boundCol of [0, GRID_COLS - 1]) {
-    for (const { from, to } of sectionBounds) {
-      const segLen = to - from + 1;
-      if (segLen <= gapW) {
-        // Секция слишком короткая — оставляем полностью открытой (проход)
-        continue;
-      }
-      // Случайная позиция прохода внутри секции
-      const gapStart = from + randInt(rng, 0, segLen - gapW - 1);
-      // Сегмент до прохода
-      if (gapStart > from) {
-        addWall(boundCol, from, 1, gapStart - from);
-      }
-      // Сегмент после прохода
-      const afterGap = gapStart + gapW;
-      if (afterGap <= to) {
-        addWall(boundCol, afterGap, 1, to - afterGap + 1);
-      }
     }
   }
 
@@ -715,7 +678,12 @@ function generateLevel() {
   // Обычные локации выбираются из 5 тем (без подвала).
   const normalThemes = locationThemes.filter(t => t.key !== "basement");
   basementMode = "";
-  if (cheatBasement) {
+  if (cheatDfs) {
+    // Чит-код Shift+D: форсируем подвал (dfs) независимо от уровня
+    currentLocation = locationThemes.find(t => t.key === "basement");
+    basementMode = "dfs";
+    cheatDfs = false; // сбрасываем после использования
+  } else if (cheatBasement) {
     // Чит-код Shift+B: форсируем подвал (corridor) независимо от уровня
     currentLocation = locationThemes.find(t => t.key === "basement");
     basementMode = "corridor";

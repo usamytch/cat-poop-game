@@ -294,7 +294,9 @@ const owner = {
 
       // OPT 10: сравниваем квадраты дистанций вместо sqrt
       const dist2 = dx*dx + dy*dy;
-      const threshold = spd + 2;
+      // Порог достижения waypoint: не менее GRID/2 (20px), чтобы хозяин
+      // не застревал у края препятствия при скольжении вдоль стен.
+      const threshold = Math.max(spd + 2, GRID / 2);
 
       // Если достигли центра следующей ячейки — переходим к следующей
       if (dist2 < threshold * threshold) {

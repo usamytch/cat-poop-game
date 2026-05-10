@@ -784,72 +784,16 @@ describe('basement level', () => {
     }
   });
 
-  it('corridor maze: side columns (0 and GRID_COLS-1) have at least one passable gap', () => {
-    // Граничные стены коридорного лабиринта должны иметь проходы
+  it('corridor maze: side columns (0 and GRID_COLS-1) are completely free of obstacles', () => {
+    // Боковые полосы коридорного лабиринта должны быть полностью свободны —
+    // без единого кирпича. Горизонтальные стены не трогают col 0 и col GRID_COLS-1,
+    // декоративные препятствия тоже исключают эти колонки.
     const found = forceBasementLevel('corridor');
     expect(found, 'corridor basement not found').toBe(true);
-    let freeLeft = 0, freeRight = 0;
     for (let r = 0; r < GRID_ROWS; r++) {
-      if (isCellFree(0, r)) freeLeft++;
-      if (isCellFree(GRID_COLS - 1, r)) freeRight++;
+      expect(isCellFree(0, r), `col 0 row ${r} should be completely free`).toBe(true);
+      expect(isCellFree(GRID_COLS - 1, r), `col ${GRID_COLS - 1} row ${r} should be completely free`).toBe(true);
     }
-    expect(freeLeft, 'left boundary column should have at least one gap').toBeGreaterThan(0);
-    expect(freeRight, 'right boundary column should have at least one gap').toBeGreaterThan(0);
-  });
-
-  it('corridor maze: side columns have a contiguous gap of ≥2 cells in each section between h-walls', () => {
-    // Проверяем, что в каждой секции между горизонтальными стенами (строки 3,6,9,12)
-    // на боковых колонках (0 и GRID_COLS-1) есть непрерывный проход шириной ≥2 ячейки.
-    // Это гарантирует, что кот (36px) и хозяин (36px) могут пройти через боковой край.
-    // Тест проверяет исправление бага: ранее горизонтальные стены занимали col 0 и col 29,
-    // не давая боковому коду поставить проходы.
-    const hWallRows = [3, 6, 9, 12];
-    // Секции между горизонтальными стенами (не включая сами строки стен)
-    const sections = [];
-    let prev = 0;
-    for (const wr of hWallRows) {
-      if (wr - 1 >= prev) sections.push({ from: prev, to: wr - 1 });
-      prev = wr + 1;
-    }
-    if (prev < GRID_ROWS) sections.push({ from: prev, to: GRID_ROWS - 1 });
-
-    // Проверяем несколько сидов для статистической уверенности
-    let tested = 0;
-    for (let s = 0; s < 50; s++) {
-      globalSeed = s * 7919;
-      level = BASEMENT.corridorMinLevel;
-      if (level >= BASEMENT.dfsMinLevel) level = BASEMENT.dfsMinLevel - 1;
-      score = 0;
-      obstacles.length = 0; bonuses.length = 0; occupiedCells.clear();
-      generateLevel();
-      if (currentLocation.key !== 'basement' || basementMode !== 'corridor') continue;
-      tested++;
-
-      for (const boundCol of [0, GRID_COLS - 1]) {
-        for (const { from, to } of sections) {
-          // В каждой секции должен быть непрерывный проход ≥2 ячейки.
-          // Декоративные препятствия могут занять часть секции, поэтому
-          // проверяем максимальный непрерывный свободный отрезок, а не
-          // полную открытость (особенно для коротких секций ≤2 ячеек).
-          let maxRun = 0, curRun = 0;
-          for (let r = from; r <= to; r++) {
-            if (isCellFree(boundCol, r)) {
-              curRun++;
-              if (curRun > maxRun) maxRun = curRun;
-            } else {
-              curRun = 0;
-            }
-          }
-          expect(
-            maxRun,
-            `seed=${s}: col=${boundCol} section [${from}..${to}] max contiguous free run=${maxRun}, need ≥2`
-          ).toBeGreaterThanOrEqual(2);
-        }
-      }
-
-      if (tested >= 10) break; // достаточно 10 успешных проверок
-    }
-    expect(tested, 'should have tested at least 5 corridor basement seeds').toBeGreaterThanOrEqual(5);
   });
 
   it('basement: A* with cat-sized entity finds path to litterBox after reachability fix', () => {
