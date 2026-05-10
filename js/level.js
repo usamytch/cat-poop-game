@@ -482,24 +482,6 @@ function generateCorridorMaze(rng) {
     }
   }
 
-  // Несколько декоративных препятствий из obstacleTypes подвала.
-  // Исключаем col 0 и col GRID_COLS-1 — они зарезервированы для боковых проходов.
-  const decorTypes = currentLocation.obstacleTypes;
-  let decorAtt = 0;
-  let decorPlaced = 0;
-  while (decorPlaced < 4 && decorAtt < 120) {
-    decorAtt++;
-    const type = decorTypes[randInt(rng, 0, decorTypes.length - 1)];
-    const meta = obstacleCatalog[type];
-    const wCells = randInt(rng, meta.wCells[0], meta.wCells[1]);
-    const hCells = randInt(rng, meta.hCells[0], meta.hCells[1]);
-    // Не ставим декор на боковые колонки (col 0 и col GRID_COLS-1) —
-    // они должны оставаться доступными для прохода игрока.
-    const col = randInt(rng, 1, GRID_COLS - wCells - 1);
-    const row = randInt(rng, 0, GRID_ROWS - hCells);
-    if (!_makeWallObstacle(col, row, wCells, hCells)) continue;
-    decorPlaced++;
-  }
 }
 
 // ===== ПОДВАЛ: DFS MAZE =====
@@ -667,6 +649,45 @@ function _ensureBasementReachable(spawnCol, spawnRow) {
   }
 }
 
+// ===== ВМУРОВАННЫЕ ПРЕДМЕТЫ В СТЕНАХ ПОДВАЛА =====
+// Выбирает случайные ячейки внутри wall_h/wall_v и добавляет декоративные предметы
+// в decorItems (без коллизий). Работает для обоих режимов: corridor и dfs.
+// Количество предметов задаётся через BASEMENT.wallEmbedCount.
+function _placeWallEmbeds(rng) {
+  // Собираем все ячейки, занятые стенами лабиринта (wall_h / wall_v)
+  const wallCells = [];
+  for (const ob of obstacles) {
+    if (ob.type !== 'wall_h' && ob.type !== 'wall_v') continue;
+    for (let r = ob.row; r < ob.row + ob.hCells; r++) {
+      for (let c = ob.col; c < ob.col + ob.wCells; c++) {
+        wallCells.push({ c, r });
+      }
+    }
+  }
+  if (wallCells.length === 0) return;
+
+  // Перемешиваем Fisher-Yates через детерминированный rng
+  for (let i = wallCells.length - 1; i > 0; i--) {
+    const j = randInt(rng, 0, i);
+    [wallCells[i], wallCells[j]] = [wallCells[j], wallCells[i]];
+  }
+
+  const types = currentLocation.obstacleTypes; // 6 вмурованных типов
+  const count = randInt(rng, BASEMENT.wallEmbedCount.min, BASEMENT.wallEmbedCount.max);
+  const limit = Math.min(count, wallCells.length);
+  for (let i = 0; i < limit; i++) {
+    const { c, r } = wallCells[i];
+    const type = types[randInt(rng, 0, types.length - 1)];
+    const pos = cellToPixel(c, r);
+    decorItems.push({
+      type, col: c, row: r, wCells: 1, hCells: 1,
+      x: pos.x, y: pos.y, width: GRID, height: GRID,
+      drawStyle: type,
+      wallEmbed: true,
+    });
+  }
+}
+
 // ===== ГЕНЕРАЦИЯ УРОВНЯ =====
 function generateLevel() {
   levelSeed = level * 9973 + score * 17 + globalSeed * 31 + 13;
@@ -781,6 +802,13 @@ function generateLevel() {
   const decorMax = level <= 3 ? 6 : level <= 7 ? 7 : 8;
   const decorCount = randInt(rng, decorMin, decorMax);
   generateDecor(currentLocation, rng, decorCount);
+
+  // Вмурованные предметы в стенах подвала — добавляются ПОСЛЕ generateDecor(),
+  // т.к. generateDecor() сбрасывает decorItems.length = 0 в начале.
+  // Работает для обоих режимов: corridor и dfs.
+  if (currentLocation.key === "basement") {
+    _placeWallEmbeds(rng);
+  }
 
   // Спавн бонусов — на свободных ячейках сетки
   // Количество бонусов растёт с уровнем: больше бонусов на поздних уровнях

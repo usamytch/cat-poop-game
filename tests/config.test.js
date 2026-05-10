@@ -188,4 +188,45 @@ describe('obstacleCatalog', () => {
       expect(entry.hCells[0], `${key}: hCells min must be >= 1`).toBeGreaterThanOrEqual(1);
     }
   });
+
+  it('basement wall-embed types have wCells=[1,1] and hCells=[1,1] (exactly one cell)', () => {
+    const embedTypes = ['fishBones', 'ragMouse', 'teddyBear', 'toyCar', 'toyPlane', 'juiceCan'];
+    for (const t of embedTypes) {
+      expect(obstacleCatalog, `${t} missing from obstacleCatalog`).toHaveProperty(t);
+      expect(obstacleCatalog[t].wCells, `${t}: wCells must be [1,1]`).toEqual([1, 1]);
+      expect(obstacleCatalog[t].hCells, `${t}: hCells must be [1,1]`).toEqual([1, 1]);
+    }
+  });
+
+  it('basement obstacleTypes uses only wall-embed types', () => {
+    const basementTheme = locationThemes.find(t => t.key === 'basement');
+    const embedTypes = new Set(['fishBones', 'ragMouse', 'teddyBear', 'toyCar', 'toyPlane', 'juiceCan']);
+    for (const type of basementTheme.obstacleTypes) {
+      expect(embedTypes.has(type), `${type} is not a wall-embed type`).toBe(true);
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+describe('BASEMENT', () => {
+  it('has corridorMinLevel, corridorProb, dfsMinLevel, dfsProb', () => {
+    expect(BASEMENT).toHaveProperty('corridorMinLevel');
+    expect(BASEMENT).toHaveProperty('corridorProb');
+    expect(BASEMENT).toHaveProperty('dfsMinLevel');
+    expect(BASEMENT).toHaveProperty('dfsProb');
+  });
+
+  it('has wallEmbedCount with min and max as numbers', () => {
+    expect(BASEMENT).toHaveProperty('wallEmbedCount');
+    expect(typeof BASEMENT.wallEmbedCount.min).toBe('number');
+    expect(typeof BASEMENT.wallEmbedCount.max).toBe('number');
+  });
+
+  it('wallEmbedCount.min <= wallEmbedCount.max', () => {
+    expect(BASEMENT.wallEmbedCount.min).toBeLessThanOrEqual(BASEMENT.wallEmbedCount.max);
+  });
+
+  it('wallEmbedCount.min >= 1 (at least one embed per basement)', () => {
+    expect(BASEMENT.wallEmbedCount.min).toBeGreaterThanOrEqual(1);
+  });
 });

@@ -22,11 +22,14 @@ function rebuildBgLayer() {
   const bctx = _bgCtx;
   bctx.clearRect(0, 0, WORLD.width, WORLD.height);
   _drawBgTo(bctx);
-  _drawDecorTo(bctx);
+  // Обычный декор рисуется ДО стен (под кирпичами)
+  _drawDecorTo(bctx, false);
   // Рисуем только статичные препятствия
   for (const ob of obstacles) {
     if (!ob.moving) _drawObstacleTo(bctx, ob);
   }
+  // Вмурованные предметы рисуются ПОСЛЕ стен — поверх кирпичей
+  _drawDecorTo(bctx, true);
   // Лампочка подвала рисуется ПОСЛЕ стен — конус света поверх кирпичей
   if (currentLocation.key === "basement" &&
       currentLocation.decorations.includes("bulb")) {
@@ -122,6 +125,104 @@ function _drawDecorItemTo(bctx, d) {
       }
       break;
     }
+    case "fishBones": {
+      // Вмурованный предмет — полупрозрачный, кирпичи просвечивают сквозь него
+      bctx.globalAlpha = BASEMENT.wallEmbedAlpha;
+      // Рыбий скелет: позвоночник
+      bctx.strokeStyle = "#c8c0b0"; bctx.lineWidth = 1.5;
+      bctx.beginPath(); bctx.moveTo(x + 5, y + h / 2); bctx.lineTo(x + w - 5, y + h / 2); bctx.stroke();
+      // Рёбра
+      bctx.lineWidth = 1;
+      for (let i = 1; i <= 3; i++) {
+        const rx = x + 8 + i * 7;
+        bctx.beginPath(); bctx.moveTo(rx, y + h / 2); bctx.lineTo(rx - 3, y + h / 2 - 6); bctx.stroke();
+        bctx.beginPath(); bctx.moveTo(rx, y + h / 2); bctx.lineTo(rx - 3, y + h / 2 + 6); bctx.stroke();
+      }
+      // Голова (треугольник)
+      bctx.beginPath();
+      bctx.moveTo(x + 5, y + h / 2 - 4); bctx.lineTo(x + 5, y + h / 2 + 4); bctx.lineTo(x + 2, y + h / 2);
+      bctx.closePath(); bctx.stroke();
+      break;
+    }
+    case "ragMouse": {
+      bctx.globalAlpha = BASEMENT.wallEmbedAlpha;
+      // Тело мышки (эллипс)
+      bctx.fillStyle = "#9a8878";
+      bctx.beginPath(); bctx.ellipse(x + w / 2, y + h * 0.64, 10, 7, 0, 0, Math.PI * 2); bctx.fill();
+      // Ушки (два кружка)
+      bctx.beginPath(); bctx.arc(x + w / 2 - 7, y + h * 0.38, 5, 0, Math.PI * 2); bctx.fill();
+      bctx.beginPath(); bctx.arc(x + w / 2 + 3, y + h * 0.36, 4, 0, Math.PI * 2); bctx.fill();
+      // Хвостик (дуга)
+      bctx.strokeStyle = "#9a8878"; bctx.lineWidth = 1.2;
+      bctx.beginPath(); bctx.arc(x + w - 6, y + h * 0.76, 6, Math.PI * 1.2, Math.PI * 0.2); bctx.stroke();
+      break;
+    }
+    case "teddyBear": {
+      bctx.globalAlpha = BASEMENT.wallEmbedAlpha;
+      // Тело
+      bctx.fillStyle = "#8b6848";
+      bctx.beginPath(); bctx.ellipse(x + w / 2, y + h * 0.72, 8, 10, 0, 0, Math.PI * 2); bctx.fill();
+      // Голова
+      bctx.beginPath(); bctx.arc(x + w / 2, y + h * 0.42, 9, 0, Math.PI * 2); bctx.fill();
+      // Ушки
+      bctx.beginPath(); bctx.arc(x + w / 2 - 8, y + h * 0.28, 5, 0, Math.PI * 2); bctx.fill();
+      bctx.beginPath(); bctx.arc(x + w / 2 + 8, y + h * 0.28, 5, 0, Math.PI * 2); bctx.fill();
+      // Мордочка (тёмный нос)
+      bctx.fillStyle = "#5a3020";
+      bctx.beginPath(); bctx.arc(x + w / 2, y + h * 0.46, 3, 0, Math.PI * 2); bctx.fill();
+      break;
+    }
+    case "toyCar": {
+      bctx.globalAlpha = BASEMENT.wallEmbedAlpha;
+      // Кузов
+      bctx.fillStyle = "#aa3830";
+      bctx.fillRect(x + 4, y + h * 0.48, w - 8, h * 0.22);
+      // Кабина
+      bctx.fillRect(x + 8, y + h * 0.34, w - 18, h * 0.16);
+      // Колёса
+      bctx.fillStyle = "#4a3a28";
+      bctx.beginPath(); bctx.arc(x + 9, y + h * 0.73, 5, 0, Math.PI * 2); bctx.fill();
+      bctx.beginPath(); bctx.arc(x + w - 9, y + h * 0.73, 5, 0, Math.PI * 2); bctx.fill();
+      break;
+    }
+    case "toyPlane": {
+      bctx.globalAlpha = BASEMENT.wallEmbedAlpha;
+      // Фюзеляж (горизонтальный)
+      bctx.fillStyle = "#3858a8";
+      bctx.fillRect(x + 4, y + h / 2 - 3, w - 8, 6);
+      // Крылья (треугольники вверх и вниз)
+      bctx.beginPath();
+      bctx.moveTo(x + w / 2 - 2, y + h / 2);
+      bctx.lineTo(x + 5, y + h / 2 - 10);
+      bctx.lineTo(x + 5, y + h / 2 + 2);
+      bctx.closePath(); bctx.fill();
+      bctx.beginPath();
+      bctx.moveTo(x + w / 2 - 2, y + h / 2);
+      bctx.lineTo(x + 5, y + h / 2 + 10);
+      bctx.lineTo(x + 5, y + h / 2 + 2);
+      bctx.closePath(); bctx.fill();
+      // Хвостовое оперение
+      bctx.beginPath();
+      bctx.moveTo(x + w - 6, y + h / 2 - 3);
+      bctx.lineTo(x + w - 6, y + h / 2 - 10);
+      bctx.lineTo(x + w - 13, y + h / 2 - 3);
+      bctx.closePath(); bctx.fill();
+      break;
+    }
+    case "juiceCan": {
+      bctx.globalAlpha = BASEMENT.wallEmbedAlpha;
+      // Тело банки (цилиндр)
+      bctx.fillStyle = "#aa6820";
+      bctx.fillRect(x + 9, y + h * 0.28, w - 18, h * 0.52);
+      // Крышка (эллипс сверху)
+      bctx.beginPath(); bctx.ellipse(x + w / 2, y + h * 0.28, (w - 18) / 2, 4, 0, 0, Math.PI * 2); bctx.fill();
+      // Дно (эллипс снизу)
+      bctx.beginPath(); bctx.ellipse(x + w / 2, y + h * 0.80, (w - 18) / 2, 4, 0, 0, Math.PI * 2); bctx.fill();
+      // Блик (светлая полоска)
+      bctx.fillStyle = "rgba(255,200,100,0.35)";
+      bctx.fillRect(x + 11, y + h * 0.30, 4, h * 0.48);
+      break;
+    }
     default:
       break;
   }
@@ -129,8 +230,10 @@ function _drawDecorItemTo(bctx, d) {
   bctx.restore();
 }
 
-function _drawDecorTo(bctx) {
-  for (const d of decorItems) _drawDecorItemTo(bctx, d);
+function _drawDecorTo(bctx, wallEmbedOnly) {
+  for (const d of decorItems) {
+    if (wallEmbedOnly ? d.wallEmbed : !d.wallEmbed) _drawDecorItemTo(bctx, d);
+  }
 }
 
 // ===== РИСОВАНИЕ ПРЕПЯТСТВИЙ =====

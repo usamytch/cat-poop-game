@@ -76,7 +76,7 @@ const locationThemes = [
     key:"basement", name:"Подвал",
     palette:{wall:"#1e1c1a",floor:"#141210",trim:"#2e2620",accent:"#3a3028",shadow:"rgba(0,0,0,0.70)",ui:"rgba(8,5,3,0.88)"},
     decorations:["cobweb","wallpipe","bulb"],
-    obstacleTypes:["pipe","crate_stack","barrel_stack","chain"],
+    obstacleTypes:["fishBones","ragMouse","teddyBear","toyCar","toyPlane","juiceCan"],
     decorTypes:["stone_patch"],
   },
 ];
@@ -105,13 +105,20 @@ const obstacleCatalog = {
   woodpile:     {label:"Поленница",      wCells:[4,4], hCells:[2,2], color:"#8b5a2b", detail:"#d9a066", zone:"wall"},
   rockingChair: {label:"Кресло-качалка", wCells:[2,2], hCells:[2,2], color:"#7a5230", detail:"#c79a6d", zone:"corner"},
   barrel:       {label:"Бочка",          wCells:[2,2], hCells:[2,2], color:"#8b5a2b", detail:"#5f3d1f", zone:"corner"},
-  // ===== ПОДВАЛ =====
+  // ===== ПОДВАЛ — стены лабиринта =====
   pipe:         {label:"Труба",          wCells:[1,1], hCells:[2,4], color:"#4a4a4a", detail:"#787878", zone:"wall"},
   crate_stack:  {label:"Ящики",          wCells:[2,2], hCells:[2,4], color:"#6a4e22", detail:"#9a7840", zone:"corner"},
   barrel_stack: {label:"Бочки",          wCells:[2,4], hCells:[2,2], color:"#5a3e18", detail:"#8a6028", zone:"corner"},
   chain:        {label:"Цепь",           wCells:[1,1], hCells:[2,3], color:"#606060", detail:"#404040", zone:"wall"},
   wall_h:       {label:"Стена",          wCells:[2,8], hCells:[1,1], color:"#2e2820", detail:"#4a3e30", zone:"any"},
   wall_v:       {label:"Стена",          wCells:[1,1], hCells:[2,8], color:"#2e2820", detail:"#4a3e30", zone:"any"},
+  // ===== ПОДВАЛ — вмурованные предметы (декор поверх стен, без коллизий) =====
+  fishBones:    {label:"Рыбьи кости",         wCells:[1,1], hCells:[1,1], color:"#1a1614", detail:"#c8c0b0", zone:"wall"},
+  ragMouse:     {label:"Тряпочная мышь",       wCells:[1,1], hCells:[1,1], color:"#1a1614", detail:"#7a6858", zone:"wall"},
+  teddyBear:    {label:"Плюшевый мишка",       wCells:[1,1], hCells:[1,1], color:"#1a1614", detail:"#6b4830", zone:"corner"},
+  toyCar:       {label:"Игрушечная машинка",   wCells:[1,1], hCells:[1,1], color:"#1a1614", detail:"#8a2820", zone:"wall"},
+  toyPlane:     {label:"Игрушечный самолётик", wCells:[1,1], hCells:[1,1], color:"#1a1614", detail:"#284878", zone:"wall"},
+  juiceCan:     {label:"Банка от сока",        wCells:[1,1], hCells:[1,1], color:"#1a1614", detail:"#8a5010", zone:"corner"},
 };
 
 // ===== КАТАЛОГ ДЕКОРА (фоновые элементы, без коллизий) =====
@@ -128,10 +135,15 @@ const decorCatalog = {
 // ===== ПОДВАЛ — настройки unlock =====
 // Все пороги и вероятности вынесены сюда для удобной настройки.
 const BASEMENT = {
-  corridorMinLevel: 9,   // с какого уровня появляется corridor-подвал
+  corridorMinLevel: 9,    // с какого уровня появляется corridor-подвал
   corridorProb:     0.25, // вероятность corridor-подвала (при level >= corridorMinLevel)
-  dfsMinLevel:      20,  // с какого уровня появляется DFS-подвал
+  dfsMinLevel:      20,   // с какого уровня появляется DFS-подвал
   dfsProb:          0.33, // вероятность DFS-подвала (при level >= dfsMinLevel, проверяется первым)
+  // Количество вмурованных предметов в стенах лабиринта (corridor и dfs)
+  wallEmbedCount:   {min: 10, max: 15},
+  // Прозрачность вмурованных предметов (0=невидимо, 1=непрозрачно)
+  // Значение < 1 позволяет кирпичной стене просвечивать сквозь предмет
+  wallEmbedAlpha:   0.72,
 };
 
 // ===== БОНУСЫ =====

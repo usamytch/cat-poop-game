@@ -856,6 +856,84 @@ describe('updateObstacles()', () => {
 });
 
 // ---------------------------------------------------------------------------
+describe('_placeWallEmbeds — вмурованные предметы в стенах подвала', () => {
+  const EMBED_TYPES = new Set(['fishBones', 'ragMouse', 'teddyBear', 'toyCar', 'toyPlane', 'juiceCan']);
+
+  it('corridor basement: decorItems contains at least one wall-embed type', () => {
+    level = 1;
+    globalSeed = 0;
+    obstacles.length = 0; bonuses.length = 0; occupiedCells.clear();
+    cheatBasement = true;
+    generateLevel();
+    expect(currentLocation.key).toBe('basement');
+    expect(basementMode).toBe('corridor');
+    const hasEmbed = decorItems.some(d => EMBED_TYPES.has(d.type));
+    expect(hasEmbed, 'corridor basement должен содержать хотя бы один вмурованный предмет в decorItems').toBe(true);
+  });
+
+  it('dfs basement: decorItems contains at least one wall-embed type', () => {
+    level = 1;
+    globalSeed = 0;
+    obstacles.length = 0; bonuses.length = 0; occupiedCells.clear();
+    cheatDfs = true;
+    generateLevel();
+    expect(currentLocation.key).toBe('basement');
+    expect(basementMode).toBe('dfs');
+    const hasEmbed = decorItems.some(d => EMBED_TYPES.has(d.type));
+    expect(hasEmbed, 'dfs basement должен содержать хотя бы один вмурованный предмет в decorItems').toBe(true);
+  });
+
+  it('wall-embed items in decorItems have wCells=1, hCells=1, width=GRID, height=GRID', () => {
+    level = 1;
+    globalSeed = 0;
+    obstacles.length = 0; bonuses.length = 0; occupiedCells.clear();
+    cheatBasement = true;
+    generateLevel();
+    const embeds = decorItems.filter(d => EMBED_TYPES.has(d.type));
+    expect(embeds.length).toBeGreaterThan(0);
+    for (const e of embeds) {
+      expect(e.wCells).toBe(1);
+      expect(e.hCells).toBe(1);
+      expect(e.width).toBe(GRID);
+      expect(e.height).toBe(GRID);
+    }
+  });
+
+  it('wall-embed items count is within BASEMENT.wallEmbedCount range', () => {
+    level = 1;
+    globalSeed = 0;
+    obstacles.length = 0; bonuses.length = 0; occupiedCells.clear();
+    cheatBasement = true;
+    generateLevel();
+    const embedCount = decorItems.filter(d => EMBED_TYPES.has(d.type)).length;
+    expect(embedCount).toBeGreaterThanOrEqual(BASEMENT.wallEmbedCount.min);
+    expect(embedCount).toBeLessThanOrEqual(BASEMENT.wallEmbedCount.max);
+  });
+
+  it('wall-embed items are NOT in obstacles array (no collision)', () => {
+    level = 1;
+    globalSeed = 0;
+    obstacles.length = 0; bonuses.length = 0; occupiedCells.clear();
+    cheatBasement = true;
+    generateLevel();
+    const embedInObstacles = obstacles.some(o => EMBED_TYPES.has(o.type));
+    expect(embedInObstacles, 'вмурованные предметы не должны быть в obstacles').toBe(false);
+  });
+
+  it('wall-embed items have drawStyle equal to their type', () => {
+    level = 1;
+    globalSeed = 0;
+    obstacles.length = 0; bonuses.length = 0; occupiedCells.clear();
+    cheatBasement = true;
+    generateLevel();
+    const embeds = decorItems.filter(d => EMBED_TYPES.has(d.type));
+    for (const e of embeds) {
+      expect(e.drawStyle).toBe(e.type);
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
 describe('cheatBasement', () => {
   it('cheatBasement=true forces basement location regardless of level', () => {
     level = 1; // уровень ниже порога подвала (9)
