@@ -294,9 +294,10 @@ const owner = {
 
       // OPT 10: сравниваем квадраты дистанций вместо sqrt
       const dist2 = dx*dx + dy*dy;
-      // Порог достижения waypoint: не менее GRID/2 (20px), чтобы хозяин
-      // не застревал у края препятствия при скольжении вдоль стен.
-      const threshold = Math.max(spd + 2, GRID / 2);
+      // Порог достижения waypoint:
+      // - В подвале: Math.max(spd+2, GRID/2)=20px — хозяин не застревает у краёв стен лабиринта
+      // - На открытых уровнях: spd+2 — плавное движение без рывков
+      const threshold = (basementMode !== "") ? Math.max(spd + 2, GRID / 2) : spd + 2;
 
       // Если достигли центра следующей ячейки — переходим к следующей
       if (dist2 < threshold * threshold) {

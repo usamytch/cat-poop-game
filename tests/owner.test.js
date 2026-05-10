@@ -697,10 +697,11 @@ describe('owner.facingX/facingY — normalized direction vector', () => {
     expect(len).toBeCloseTo(1.0, 2);
   });
 
-  it('waypoint threshold is at least GRID/2 so owner advances past obstacle edges', () => {
-    // Фикс: threshold = Math.max(spd+2, GRID/2) = 20px при GRID=40.
+  it('basement: waypoint threshold is at least GRID/2 so owner advances past obstacle edges', () => {
+    // Фикс: в подвале threshold = Math.max(spd+2, GRID/2) = 20px при GRID=40.
     // Хозяин должен засчитывать достижение waypoint при расстоянии ≤20px,
-    // не упираясь в стену у края препятствия.
+    // не упираясь в стену у края препятствия лабиринта.
+    basementMode = "corridor"; // тест проверяет поведение именно в подвале
     owner.active = true;
     owner.fleeTimer = 0;
     obstacles.length = 0;
@@ -708,7 +709,7 @@ describe('owner.facingX/facingY — normalized direction vector', () => {
 
     // path[1] — следующий waypoint — это ячейка (6,5).
     // Ставим хозяина так, чтобы его центр был в 19px от центра ячейки (6,5).
-    // threshold = Math.max(4.5+2, 40/2) = 20px → dist2 < 20^2=400 → path.shift()
+    // threshold = Math.max(4.5+2, 40/2) = 20px → dist2=361 < 20^2=400 → path.shift()
     const nextCenter = cellToPixelCenter(6, 5);
     owner.x = nextCenter.x - GRID / 2 + 1 - owner.width / 2; // ownerCx = nextCenter.x - 19px
     owner.y = nextCenter.y - owner.height / 2;
@@ -725,7 +726,67 @@ describe('owner.facingX/facingY — normalized direction vector', () => {
     // _moveTowardTarget вызывается с целью (не важно куда — путь уже задан)
     owner._moveTowardTarget(player.x, player.y, owner.speed);
 
-    // Waypoint должен быть засчитан (path.shift() вызван) — path стал короче
-    expect(owner.path.length, 'waypoint should be advanced when within GRID/2 of center').toBeLessThan(pathLenBefore);
+    // В подвале waypoint ДОЛЖЕН быть засчитан при 19px (< GRID/2=20px)
+    expect(owner.path.length, 'basement: waypoint should be advanced when within GRID/2 of center').toBeLessThan(pathLenBefore);
+    basementMode = ""; // сброс после теста
+  });
+
+  it('open level: waypoint threshold is spd+2 — NOT advanced at 19px distance', () => {
+    // На открытых уровнях threshold = spd+2 = 6.5px (при speed=4.5).
+    // При расстоянии 19px (> 6.5px) waypoint НЕ должен засчитываться — плавное движение.
+    basementMode = ""; // открытый уровень
+    owner.active = true;
+    owner.fleeTimer = 0;
+    obstacles.length = 0;
+    owner.speed = 4.5; // нормал-скорость
+
+    // Ставим хозяина в 19px от центра следующего waypoint (6,5).
+    // threshold = spd+2 = 6.5px → dist2=361 > 6.5²=42.25 → path НЕ сдвигается
+    const nextCenter = cellToPixelCenter(6, 5);
+    owner.x = nextCenter.x - GRID / 2 + 1 - owner.width / 2; // ownerCx = nextCenter.x - 19px
+    owner.y = nextCenter.y - owner.height / 2;
+
+    owner.path = [
+      { col: 5, row: 5 },
+      { col: 6, row: 5 },
+      { col: 7, row: 5 },
+    ];
+    owner.pathTimer = 100; // не пересчитываем путь
+
+    const pathLenBefore = owner.path.length;
+    owner._moveTowardTarget(player.x, player.y, owner.speed);
+
+    // На открытом уровне waypoint НЕ должен быть засчитан при 19px (> spd+2=6.5px)
+    expect(owner.path.length, 'open level: waypoint should NOT be advanced at 19px distance').toBe(pathLenBefore);
+  });
+
+  it('basement: waypoint threshold is GRID/2 — IS advanced at 19px distance', () => {
+    // В подвале threshold = Math.max(spd+2, GRID/2) = 20px.
+    // При расстоянии 19px (< 20px) waypoint ДОЛЖЕН засчитываться — хозяин не застревает.
+    basementMode = "corridor"; // подвал
+    owner.active = true;
+    owner.fleeTimer = 0;
+    obstacles.length = 0;
+    owner.speed = 4.5; // нормал-скорость
+
+    // Ставим хозяина в 19px от центра следующего waypoint (6,5).
+    // threshold = GRID/2 = 20px → dist2=361 < 20²=400 → path сдвигается
+    const nextCenter = cellToPixelCenter(6, 5);
+    owner.x = nextCenter.x - GRID / 2 + 1 - owner.width / 2; // ownerCx = nextCenter.x - 19px
+    owner.y = nextCenter.y - owner.height / 2;
+
+    owner.path = [
+      { col: 5, row: 5 },
+      { col: 6, row: 5 },
+      { col: 7, row: 5 },
+    ];
+    owner.pathTimer = 100; // не пересчитываем путь
+
+    const pathLenBefore = owner.path.length;
+    owner._moveTowardTarget(player.x, player.y, owner.speed);
+
+    // В подвале waypoint ДОЛЖЕН быть засчитан при 19px (< GRID/2=20px)
+    expect(owner.path.length, 'basement: waypoint should be advanced when within GRID/2').toBeLessThan(pathLenBefore);
+    basementMode = ""; // сброс после теста
   });
 });
