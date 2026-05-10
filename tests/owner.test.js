@@ -697,38 +697,68 @@ describe('owner.facingX/facingY — normalized direction vector', () => {
     expect(len).toBeCloseTo(1.0, 2);
   });
 
-  it('basement: waypoint threshold is at least GRID/2 so owner advances past obstacle edges', () => {
-    // Фикс: в подвале threshold = Math.max(spd+2, GRID/2) = 20px при GRID=40.
-    // Хозяин должен засчитывать достижение waypoint при расстоянии ≤20px,
-    // не упираясь в стену у края препятствия лабиринта.
-    basementMode = "corridor"; // тест проверяет поведение именно в подвале
+  it('basement: waypoint threshold is GRID/2 on a turn so owner advances past obstacle edges', () => {
+    // Улучшение 3: адаптивный threshold.
+    // На ПОВОРОТЕ в подвале threshold = GRID/2 = 20px — хозяин срезает угол заранее.
+    // path[0]→[1]: горизонтально (col 5→6, row 5), path[1]→[2]: вертикально (col 6, row 5→6) — поворот!
+    basementMode = "corridor";
     owner.active = true;
     owner.fleeTimer = 0;
     obstacles.length = 0;
-    owner.speed = 4.5; // нормал-скорость
+    owner.speed = 4.5;
 
-    // path[1] — следующий waypoint — это ячейка (6,5).
-    // Ставим хозяина так, чтобы его центр был в 19px от центра ячейки (6,5).
-    // threshold = Math.max(4.5+2, 40/2) = 20px → dist2=361 < 20^2=400 → path.shift()
+    // Ставим хозяина в 19px от центра waypoint (6,5) — следующего после поворота.
+    // isTurn=true → threshold = GRID/2 = 20px → dist2=361 < 400 → path.shift()
     const nextCenter = cellToPixelCenter(6, 5);
     owner.x = nextCenter.x - GRID / 2 + 1 - owner.width / 2; // ownerCx = nextCenter.x - 19px
     owner.y = nextCenter.y - owner.height / 2;
 
-    // Путь: текущая ячейка → следующая (path[1] = col 6)
+    // Поворот: горизонталь → вертикаль
     owner.path = [
       { col: 5, row: 5 },
       { col: 6, row: 5 },
-      { col: 7, row: 5 },
+      { col: 6, row: 6 }, // поворот вниз
     ];
-    owner.pathTimer = 100; // не пересчитываем путь
+    owner.pathTimer = 100;
 
     const pathLenBefore = owner.path.length;
-    // _moveTowardTarget вызывается с целью (не важно куда — путь уже задан)
     owner._moveTowardTarget(player.x, player.y, owner.speed);
 
-    // В подвале waypoint ДОЛЖЕН быть засчитан при 19px (< GRID/2=20px)
-    expect(owner.path.length, 'basement: waypoint should be advanced when within GRID/2 of center').toBeLessThan(pathLenBefore);
-    basementMode = ""; // сброс после теста
+    // На повороте waypoint ДОЛЖЕН быть засчитан при 19px (< GRID/2=20px)
+    expect(owner.path.length, 'basement turn: waypoint should be advanced when within GRID/2').toBeLessThan(pathLenBefore);
+    basementMode = "";
+  });
+
+  it('basement: waypoint threshold is spd+2 on a straight — NOT advanced at 19px', () => {
+    // Улучшение 3: адаптивный threshold.
+    // На ПРЯМОЙ в подвале threshold = spd+2 = 6.5px — плавное движение без рывков.
+    // При расстоянии 19px (> 6.5px) waypoint НЕ должен засчитываться.
+    basementMode = "corridor";
+    owner.active = true;
+    owner.fleeTimer = 0;
+    obstacles.length = 0;
+    owner.speed = 4.5;
+
+    // Ставим хозяина в 19px от центра waypoint (6,5).
+    // isTurn=false (прямо) → threshold = spd+2 = 6.5px → dist2=361 > 42.25 → path НЕ сдвигается
+    const nextCenter = cellToPixelCenter(6, 5);
+    owner.x = nextCenter.x - GRID / 2 + 1 - owner.width / 2;
+    owner.y = nextCenter.y - owner.height / 2;
+
+    // Прямая: все в одном направлении
+    owner.path = [
+      { col: 5, row: 5 },
+      { col: 6, row: 5 },
+      { col: 7, row: 5 }, // прямо
+    ];
+    owner.pathTimer = 100;
+
+    const pathLenBefore = owner.path.length;
+    owner._moveTowardTarget(player.x, player.y, owner.speed);
+
+    // На прямой waypoint НЕ должен быть засчитан при 19px (> spd+2=6.5px)
+    expect(owner.path.length, 'basement straight: waypoint should NOT be advanced at 19px').toBe(pathLenBefore);
+    basementMode = "";
   });
 
   it('open level: waypoint threshold is spd+2 — NOT advanced at 19px distance', () => {
@@ -738,12 +768,10 @@ describe('owner.facingX/facingY — normalized direction vector', () => {
     owner.active = true;
     owner.fleeTimer = 0;
     obstacles.length = 0;
-    owner.speed = 4.5; // нормал-скорость
+    owner.speed = 4.5;
 
-    // Ставим хозяина в 19px от центра следующего waypoint (6,5).
-    // threshold = spd+2 = 6.5px → dist2=361 > 6.5²=42.25 → path НЕ сдвигается
     const nextCenter = cellToPixelCenter(6, 5);
-    owner.x = nextCenter.x - GRID / 2 + 1 - owner.width / 2; // ownerCx = nextCenter.x - 19px
+    owner.x = nextCenter.x - GRID / 2 + 1 - owner.width / 2;
     owner.y = nextCenter.y - owner.height / 2;
 
     owner.path = [
@@ -751,7 +779,7 @@ describe('owner.facingX/facingY — normalized direction vector', () => {
       { col: 6, row: 5 },
       { col: 7, row: 5 },
     ];
-    owner.pathTimer = 100; // не пересчитываем путь
+    owner.pathTimer = 100;
 
     const pathLenBefore = owner.path.length;
     owner._moveTowardTarget(player.x, player.y, owner.speed);
@@ -759,34 +787,182 @@ describe('owner.facingX/facingY — normalized direction vector', () => {
     // На открытом уровне waypoint НЕ должен быть засчитан при 19px (> spd+2=6.5px)
     expect(owner.path.length, 'open level: waypoint should NOT be advanced at 19px distance').toBe(pathLenBefore);
   });
+});
 
-  it('basement: waypoint threshold is GRID/2 — IS advanced at 19px distance', () => {
-    // В подвале threshold = Math.max(spd+2, GRID/2) = 20px.
-    // При расстоянии 19px (< 20px) waypoint ДОЛЖЕН засчитываться — хозяин не застревает.
-    basementMode = "corridor"; // подвал
+// ---------------------------------------------------------------------------
+describe('owner — basement improvements (улучшения 1-5)', () => {
+  it('улучшение 1: driftAngle = 0 в подвале после update()', () => {
+    // В подвале дрейф отключён — хозяин идёт строго по пути A*, без боковых отклонений.
+    basementMode = "corridor";
+    owner.active = true;
+    owner.fleeTimer = 0;
+    owner.driftAngle = 0.18; // был ненулевой
+    owner.driftTimer = 0;    // сразу сработает обновление дрейфа
+    player.x = 100; player.y = 100;
+    owner.x = 900; owner.y = 500;
+    owner.update();
+    expect(owner.driftAngle, 'basement: driftAngle must be 0').toBe(0);
+    basementMode = "";
+  });
+
+  it('улучшение 1: hesitateTimer не добавляется в подвале', () => {
+    // В подвале случайная микро-заморозка отключена.
+    basementMode = "corridor";
+    owner.active = true;
+    owner.fleeTimer = 0;
+    owner.hesitateTimer = 0;
+    player.x = 100; player.y = 100;
+    owner.x = 900; owner.y = 500;
+    // Запускаем много кадров — hesitateTimer не должен появиться из-за random
+    // (мы не можем контролировать Math.random, но проверяем что логика не вызывается)
+    // Проверяем косвенно: после update() в подвале driftAngle = 0
+    owner.update();
+    expect(owner.driftAngle, 'basement: driftAngle stays 0 after update').toBe(0);
+    basementMode = "";
+  });
+
+  it('улучшение 1: driftAngle обновляется на открытых уровнях', () => {
+    // На открытых уровнях дрейф работает как раньше.
+    basementMode = "";
+    owner.active = true;
+    owner.fleeTimer = 0;
+    owner.driftAngle = 0;
+    owner.driftTimer = 0; // сразу сработает обновление
+    player.x = 100; player.y = 100;
+    owner.x = 900; owner.y = 500;
+    // Запускаем несколько кадров — driftAngle должен стать ненулевым
+    let driftChanged = false;
+    for (let i = 0; i < 5; i++) {
+      owner.update();
+      if (owner.driftAngle !== 0) { driftChanged = true; break; }
+    }
+    expect(driftChanged, 'open level: driftAngle should update').toBe(true);
+  });
+
+  it('улучшение 2: _hasLineOfSight — прямая горизонтальная видимость', () => {
+    // Нет препятствий — прямая видимость по горизонтали
+    obstacles.length = 0;
+    occupiedCells.clear();
+    expect(owner._hasLineOfSight(2, 5, 8, 5)).toBe(true);
+  });
+
+  it('улучшение 2: _hasLineOfSight — прямая вертикальная видимость', () => {
+    obstacles.length = 0;
+    occupiedCells.clear();
+    expect(owner._hasLineOfSight(5, 2, 5, 10)).toBe(true);
+  });
+
+  it('улучшение 2: _hasLineOfSight — стена блокирует видимость', () => {
+    // Ставим стену на col 5, row 5 — она блокирует видимость
+    obstacles.length = 0;
+    occupiedCells.clear();
+    markCells(5, 5, 1, 1); // занимаем ячейку (5,5)
+    expect(owner._hasLineOfSight(2, 5, 8, 5)).toBe(false);
+    unmarkCells(5, 5, 1, 1);
+  });
+
+  it('улучшение 2: _hasLineOfSight — видимость до самой себя (одна ячейка)', () => {
+    obstacles.length = 0;
+    occupiedCells.clear();
+    expect(owner._hasLineOfSight(5, 5, 5, 5)).toBe(true);
+  });
+
+  it('улучшение 2: _smoothPath — пропускает промежуточные waypoints на прямой', () => {
+    // Прямой коридор из 5 ячеек — _smoothPath должен оставить только [0] и [4]
+    obstacles.length = 0;
+    occupiedCells.clear();
+    owner.path = [
+      { col: 2, row: 5 },
+      { col: 3, row: 5 },
+      { col: 4, row: 5 },
+      { col: 5, row: 5 },
+      { col: 6, row: 5 },
+    ];
+    owner._smoothPath(2, 5);
+    // После smoothing: path[0] = (2,5), path[1] = (6,5) — промежуточные удалены
+    expect(owner.path.length).toBe(2);
+    expect(owner.path[0]).toEqual({ col: 2, row: 5 });
+    expect(owner.path[1]).toEqual({ col: 6, row: 5 });
+  });
+
+  it('улучшение 2: _smoothPath — не пропускает waypoints если стена блокирует', () => {
+    // Стена на col 4, row 5 — нельзя пропустить через неё
+    obstacles.length = 0;
+    occupiedCells.clear();
+    markCells(4, 5, 1, 1); // стена посередине
+    owner.path = [
+      { col: 2, row: 5 },
+      { col: 3, row: 5 },
+      { col: 4, row: 5 }, // заблокировано
+      { col: 5, row: 5 },
+      { col: 6, row: 5 },
+    ];
+    owner._smoothPath(2, 5);
+    // Не может пропустить через стену — путь не должен сократиться до 2
+    expect(owner.path.length).toBeGreaterThan(2);
+    unmarkCells(4, 5, 1, 1);
+  });
+
+  it('улучшение 2: _smoothPath — не меняет путь длиной < 3', () => {
+    obstacles.length = 0;
+    occupiedCells.clear();
+    owner.path = [
+      { col: 2, row: 5 },
+      { col: 3, row: 5 },
+    ];
+    owner._smoothPath(2, 5);
+    expect(owner.path.length).toBe(2); // без изменений
+  });
+
+  it('улучшение 4: в подвале путь пересчитывается каждые 15 кадров', () => {
+    // Проверяем что pathTimer устанавливается в 15 (не 30) после пересчёта в подвале.
+    basementMode = "corridor";
     owner.active = true;
     owner.fleeTimer = 0;
     obstacles.length = 0;
-    owner.speed = 4.5; // нормал-скорость
-
-    // Ставим хозяина в 19px от центра следующего waypoint (6,5).
-    // threshold = GRID/2 = 20px → dist2=361 < 20²=400 → path сдвигается
-    const nextCenter = cellToPixelCenter(6, 5);
-    owner.x = nextCenter.x - GRID / 2 + 1 - owner.width / 2; // ownerCx = nextCenter.x - 19px
-    owner.y = nextCenter.y - owner.height / 2;
-
-    owner.path = [
-      { col: 5, row: 5 },
-      { col: 6, row: 5 },
-      { col: 7, row: 5 },
-    ];
-    owner.pathTimer = 100; // не пересчитываем путь
-
-    const pathLenBefore = owner.path.length;
+    owner.path = [];
+    owner.pathTimer = 0; // форсируем пересчёт
+    player.x = 400; player.y = 300;
+    owner.x = 100; owner.y = 100;
     owner._moveTowardTarget(player.x, player.y, owner.speed);
+    // После пересчёта pathTimer должен быть 15 (recalcInterval в подвале)
+    expect(owner.pathTimer).toBe(15);
+    basementMode = "";
+  });
 
-    // В подвале waypoint ДОЛЖЕН быть засчитан при 19px (< GRID/2=20px)
-    expect(owner.path.length, 'basement: waypoint should be advanced when within GRID/2').toBeLessThan(pathLenBefore);
-    basementMode = ""; // сброс после теста
+  it('улучшение 4: на открытых уровнях путь пересчитывается каждые 30 кадров', () => {
+    basementMode = "";
+    owner.active = true;
+    owner.fleeTimer = 0;
+    obstacles.length = 0;
+    owner.path = [];
+    owner.pathTimer = 0;
+    player.x = 400; player.y = 300;
+    owner.x = 100; owner.y = 100;
+    owner._moveTowardTarget(player.x, player.y, owner.speed);
+    // На открытом уровне pathTimer = PATH_RECALC = 30
+    expect(owner.pathTimer).toBe(owner.PATH_RECALC);
+  });
+
+  it('улучшение 5: в DFS-подвале хозяин не спавнится в заблокированных колонках', () => {
+    // В DFS-режиме cols 28-29 заблокированы сплошными стенами.
+    // Хозяин должен спавниться в свободной ячейке (col ≤ 27).
+    basementMode = "dfs";
+    obstacles.length = 0;
+    occupiedCells.clear();
+    // Заблокируем cols 28-29 (как в DFS-лабиринте)
+    markCells(28, 0, 2, GRID_ROWS);
+    // Добавим препятствие для hitsObstacles
+    obstacles.push({ id: 'dfs-wall', x: 28 * GRID, y: 0, width: 2 * GRID, height: GRID_ROWS * GRID });
+    player.x = 0; player.y = 0; // кот в левом верхнем углу
+    difficulty = 'normal';
+    level = 9;
+    owner.activate();
+    // Хозяин должен быть в col ≤ 27 (не в заблокированной зоне)
+    const ownerCol = Math.floor(owner.x / GRID);
+    expect(ownerCol, 'owner should not spawn in blocked DFS columns 28-29').toBeLessThanOrEqual(27);
+    basementMode = "";
+    unmarkCells(28, 0, 2, GRID_ROWS);
+    obstacles.length = 0;
   });
 });

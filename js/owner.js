@@ -43,48 +43,94 @@ const owner = {
     if (level < diff.firstLvl) { this.active = false; return; }
     this.active = true;
     this.speed = Math.min(diff.baseSpd + (level-1)*diff.spdPerLvl, diff.maxSpd);
-    const b = getPlayBounds();
-    const corners = [
-      {x:b.right-this.width-20, y:b.top+20},
-      {x:b.right-this.width-20, y:b.bottom-this.height-20},
-      {x:b.left+20,             y:b.top+20},
-      {x:b.left+20,             y:b.bottom-this.height-20},
-    ];
-    // Sort corners farthest-first from player
-    corners.sort((a, c) => {
-      const da = (a.x-player.x)**2 + (a.y-player.y)**2;
-      const dc = (c.x-player.x)**2 + (c.y-player.y)**2;
-      return dc - da;
-    });
-    // Pick the farthest corner that doesn't overlap any obstacle
+
+    // ===== УЛУЧШЕНИЕ 5: Безопасный ячеечный спавн в подвале =====
+    // В подвале пиксельные углы могут попасть в заблокированные колонки (DFS: cols 28-29).
+    // Используем ячеечный поиск: spiral search от углов сетки, максимально далёких от кота.
     let best = null;
-    for (const c of corners) {
-      if (!hitsObstacles({x:c.x, y:c.y, width:this.width, height:this.height})) {
-        best = c; break;
-      }
-    }
-    // Fallback: spiral outward from the best corner to find a free grid cell
-    if (!best) {
-      const fc = corners[0];
+    if (basementMode !== "") {
+      const catCell = pixelToCell(player.x + player.size/2, player.y + player.size/2);
       const ownerWCells = Math.ceil(this.width / GRID);
       const ownerHCells = Math.ceil(this.height / GRID);
-      const startCell = pixelToCell(fc.x + this.width/2, fc.y + this.height/2);
-      outer: for (let radius = 0; radius <= 6; radius++) {
-        for (let dr = -radius; dr <= radius; dr++) {
-          for (let dc = -radius; dc <= radius; dc++) {
-            if (Math.abs(dr) !== radius && Math.abs(dc) !== radius) continue;
-            const col = startCell.col + dc;
-            const row = startCell.row + dr;
-            if (col < 0 || row < 0 || col + ownerWCells > GRID_COLS || row + ownerHCells > GRID_ROWS) continue;
-            if (!cellsFree(col, row, ownerWCells, ownerHCells)) continue;
-            const pos = cellToPixel(col, row);
-            best = {x: pos.x, y: pos.y};
-            break outer;
+      // Четыре угла сетки (ячеечные координаты)
+      const cornerCells = [
+        { col: 0,             row: 0             },
+        { col: 0,             row: GRID_ROWS - 1 },
+        { col: GRID_COLS - 1, row: 0             },
+        { col: GRID_COLS - 1, row: GRID_ROWS - 1 },
+      ];
+      // Сортируем по убыванию расстояния от кота
+      cornerCells.sort((a, b) => {
+        const da = (a.col - catCell.col)**2 + (a.row - catCell.row)**2;
+        const db = (b.col - catCell.col)**2 + (b.row - catCell.row)**2;
+        return db - da;
+      });
+      // Spiral search от каждого угла — ищем свободную ячейку
+      outer: for (const corner of cornerCells) {
+        for (let radius = 0; radius <= 8; radius++) {
+          for (let dr = -radius; dr <= radius; dr++) {
+            for (let dc = -radius; dc <= radius; dc++) {
+              if (Math.abs(dr) !== radius && Math.abs(dc) !== radius) continue;
+              const col = corner.col + dc;
+              const row = corner.row + dr;
+              if (col < 0 || row < 0 || col + ownerWCells > GRID_COLS || row + ownerHCells > GRID_ROWS) continue;
+              if (!cellsFree(col, row, ownerWCells, ownerHCells)) continue;
+              const pos = cellToPixel(col, row);
+              if (!hitsObstacles({ x: pos.x, y: pos.y, width: this.width, height: this.height })) {
+                best = { x: pos.x, y: pos.y };
+                break outer;
+              }
+            }
           }
         }
       }
-      if (!best) best = fc; // absolute fallback
     }
+
+    // Fallback (открытые уровни и подвал без свободной ячейки): пиксельные углы
+    if (!best) {
+      const b = getPlayBounds();
+      const corners = [
+        {x:b.right-this.width-20, y:b.top+20},
+        {x:b.right-this.width-20, y:b.bottom-this.height-20},
+        {x:b.left+20,             y:b.top+20},
+        {x:b.left+20,             y:b.bottom-this.height-20},
+      ];
+      // Sort corners farthest-first from player
+      corners.sort((a, c) => {
+        const da = (a.x-player.x)**2 + (a.y-player.y)**2;
+        const dc = (c.x-player.x)**2 + (c.y-player.y)**2;
+        return dc - da;
+      });
+      // Pick the farthest corner that doesn't overlap any obstacle
+      for (const c of corners) {
+        if (!hitsObstacles({x:c.x, y:c.y, width:this.width, height:this.height})) {
+          best = c; break;
+        }
+      }
+      // Fallback: spiral outward from the best corner to find a free grid cell
+      if (!best) {
+        const fc = corners[0];
+        const ownerWCells = Math.ceil(this.width / GRID);
+        const ownerHCells = Math.ceil(this.height / GRID);
+        const startCell = pixelToCell(fc.x + this.width/2, fc.y + this.height/2);
+        outer: for (let radius = 0; radius <= 6; radius++) {
+          for (let dr = -radius; dr <= radius; dr++) {
+            for (let dc = -radius; dc <= radius; dc++) {
+              if (Math.abs(dr) !== radius && Math.abs(dc) !== radius) continue;
+              const col = startCell.col + dc;
+              const row = startCell.row + dr;
+              if (col < 0 || row < 0 || col + ownerWCells > GRID_COLS || row + ownerHCells > GRID_ROWS) continue;
+              if (!cellsFree(col, row, ownerWCells, ownerHCells)) continue;
+              const pos = cellToPixel(col, row);
+              best = {x: pos.x, y: pos.y};
+              break outer;
+            }
+          }
+        }
+        if (!best) best = fc; // absolute fallback
+      }
+    }
+
     this.x = best.x; this.y = best.y;
     this.path = [];
     this.pathTimer = 0;
@@ -249,6 +295,38 @@ const owner = {
     }
   },
 
+  // ===== УЛУЧШЕНИЕ 2: Проверка прямой видимости (Bresenham по сетке) =====
+  // Возвращает true если между ячейками (c1,r1) и (c2,r2) нет стен.
+  // O(max(|dc|,|dr|)) ≤ 30 итераций на сетке 30×15 — пренебрежимо мало.
+  _hasLineOfSight(c1, r1, c2, r2) {
+    let x = c1, y = r1;
+    const dx = Math.abs(c2 - c1), dy = Math.abs(r2 - r1);
+    const sx = c1 < c2 ? 1 : -1, sy = r1 < r2 ? 1 : -1;
+    let err = dx - dy;
+    while (true) {
+      if (!isCellFree(x, y)) return false;
+      if (x === c2 && y === r2) return true;
+      const e2 = 2 * err;
+      if (e2 > -dy) { err -= dy; x += sx; }
+      if (e2 < dx)  { err += dx; y += sy; }
+    }
+  },
+
+  // ===== УЛУЧШЕНИЕ 2: Path Smoothing =====
+  // Пропускает промежуточные waypoints если есть прямая видимость до более дальнего.
+  // Устраняет «зигзаг» на прямых коридорах — хозяин идёт прямо, не тормозя у каждой ячейки.
+  _smoothPath(ownerCol, ownerRow) {
+    if (this.path.length < 3) return;
+    // Ищем самый дальний waypoint с прямой видимостью от текущей позиции
+    for (let k = this.path.length - 1; k >= 2; k--) {
+      if (this._hasLineOfSight(ownerCol, ownerRow, this.path[k].col, this.path[k].row)) {
+        // Удаляем промежуточные waypoints [1..k-1]
+        this.path.splice(1, k - 1);
+        break;
+      }
+    }
+  },
+
   // ===== A* ДВИЖЕНИЕ К ЦЕЛИ =====
   _moveTowardTarget(tx, ty, spd) {
     const b = getPlayBounds();
@@ -261,19 +339,29 @@ const owner = {
     // Целевая ячейка
     const goalCell = pixelToCell(tx + this.width / 2, ty + this.height / 2);
 
+    // ===== УЛУЧШЕНИЕ 4: Более частый пересчёт пути в подвале =====
+    // В подвале: 15 кадров (0.25 сек) — путь не устаревает пока кот убегает.
+    // На открытых уровнях: 30 кадров (0.5 сек) — без изменений.
+    const recalcInterval = (basementMode !== "") ? 15 : this.PATH_RECALC;
+
     // Пересчитываем путь по таймеру или если путь кончился
     this.pathTimer--;
     if (this.pathTimer <= 0 || this.path.length === 0) {
-      this.pathTimer = this.PATH_RECALC;
-        // В подвале используем размер кота (36×36) для A*.
-        // Коридоры шириной 2 ячейки (80px) физически вмещают хозяина (52px),
-        // но canPass центрирует прямоугольник 36×52 на ячейке 40px — это выходит
-        // за пределы ячейки и ложно видит коллизию со стеной.
-        const pathW = (basementMode !== "") ? player.size : this.width;
-        const pathH = (basementMode !== "") ? player.size : this.height;
-        const newPath = aStarPath(ownerCell.col, ownerCell.row, goalCell.col, goalCell.row, pathW, pathH);
+      this.pathTimer = recalcInterval;
+      // В подвале используем размер кота (36×36) для A*.
+      // Коридоры шириной 2 ячейки (80px) физически вмещают хозяина (52px),
+      // но canPass центрирует прямоугольник 36×52 на ячейке 40px — это выходит
+      // за пределы ячейки и ложно видит коллизию со стеной.
+      const pathW = (basementMode !== "") ? player.size : this.width;
+      const pathH = (basementMode !== "") ? player.size : this.height;
+      const newPath = aStarPath(ownerCell.col, ownerCell.row, goalCell.col, goalCell.row, pathW, pathH);
       if (newPath) {
         this.path = newPath;
+        // ===== УЛУЧШЕНИЕ 2: Path Smoothing после пересчёта (только в подвале) =====
+        // Пропускаем промежуточные waypoints на прямых коридорах.
+        if (basementMode !== "") {
+          this._smoothPath(ownerCell.col, ownerCell.row);
+        }
       } else {
         // Путь не найден — форсируем пересчёт на следующем кадре
         this.path = [];
@@ -294,10 +382,31 @@ const owner = {
 
       // OPT 10: сравниваем квадраты дистанций вместо sqrt
       const dist2 = dx*dx + dy*dy;
-      // Порог достижения waypoint:
-      // - В подвале: Math.max(spd+2, GRID/2)=20px — хозяин не застревает у краёв стен лабиринта
-      // - На открытых уровнях: spd+2 — плавное движение без рывков
-      const threshold = (basementMode !== "") ? Math.max(spd + 2, GRID / 2) : spd + 2;
+
+      // ===== УЛУЧШЕНИЕ 3: Адаптивный waypoint threshold =====
+      // На прямом коридоре: threshold = spd+2 (~6.5px) — плавное движение без рывков.
+      // На повороте: threshold = GRID/2 (20px) — хозяин срезает угол заранее, не застревая.
+      // На открытых уровнях: threshold = spd+2 — без изменений.
+      let threshold;
+      if (basementMode !== "") {
+        if (this.path.length >= 3) {
+          // Определяем: следующий шаг — поворот или прямо?
+          const cur  = this.path[1];
+          const next = this.path[2];
+          const prev = this.path[0];
+          const curDc = cur.col - prev.col, curDr = cur.row - prev.row;
+          const nextDc = next.col - cur.col, nextDr = next.row - cur.row;
+          const isTurn = (curDc !== nextDc || curDr !== nextDr);
+          // На повороте — большой threshold (срезаем угол)
+          // На прямой — маленький threshold (плавное движение)
+          threshold = isTurn ? Math.max(spd + 2, GRID / 2) : spd + 2;
+        } else {
+          // Последний waypoint — используем большой threshold чтобы не застрять
+          threshold = Math.max(spd + 2, GRID / 2);
+        }
+      } else {
+        threshold = spd + 2;
+      }
 
       // Если достигли центра следующей ячейки — переходим к следующей
       if (dist2 < threshold * threshold) {
@@ -311,7 +420,8 @@ const owner = {
         this.facingY = dy;
       }
 
-      // Применяем дрейф (человечность) — небольшое угловое отклонение
+      // Применяем дрейф (человечность) — только на открытых уровнях
+      // В подвале driftAngle = 0 (см. update()), поэтому ветка не выполняется
       if (this.driftAngle !== 0) {
         const cos = Math.cos(this.driftAngle);
         const sin = Math.sin(this.driftAngle);
@@ -427,18 +537,27 @@ const owner = {
       return; // стоим на месте
     }
 
-    // ===== ОБНОВЛЕНИЕ ДРЕЙФА (человечность) =====
-    this.driftTimer--;
-    if (this.driftTimer <= 0) {
-      // Новый случайный дрейф ±0.18 рад (~±10°)
-      this.driftAngle = (Math.random() - 0.5) * 0.36;
-      this.driftTimer = 80 + Math.floor(Math.random() * 40); // 80–120 кадров
-    }
+    // ===== УЛУЧШЕНИЕ 1: Дрейф и микро-заморозки — только на открытых уровнях =====
+    // В подвале дрейф ±10° вызывает застревание у стен коридоров.
+    // Микро-заморозки в лабиринте выглядят как «тупит у поворота» — нечестно.
+    // На открытых уровнях поведение не меняется.
+    if (basementMode === "") {
+      // ===== ОБНОВЛЕНИЕ ДРЕЙФА (человечность) =====
+      this.driftTimer--;
+      if (this.driftTimer <= 0) {
+        // Новый случайный дрейф ±0.18 рад (~±10°)
+        this.driftAngle = (Math.random() - 0.5) * 0.36;
+        this.driftTimer = 80 + Math.floor(Math.random() * 40); // 80–120 кадров
+      }
 
-    // ===== СЛУЧАЙНАЯ МИКРО-ЗАМОРОЗКА =====
-    // ~0.4% шанс в кадр ≈ раз в ~4 сек
-    if (Math.random() < 0.004) {
-      this.hesitateTimer = 12; // ~0.2 сек
+      // ===== СЛУЧАЙНАЯ МИКРО-ЗАМОРОЗКА =====
+      // ~0.4% шанс в кадр ≈ раз в ~4 сек
+      if (Math.random() < 0.004) {
+        this.hesitateTimer = 12; // ~0.2 сек
+      }
+    } else {
+      // В подвале: сбрасываем дрейф — хозяин идёт строго по пути A*
+      this.driftAngle = 0;
     }
 
     // Запоминаем позицию до движения
