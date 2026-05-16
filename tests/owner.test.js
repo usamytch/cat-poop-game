@@ -45,7 +45,6 @@ function resetCommon() {
   owner.poopHits = 0;
   owner.facePoops = [];
   owner.stuckTimer = 0;
-  owner.stuckNudge = null;
   owner.lastX = owner.x;
   owner.lastY = owner.y;
   owner.driftAngle = 0;
@@ -53,6 +52,8 @@ function resetCommon() {
   owner.hesitateTimer = 0;
   owner.shotReactTimer = 0;
   owner.path = [];
+  owner.pathSegments = [];
+  owner.segmentIndex = 0;
   owner.pathTimer = 0;
   owner.catnipTarget = null;
   poopProgress = 0;
@@ -98,12 +99,12 @@ describe('owner — initial state after activate()', () => {
     expect(owner.stuckTimer).toBe(0);
   });
 
-  it('stuckNudge = null after activate', () => {
-    owner.stuckNudge = { x: 1, y: 0 };
+  it('pathSegments = [] after activate', () => {
+    owner.pathSegments = [{ startPx: { x: 0, y: 0 }, endPx: { x: 40, y: 0 }, dir: { x: 1, y: 0 } }];
     level = 2; // normal.firstLvl = 2
     difficulty = 'normal';
     owner.activate();
-    expect(owner.stuckNudge).toBeNull();
+    expect(owner.pathSegments).toEqual([]);
   });
 
   it('shotReactTimer = 0 after activate', () => {
@@ -481,15 +482,33 @@ describe('owner.update() — anti-stuck', () => {
     expect(owner.stuckTimer).toBe(1);
   });
 
-  it('stuckNudge is set when stuckTimer > 30', () => {
-    owner.stuckTimer = 31;
-    // Simulate the nudge logic
-    if (owner.stuckTimer > 30) {
-      owner.stuckNudge = { x: 0.5, y: 0.5 };
-      owner.stuckTimer = 0;
+  it('net-displacement stuck detection → stuckTimer resets to 0 after MAX_STUCK_CHECKS intervals', () => {
+    // New interval-based stuck detection: stuckTimer increments once per CHECK_INTERVAL frames
+    // when net displacement < NET_THRESHOLD2. After MAX_STUCK_CHECKS increments → force repath.
+    // On open levels: CHECK_INTERVAL=15, MAX_STUCK_CHECKS=3 → need 3*15=45 frames with no movement.
+    owner.active = true;
+    owner.fleeTimer = 0;
+    owner.stuckTimer = 0;
+    owner.lastCheckTimer = 0;
+    // Place owner far from player to avoid catch
+    player.x = 100; player.y = 100;
+    owner.x = 900; owner.y = 500;
+    // Give owner a path so we can verify it gets cleared
+    owner.path = [{ col: 5, row: 5 }, { col: 6, row: 5 }];
+    owner.pathSegments = [{ startPx: { x: 200, y: 200 }, endPx: { x: 240, y: 200 }, dir: { x: 1, y: 0 } }];
+    owner.segmentIndex = 0;
+    owner.pathTimer = 20;
+    // Block movement so owner can't move
+    obstacles.push({ id: 'wall', x: owner.x - 5, y: owner.y - 5, width: 200, height: 200 });
+    // Run enough frames to trigger 3 interval checks (3 * 15 = 45 frames on open level)
+    // After each CHECK_INTERVAL frames with no movement, stuckTimer increments.
+    // After MAX_STUCK_CHECKS=3 increments → stuckTimer reset to 0, pathTimer reset to 0 (force repath).
+    for (let i = 0; i < 46; i++) {
+      owner.update();
     }
-    expect(owner.stuckNudge).not.toBeNull();
+    // After stuck threshold: stuckTimer reset to 0 (force-repath fired)
     expect(owner.stuckTimer).toBe(0);
+    obstacles.length = 0;
   });
 });
 
@@ -697,137 +716,117 @@ describe('owner.facingX/facingY — normalized direction vector', () => {
     expect(len).toBeCloseTo(1.0, 2);
   });
 
-  it('threshold: waypoint advanced when owner is within spd+2 distance (5px < 6.5px threshold)', () => {
-    // FIX: waypoint advance by distance threshold.
-    // Waypoint считается пройденным когда dist2 < (spd+2)².
-    // Это устраняет застревание у углов: стена блокирует ось, но хозяин
-    // за несколько кадров скользит вдоль стены и оказывается в пределах threshold.
+  it('steering: segment advances when owner reaches end of segment (progress >= segLen - epsilon)', () => {
+    // Новая модель: сегмент засчитывается по прогрессу вдоль оси, а не по расстоянию до точки.
+    // Хозяин в конце сегмента (progress >= segLen - 4px) → segmentIndex++, path.shift().
     basementMode = "corridor";
     owner.active = true;
     owner.fleeTimer = 0;
     obstacles.length = 0;
     owner.speed = 4.5;
 
-    // threshold = spd+2 = 6.5px → threshold² = 42.25
-    // Ставим хозяина в 5px от waypoint → dist2 = 25 < 42.25 → path.shift() срабатывает
-    owner.facingX = 1;
-    owner.facingY = 0;
+    // Сегмент: горизонтальный, от (5,5) до (7,5) — длина = 2 ячейки = 80px
+    const startPx = cellToPixelCenter(5, 5);
+    const endPx   = cellToPixelCenter(7, 5);
+    const segLen  = endPx.x - startPx.x; // 80px
 
-    const nextCenter = cellToPixelCenter(6, 5);
-    // ownerCx = nextCenter.x + 5 → dist = 5px (внутри threshold)
-    owner.x = nextCenter.x + 5 - owner.width / 2;
-    owner.y = nextCenter.y - owner.height / 2;
-
-    owner.path = [
-      { col: 5, row: 5 },
-      { col: 6, row: 5 }, // waypoint в 5px от хозяина — внутри threshold
-      { col: 7, row: 5 },
-    ];
-    owner.pathTimer = 100;
-
-    const pathLenBefore = owner.path.length;
-    owner._moveTowardTarget(player.x, player.y, owner.speed);
-
-    // dist2=25 < threshold²=42.25 → path.shift() должен сработать
-    expect(owner.path.length, 'threshold: waypoint should be advanced when within spd+2 distance').toBeLessThan(pathLenBefore);
-    basementMode = "";
-  });
-
-  it('threshold: waypoint NOT advanced when owner is beyond spd+2 distance (19px > 6.5px threshold)', () => {
-    // Если расстояние до waypoint больше threshold (spd+2) — не сдвигаем.
-    // threshold = spd+2 = 6.5px → threshold² = 42.25
-    // dist = 19px → dist2 = 361 > 42.25 → path.shift() НЕ срабатывает.
-    basementMode = "corridor";
-    owner.active = true;
-    owner.fleeTimer = 0;
-    obstacles.length = 0;
-    owner.speed = 4.5;
-
-    owner.facingX = 1;
-    owner.facingY = 0;
-
-    const nextCenter = cellToPixelCenter(6, 5);
-    // ownerCx = nextCenter.x - 19 → dist = 19px (за пределами threshold)
-    owner.x = nextCenter.x - 19 - owner.width / 2;
-    owner.y = nextCenter.y - owner.height / 2;
-
-    owner.path = [
-      { col: 5, row: 5 },
-      { col: 6, row: 5 }, // waypoint в 19px от хозяина — за пределами threshold
-      { col: 7, row: 5 },
-    ];
-    owner.pathTimer = 100;
-
-    const pathLenBefore = owner.path.length;
-    owner._moveTowardTarget(player.x, player.y, owner.speed);
-
-    // dist2=361 > threshold²=42.25 → path НЕ должен сдвигаться
-    expect(owner.path.length, 'threshold: waypoint should NOT be advanced at 19px distance').toBe(pathLenBefore);
-    basementMode = "";
-  });
-
-  it('open level: waypoint threshold is spd+2 — NOT advanced at 19px distance', () => {
-    // На открытых уровнях threshold = spd+2 = 6.5px (при speed=4.5).
-    // При расстоянии 19px (> 6.5px) — waypoint НЕ засчитывается.
-    // Тот же механизм что и в подвале — threshold единый для всех режимов.
-    basementMode = ""; // открытый уровень
-    owner.active = true;
-    owner.fleeTimer = 0;
-    obstacles.length = 0;
-    owner.speed = 4.5;
-
-    owner.facingX = 1;
-    owner.facingY = 0;
-
-    const nextCenter = cellToPixelCenter(6, 5);
-    owner.x = nextCenter.x - 19 - owner.width / 2;
-    owner.y = nextCenter.y - owner.height / 2;
+    // Ставим хозяина в конце сегмента: progress = segLen - 2px (> segLen - 4px = epsilon)
+    owner.x = startPx.x + segLen - 2 - owner.width / 2;
+    owner.y = startPx.y - owner.height / 2;
 
     owner.path = [
       { col: 5, row: 5 },
       { col: 6, row: 5 },
       { col: 7, row: 5 },
     ];
+    owner.pathSegments = [{
+      startPx: { x: startPx.x, y: startPx.y },
+      endPx:   { x: endPx.x,   y: endPx.y   },
+      dir:     { x: 1, y: 0 },
+    }];
+    owner.segmentIndex = 0;
     owner.pathTimer = 100;
 
-    const pathLenBefore = owner.path.length;
+    const segIdxBefore = owner.segmentIndex;
     owner._moveTowardTarget(player.x, player.y, owner.speed);
 
-    // На открытом уровне waypoint НЕ должен быть засчитан при 19px (> spd+2=6.5px)
-    expect(owner.path.length, 'open level: waypoint should NOT be advanced at 19px distance').toBe(pathLenBefore);
+    // Прогресс >= segLen - 4px → segmentIndex должен увеличиться
+    expect(owner.segmentIndex, 'segment should advance when owner reaches end').toBeGreaterThan(segIdxBefore);
+    basementMode = "";
   });
 
-  it('threshold: after shift(), direction immediately computed for new waypoint (no lost frame)', () => {
-    // FIX: после path.shift() хозяин немедленно вычисляет направление к новому waypoint.
-    // dx/dy не остаются нулевыми — нет потерянного кадра.
-    // Сценарий: хозяин в 5px от waypoint (6,5) → dist2=25 < threshold²=42.25 → shift().
-    // Следующий waypoint (7,5) находится правее → facingX должен стать > 0.
+  it('steering: segment does NOT advance when owner is far from end (progress << segLen)', () => {
+    // Хозяин в начале сегмента — прогресс мал, сегмент не засчитывается.
     basementMode = "corridor";
     owner.active = true;
     owner.fleeTimer = 0;
     obstacles.length = 0;
     owner.speed = 4.5;
 
-    // Хозяин в 5px от waypoint (6,5) — внутри threshold → shift() сработает
-    owner.facingX = 1;
-    owner.facingY = 0;
+    const startPx = cellToPixelCenter(5, 5);
+    const endPx   = cellToPixelCenter(7, 5);
 
-    const nextCenter = cellToPixelCenter(6, 5);
-    owner.x = nextCenter.x + 5 - owner.width / 2;
-    owner.y = nextCenter.y - owner.height / 2;
+    // Хозяин в начале сегмента: progress ≈ 0 (далеко от конца)
+    owner.x = startPx.x - owner.width / 2;
+    owner.y = startPx.y - owner.height / 2;
 
     owner.path = [
       { col: 5, row: 5 },
-      { col: 6, row: 5 }, // в пределах threshold — будет сдвинут
-      { col: 7, row: 5 }, // новый waypoint — справа от хозяина
+      { col: 6, row: 5 },
+      { col: 7, row: 5 },
     ];
+    owner.pathSegments = [{
+      startPx: { x: startPx.x, y: startPx.y },
+      endPx:   { x: endPx.x,   y: endPx.y   },
+      dir:     { x: 1, y: 0 },
+    }];
+    owner.segmentIndex = 0;
     owner.pathTimer = 100;
 
     owner._moveTowardTarget(player.x, player.y, owner.speed);
 
-    // После shift() хозяин должен немедленно вычислить направление к (7,5) — вправо
-    // facingX должен быть обновлён к новому waypoint (> 0, т.к. (7,5) правее хозяина)
-    expect(owner.facingX, 'facingX should point toward new waypoint after shift').toBeGreaterThan(0);
+    // Прогресс мал → segmentIndex не должен измениться
+    expect(owner.segmentIndex, 'segment should NOT advance when owner is at start').toBe(0);
+    basementMode = "";
+  });
+
+  it('steering: facingX points along segment direction after _moveTowardTarget', () => {
+    // После вызова _moveTowardTarget с горизонтальным сегментом вправо
+    // facingX должен быть > 0 (хозяин смотрит вправо вдоль оси сегмента).
+    basementMode = "corridor";
+    owner.active = true;
+    owner.fleeTimer = 0;
+    obstacles.length = 0;
+    owner.speed = 4.5;
+    owner.facingX = 0;
+    owner.facingY = 0;
+
+    const startPx = cellToPixelCenter(5, 5);
+    const endPx   = cellToPixelCenter(9, 5);
+
+    // Хозяин в середине сегмента
+    owner.x = startPx.x + 40 - owner.width / 2;
+    owner.y = startPx.y - owner.height / 2;
+
+    owner.path = [
+      { col: 5, row: 5 },
+      { col: 6, row: 5 },
+      { col: 7, row: 5 },
+      { col: 8, row: 5 },
+      { col: 9, row: 5 },
+    ];
+    owner.pathSegments = [{
+      startPx: { x: startPx.x, y: startPx.y },
+      endPx:   { x: endPx.x,   y: endPx.y   },
+      dir:     { x: 1, y: 0 },
+    }];
+    owner.segmentIndex = 0;
+    owner.pathTimer = 100;
+
+    owner._moveTowardTarget(player.x, player.y, owner.speed);
+
+    // Steering target вправо → facingX > 0
+    expect(owner.facingX, 'facingX should point along segment direction (right)').toBeGreaterThan(0);
     basementMode = "";
   });
 });

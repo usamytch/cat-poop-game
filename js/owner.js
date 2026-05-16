@@ -11,9 +11,13 @@ const owner = {
   facingY: 0,
 
   // A* навигация
-  path: [],           // [{col, row}, ...] — текущий путь по сетке
+  path: [],           // [{col, row}, ...] — текущий путь по сетке (для sign logic и repath)
   pathTimer: 0,       // пересчитываем путь каждые N кадров
   PATH_RECALC: 30,    // пересчёт каждые 30 кадров (~0.5 сек)
+
+  // Steering corridor model
+  pathSegments: [],   // [{startPx:{x,y}, endPx:{x,y}, dir:{x,y}}, ...] — сжатые сегменты пути
+  segmentIndex: 0,    // индекс активного сегмента в pathSegments
 
   // Бегство после комбо
   fleeTimer: 0,
@@ -28,9 +32,9 @@ const owner = {
 
   // Анти-застревание
   stuckTimer: 0,      // кадры без значимого движения
-  stuckNudge: null,   // временный вектор "толчка" при застревании
-  lastX: 800,
+  lastX: 800,         // позиция N кадров назад (для детекции осцилляции)
   lastY: 300,
+  lastCheckTimer: 0,  // счётчик до следующей проверки net-displacement
 
   // Человечность
   driftAngle: 0,      // текущее угловое отклонение (рад)
@@ -133,12 +137,15 @@ const owner = {
 
     this.x = best.x; this.y = best.y;
     this.path = [];
+    this.pathSegments = [];
+    this.segmentIndex = 0;
     this.pathTimer = 0;
     this.fleeTimer = 0; this.fleeTarget = null;
     this.catnipTarget = null;
     this.poopHits = 0; this.facePoops = [];
-    this.stuckTimer = 0; this.stuckNudge = null;
+    this.stuckTimer = 0;
     this.lastX = this.x; this.lastY = this.y;
+    this.lastCheckTimer = 0;
     this.driftAngle = 0; this.driftTimer = 0; this.hesitateTimer = 0;
     this.shotReactTimer = 0;
   },
@@ -162,6 +169,8 @@ const owner = {
     this.fleeTarget = best;
     this.fleeTimer = 300; // 5 секунд при 60fps
     this.path = [];
+    this.pathSegments = [];
+    this.segmentIndex = 0;
     this.pathTimer = 0;
     this.hesitateTimer = 0;
   },
@@ -337,6 +346,115 @@ const owner = {
     }
   },
 
+  // ===== STEERING: Сжатие пути в сегменты =====
+  // Конвертирует массив ячеек A* в массив направленных сегментов.
+  // Последовательные ячейки с одинаковым направлением объединяются в один сегмент.
+  //
+  // Input:  [{col,row}, ...] — сырой путь A* (≥1 узлов)
+  // Output: [{startPx:{x,y}, endPx:{x,y}, dir:{x,y}}, ...] — сегменты
+  //
+  // Пример: [(1,1),(2,1),(3,1),(3,2)] → [
+  //   {startPx:(1,1)px, endPx:(3,1)px, dir:{x:1,y:0}},
+  //   {startPx:(3,1)px, endPx:(3,2)px, dir:{x:0,y:1}}
+  // ]
+  _compressToSegments(path) {
+    if (!path || path.length < 2) {
+      this.pathSegments = [];
+      this.segmentIndex = 0;
+      return;
+    }
+
+    // Лог пути при включённом Shift+G debug overlay
+    if (typeof _debugSteering !== "undefined" && _debugSteering) {
+      const first = path[0], last = path[path.length - 1];
+      console.log(`[STEER] path len=${path.length} first=(${first.col},${first.row}) last=(${last.col},${last.row}) ownerX=${Math.round(this.x)} playerX=${Math.round(player.x)}`);
+    }
+
+    const segments = [];
+    let segStart = cellToPixelCenter(path[0].col, path[0].row);
+    let dirX = 0, dirY = 0;
+
+    for (let i = 1; i < path.length; i++) {
+      const prev = path[i - 1];
+      const curr = path[i];
+      const stepX = curr.col - prev.col;
+      const stepY = curr.row - prev.row;
+
+      if (i === 1) {
+        // Первый шаг — инициализируем направление
+        dirX = stepX;
+        dirY = stepY;
+      } else if (stepX !== dirX || stepY !== dirY) {
+        // Направление изменилось — закрываем текущий сегмент
+        const segEnd = cellToPixelCenter(prev.col, prev.row);
+        // Нормализуем dir (шаги всегда ±1 по одной оси, 0 по другой)
+        const len = Math.sqrt(dirX * dirX + dirY * dirY);
+        segments.push({
+          startPx: segStart,
+          endPx: segEnd,
+          dir: { x: dirX / len, y: dirY / len },
+        });
+        // Начинаем новый сегмент
+        segStart = cellToPixelCenter(prev.col, prev.row);
+        dirX = stepX;
+        dirY = stepY;
+      }
+    }
+
+    // Закрываем последний сегмент
+    const lastCell = path[path.length - 1];
+    const segEnd = cellToPixelCenter(lastCell.col, lastCell.row);
+    const len = Math.sqrt(dirX * dirX + dirY * dirY);
+    if (len > 0) {
+      segments.push({
+        startPx: segStart,
+        endPx: segEnd,
+        dir: { x: dirX / len, y: dirY / len },
+      });
+    }
+
+    this.pathSegments = segments;
+    this.segmentIndex = 0;
+  },
+
+  // ===== STEERING: Вычисление цели движения =====
+  // Проецирует центр хозяина на ось активного сегмента,
+  // затем выдвигает цель на LOOKAHEAD пикселей вперёд по оси.
+  // Цель зажата в пределах сегмента (не выходит за endPx).
+  //
+  // Возвращает {x, y} — точку, к которой нужно двигаться.
+  // Если сегментов нет — возвращает null (вызывающий код использует fallback).
+  _getSteeringTarget() {
+    const LOOKAHEAD = GRID * 0.8; // 32px — достаточно для плавного движения
+
+    if (this.segmentIndex >= this.pathSegments.length) return null;
+
+    const seg = this.pathSegments[this.segmentIndex];
+    const ownerCx = this.x + this.width / 2;
+    const ownerCy = this.y + this.height / 2;
+
+    // Проецируем центр хозяина на ось сегмента
+    // t = dot(ownerCenter - seg.startPx, seg.dir)
+    const toOwnerX = ownerCx - seg.startPx.x;
+    const toOwnerY = ownerCy - seg.startPx.y;
+    const t = toOwnerX * seg.dir.x + toOwnerY * seg.dir.y;
+
+    // Длина сегмента вдоль оси
+    const toEndX = seg.endPx.x - seg.startPx.x;
+    const toEndY = seg.endPx.y - seg.startPx.y;
+    const segLen = toEndX * seg.dir.x + toEndY * seg.dir.y;
+
+    // Цель = max(t, 0) + LOOKAHEAD, зажатая до конца сегмента.
+    // max(t, 0) — если хозяин позади startPx (t < 0), цель всё равно
+    // выдвигается вперёд от startPx, а не назад.
+    const tTarget = Math.min(Math.max(t, 0) + LOOKAHEAD, segLen);
+
+    return {
+      x: seg.startPx.x + seg.dir.x * tTarget,
+      y: seg.startPx.y + seg.dir.y * tTarget,
+    };
+  },
+
   // ===== A* ДВИЖЕНИЕ К ЦЕЛИ =====
   _moveTowardTarget(tx, ty, spd) {
     const b = getPlayBounds();
@@ -354,9 +472,15 @@ const owner = {
     // На открытых уровнях: 30 кадров (0.5 сек) — без изменений.
     const recalcInterval = (basementMode !== "") ? 15 : this.PATH_RECALC;
 
-    // Пересчитываем путь по таймеру или если путь кончился (0 элементов — нет следующего waypoint)
+    // Пересчитываем путь по таймеру или если путь кончился
     this.pathTimer--;
     if (this.pathTimer <= 0 || this.path.length === 0) {
+      if (typeof _debugSteering !== "undefined" && _debugSteering) {
+        const _timerFired = this.pathTimer <= 0;
+        const _emptyFired = this.path.length === 0;
+        const _reason = (_timerFired && _emptyFired) ? "both" : _timerFired ? "timer" : "emptyPath";
+        console.log(`[REPATH] reason=${_reason} pathTimer=${this.pathTimer} pathLen=${this.path.length} segIdx=${this.segmentIndex}/${this.pathSegments.length}`);
+      }
       this.pathTimer = recalcInterval;
       // В подвале используем размер кота (36×36) для A*.
       // Коридоры шириной 2 ячейки (80px) физически вмещают хозяина (52px),
@@ -367,15 +491,20 @@ const owner = {
       const newPath = aStarPath(ownerCell.col, ownerCell.row, goalCell.col, goalCell.row, pathW, pathH);
       if (newPath) {
         this.path = newPath;
-        // ===== УЛУЧШЕНИЕ 2: Path Smoothing после пересчёта (только в подвале) =====
-        // Пропускаем промежуточные waypoints на прямых коридорах.
+        // Path Smoothing (только в подвале) — пропускаем промежуточные waypoints на прямых
         if (basementMode !== "") {
           this._smoothPath(ownerCell.col, ownerCell.row);
         }
+        // Steering: сжимаем путь в сегменты для плавного движения вдоль коридоров
+        this._compressToSegments(this.path);
       } else {
-        // Путь не найден — форсируем пересчёт на следующем кадре
+        // Путь не найден — ждём recalcInterval кадров перед повторной попыткой.
+        // Немедленный pathTimer=0 вызывал бесконечный цикл: A* не находит путь →
+        // pathTimer=0 → следующий кадр снова A* → снова не находит → 86+ раз/кадр.
         this.path = [];
-        this.pathTimer = 0;
+        this.pathSegments = [];
+        this.segmentIndex = 0;
+        this.pathTimer = recalcInterval;
       }
     }
 
@@ -383,58 +512,74 @@ const owner = {
     let dx = 0, dy = 0;
 
     if (this.path.length >= 2) {
-      // Следующая ячейка в пути (пропускаем текущую [0])
-      const nextCell = this.path[1];
-      const nextPx = cellToPixelCenter(nextCell.col, nextCell.row);
+      // ===== STEERING: движение вдоль коридорного сегмента =====
+      // Вместо прицеливания в точный центр ячейки — проецируем на ось сегмента
+      // и выдвигаем цель на LOOKAHEAD вперёд. Это совместимо с wall-sliding:
+      // физическое скольжение вдоль стены не мешает прогрессу вдоль оси сегмента.
 
-      dx = nextPx.x - ownerCx;
-      dy = nextPx.y - ownerCy;
+      // Проверяем завершение текущего сегмента (прогресс вдоль оси).
+      // EPSILON = GRID/2 (20px): хозяин 36×52px центрируется на ячейке 40px,
+      // поэтому его центр физически не может достичь точного cellToPixelCenter
+      // конечной ячейки — стена блокирует на ~6px раньше по перпендикулярной оси.
+      // Увеличенный порог гарантирует переход к следующему сегменту даже при
+      // небольшом физическом смещении от оси коридора.
+      if (this.segmentIndex < this.pathSegments.length) {
+        const seg = this.pathSegments[this.segmentIndex];
+        const toOwnerX = ownerCx - seg.startPx.x;
+        const toOwnerY = ownerCy - seg.startPx.y;
+        const progress = toOwnerX * seg.dir.x + toOwnerY * seg.dir.y;
 
-      // OPT 10: сравниваем квадраты дистанций вместо sqrt
-      const dist2 = dx*dx + dy*dy;
+        const toEndX = seg.endPx.x - seg.startPx.x;
+        const toEndY = seg.endPx.y - seg.startPx.y;
+        const segLen = toEndX * seg.dir.x + toEndY * seg.dir.y;
 
-      // ===== FIX: Единый маленький threshold вместо адаптивного =====
-      // Старый подход (threshold = GRID/2 = 20px на поворотах) вызывал застревание:
-      // wall sliding блокировал одну ось → хозяин никогда не достигал 20px порога →
-      // path.shift() не срабатывал → бесконечная осцилляция у угла.
-      //
-      // Новый подход: единый threshold = spd+2 (~6.5px) для всех случаев.
-      // Хозяин скользит вдоль стены и за несколько кадров оказывается в 6.5px от waypoint.
-      // Работает одинаково на открытых уровнях и в подвале — без адаптации.
-      const threshold = spd + 2;
-
-      if (dist2 < threshold * threshold) {
-        this.path.shift();
-        // Немедленно вычисляем направление к новому waypoint — не теряем кадр.
-        // Пропускаем waypoints совпадающие с текущей ячейкой хозяина (дубликаты в пути).
-        while (this.path.length >= 2) {
-          const newNext = this.path[1];
-          // Если следующий waypoint — та же ячейка что и текущая позиция, пропускаем
-          if (newNext.col === ownerCell.col && newNext.row === ownerCell.row) {
-            this.path.shift();
-            continue;
+        // В подвале используем порог GRID*0.4 = 16px из-за 52px высоты хозяина:
+        // центр хозяина физически не может достичь точного cellToPixelCenter конечной
+        // ячейки — стена блокирует на ~6px раньше. 16px > 6px с запасом, но меньше
+        // GRID/2=20px, чтобы не срабатывать на коротких сегментах (1 ячейка = 40px).
+        // На открытых уровнях достаточно 8px.
+        const EPSILON = (basementMode !== "") ? GRID * 0.4 : 8;
+        if (progress >= segLen - EPSILON) {
+          this.segmentIndex++;
+          // Синхронизируем path[] для sign logic (draw() проверяет path.length >= 2)
+          if (this.path.length > 1) this.path.shift();
+          // Сегменты исчерпаны — пересчёт через нормальный интервал (не немедленно).
+          // Немедленный pathTimer=0 вызывал бесконечный цикл пересчётов когда хозяин
+          // физически не мог двигаться: сегменты исчерпывались → pathTimer=0 → новый
+          // путь → те же сегменты → снова исчерпаны → 86+ пересчётов за кадр.
+          if (this.segmentIndex >= this.pathSegments.length) {
+            this.pathTimer = Math.min(this.pathTimer, recalcInterval);
           }
-          const newPx = cellToPixelCenter(newNext.col, newNext.row);
-          dx = newPx.x - ownerCx;
-          dy = newPx.y - ownerCy;
-          const nd2 = dx*dx + dy*dy;
-          if (nd2 > 0.01) {
-            const nd = Math.sqrt(nd2);
-            dx /= nd; dy /= nd;
-            this.facingX = dx; this.facingY = dy;
-          }
-          break;
         }
-        // Если после сдвига путь опустел до 1 элемента — форсируем пересчёт на следующем кадре.
-        // Это предотвращает зависание в direct-movement режиме при наличии стен.
-        if (this.path.length <= 1) this.pathTimer = 0;
+      }
+
+      // Получаем steering target
+      const steerTarget = this._getSteeringTarget();
+      if (steerTarget) {
+        dx = steerTarget.x - ownerCx;
+        dy = steerTarget.y - ownerCy;
+        const dist2 = dx * dx + dy * dy;
+        if (dist2 > 0.01) {
+          const dist = Math.sqrt(dist2);
+          dx /= dist;
+          dy /= dist;
+          this.facingX = dx;
+          this.facingY = dy;
+        }
+        if (typeof _debugSteering !== "undefined" && _debugSteering && dist2 < 1) {
+          console.log(`[STEER-ZERO] steerTarget=(${Math.round(steerTarget.x)},${Math.round(steerTarget.y)}) ownerCx=${Math.round(ownerCx)} ownerCy=${Math.round(ownerCy)} dist2=${dist2.toFixed(3)} segIdx=${this.segmentIndex}/${this.pathSegments.length}`);
+        }
       } else {
-        const dist = Math.sqrt(dist2);
-        dx /= dist;
-        dy /= dist;
-        // Обновляем направление взгляда только из нормализованного вектора
-        this.facingX = dx;
-        this.facingY = dy;
+        // Fallback: нет активного сегмента — двигаемся напрямую к цели
+        dx = tx - this.x;
+        dy = ty - this.y;
+        const dist2 = dx * dx + dy * dy;
+        if (dist2 > 0.01) {
+          const dist = Math.sqrt(dist2);
+          dx /= dist; dy /= dist;
+          this.facingX = dx;
+          this.facingY = dy;
+        }
       }
 
       // Применяем дрейф (человечность) — только на открытых уровнях
@@ -458,14 +603,6 @@ const owner = {
         this.facingX = dx;
         this.facingY = dy;
       }
-    }
-
-    // Применяем stuckNudge если есть
-    if (this.stuckNudge) {
-      dx += this.stuckNudge.x * 0.5;
-      dy += this.stuckNudge.y * 0.5;
-      const nd2 = dx*dx + dy*dy;
-      if (nd2 > 0) { const nd = Math.sqrt(nd2); dx /= nd; dy /= nd; }
     }
 
     // Применяем движение с раздельной проверкой осей (скольжение вдоль стен)
@@ -517,7 +654,16 @@ const owner = {
 
     // Гарантия: хозяин не может быть внутри препятствия (напр. из-за движущегося)
     if (escapeObstacles(this)) {
-      this.path = []; this.pathTimer = 0;
+      if (typeof _debugSteering !== "undefined" && _debugSteering) {
+        console.log(`[ESCAPE] owner inside obstacle → escaped to ownerX=${Math.round(this.x)} ownerY=${Math.round(this.y)}`);
+      }
+      // Сбрасываем только segmentIndex — steering пересчитается с новой позиции.
+      // НЕ очищаем path и НЕ сбрасываем pathTimer:
+      // - path=[] при pathTimer>0 триггерит немедленный пересчёт (строка 477)
+      // - pathTimer=0 вызывал бесконечный цикл: escape → repath → движение обратно
+      //   → снова внутри препятствия → снова escape → бесконечно.
+      // Путь пересчитается через нормальный интервал таймера.
+      this.segmentIndex = 0;
     }
 
     // Режим бегства: двигаемся к fleeTarget
@@ -587,23 +733,47 @@ const owner = {
     this._moveTowardTarget(tx, ty, this.speed);
 
     // ===== АНТИ-ЗАСТРЕВАНИЕ =====
-    // OPT 10: квадрат дистанции для сравнения movedDist < 0.5
-    const ddx = this.x - prevX, ddy = this.y - prevY;
-    const movedDist2 = ddx*ddx + ddy*ddy;
-    if (movedDist2 < 0.25) { // 0.5² = 0.25
-      this.stuckTimer++;
-      if (this.stuckTimer > 30) {
-        // Застрял — форсируем пересчёт пути и добавляем случайный толчок
-        this.path = [];
-        this.pathTimer = 0;
-        // Случайный толчок в одном из 4 направлений
-        const nudges = [{x:1,y:0},{x:-1,y:0},{x:0,y:1},{x:0,y:-1}];
-        this.stuckNudge = nudges[Math.floor(Math.random() * nudges.length)];
+    // Используем net-displacement за CHECK_INTERVAL кадров вместо per-frame delta.
+    // Это обнаруживает осцилляцию (движение туда-обратно), которая сбрасывает
+    // per-frame stuckTimer каждый кадр, но не даёт реального прогресса.
+    // В подвале CHECK_INTERVAL=10 кадров, порог 2px² (~1.4px net за 10 кадров).
+    // На открытых уровнях CHECK_INTERVAL=15 кадров, порог 4px².
+    const CHECK_INTERVAL = (basementMode !== "") ? 10 : 15;
+    const NET_THRESHOLD2 = (basementMode !== "") ? 2 : 4; // px² net displacement
+    const MAX_STUCK_CHECKS = (basementMode !== "") ? 2 : 3; // checks before repath
+
+    this.lastCheckTimer++;
+    if (this.lastCheckTimer >= CHECK_INTERVAL) {
+      this.lastCheckTimer = 0;
+      const netDx = this.x - this.lastX;
+      const netDy = this.y - this.lastY;
+      const netDist2 = netDx * netDx + netDy * netDy;
+      if (netDist2 < NET_THRESHOLD2) {
+        this.stuckTimer++;
+        if (this.stuckTimer >= MAX_STUCK_CHECKS) {
+          if (typeof _debugSteering !== "undefined" && _debugSteering) {
+            console.log(`[STUCK] force repath at ownerX=${Math.round(this.x)} ownerY=${Math.round(this.y)} netDist2=${netDist2.toFixed(2)}`);
+          }
+          // Застрял — форсируем пересчёт пути.
+          // НЕ очищаем path=[] — это триггерит немедленный repath через условие
+          // path.length===0 (строка 477), что в сочетании с pathTimer=0 создаёт
+          // бесконечный цикл: stuck → path=[] + pathTimer=0 → следующий кадр
+          // pathTimer-- → -1, path.length===0 → repath → A* находит путь →
+          // pathTimer=recalcInterval, но path=[] уже очищен → снова repath → цикл.
+          // Решение: только сбрасываем сегменты и устанавливаем pathTimer=0.
+          // pathTimer=0 → следующий кадр pathTimer-- → -1 → repath через таймер.
+          // path остаётся непустым → условие path.length===0 не срабатывает.
+          this.pathSegments = [];
+          this.segmentIndex = 0;
+          this.pathTimer = 0;
+          this.stuckTimer = 0;
+        }
+      } else {
         this.stuckTimer = 0;
       }
-    } else {
-      this.stuckTimer = 0;
-      this.stuckNudge = null;
+      // Обновляем опорную позицию для следующей проверки
+      this.lastX = this.x;
+      this.lastY = this.y;
     }
 
     // Поймал кота

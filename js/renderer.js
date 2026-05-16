@@ -5,6 +5,108 @@
 // OPT 5: Date.now() один раз за кадр
 let _now = 0;
 
+// ===== DEBUG: Steering overlay (Shift+G) =====
+// Показывает: красные точки = сырой A* путь, жёлтые линии = сегменты,
+// голубая точка = steering target, зелёная точка = проекция хозяина на сегмент.
+var _debugSteering = false;
+
+function _drawSteeringDebug() {
+  if (!_debugSteering || !owner.active) return;
+
+  ctx.save();
+
+  // --- Красные точки: сырой A* путь ---
+  ctx.fillStyle = "rgba(255,60,60,0.85)";
+  for (const cell of owner.path) {
+    const px = cellToPixelCenter(cell.col, cell.row);
+    ctx.beginPath();
+    ctx.arc(px.x, px.y, 4, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // --- Жёлтые линии: сжатые сегменты ---
+  ctx.strokeStyle = "rgba(255,220,0,0.9)";
+  ctx.lineWidth = 2;
+  for (let i = 0; i < owner.pathSegments.length; i++) {
+    const seg = owner.pathSegments[i];
+    const isActive = (i === owner.segmentIndex);
+    ctx.strokeStyle = isActive ? "rgba(255,220,0,1)" : "rgba(255,220,0,0.45)";
+    ctx.lineWidth = isActive ? 3 : 1.5;
+    ctx.beginPath();
+    ctx.moveTo(seg.startPx.x, seg.startPx.y);
+    ctx.lineTo(seg.endPx.x, seg.endPx.y);
+    ctx.stroke();
+    // Стрелка в конце сегмента
+    ctx.fillStyle = ctx.strokeStyle;
+    ctx.beginPath();
+    ctx.arc(seg.endPx.x, seg.endPx.y, isActive ? 5 : 3, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // --- Зелёная точка: проекция хозяина на активный сегмент ---
+  if (owner.segmentIndex < owner.pathSegments.length) {
+    const seg = owner.pathSegments[owner.segmentIndex];
+    const ownerCx = owner.x + owner.width / 2;
+    const ownerCy = owner.y + owner.height / 2;
+    const toOwnerX = ownerCx - seg.startPx.x;
+    const toOwnerY = ownerCy - seg.startPx.y;
+    const t = toOwnerX * seg.dir.x + toOwnerY * seg.dir.y;
+    const projX = seg.startPx.x + seg.dir.x * t;
+    const projY = seg.startPx.y + seg.dir.y * t;
+    ctx.fillStyle = "rgba(60,255,120,0.9)";
+    ctx.beginPath();
+    ctx.arc(projX, projY, 6, 0, Math.PI * 2);
+    ctx.fill();
+    // Линия от хозяина до проекции
+    ctx.strokeStyle = "rgba(60,255,120,0.5)";
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(ownerCx, ownerCy);
+    ctx.lineTo(projX, projY);
+    ctx.stroke();
+  }
+
+  // --- Голубая точка: steering target ---
+  const steerTarget = owner._getSteeringTarget();
+  if (steerTarget) {
+    ctx.fillStyle = "rgba(0,220,255,0.95)";
+    ctx.beginPath();
+    ctx.arc(steerTarget.x, steerTarget.y, 7, 0, Math.PI * 2);
+    ctx.fill();
+    // Линия от хозяина до steering target
+    const ownerCx = owner.x + owner.width / 2;
+    const ownerCy = owner.y + owner.height / 2;
+    ctx.strokeStyle = "rgba(0,220,255,0.6)";
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash([4, 4]);
+    ctx.beginPath();
+    ctx.moveTo(ownerCx, ownerCy);
+    ctx.lineTo(steerTarget.x, steerTarget.y);
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
+
+  // --- Легенда ---
+  ctx.font = "bold 11px monospace";
+  ctx.textAlign = "left";
+  ctx.textBaseline = "top";
+  const lx = 8, ly = WORLD.height - 90;
+  ctx.fillStyle = "rgba(0,0,0,0.6)";
+  ctx.fillRect(lx - 2, ly - 2, 200, 84);
+  const lines = [
+    { color: "rgba(255,60,60,0.9)",   text: "● A* path cells" },
+    { color: "rgba(255,220,0,1)",     text: "— segments (active=bright)" },
+    { color: "rgba(60,255,120,0.9)",  text: "● owner projection" },
+    { color: "rgba(0,220,255,0.95)",  text: "● steering target" },
+  ];
+  lines.forEach((l, i) => {
+    ctx.fillStyle = l.color;
+    ctx.fillText(l.text, lx + 2, ly + 2 + i * 20);
+  });
+
+  ctx.restore();
+}
+
 // ===== ПАНИКА — постпроцессинг-эффекты =====
 // Все эффекты рисуются поверх готового кадра — не трогают логику.
 // Blur пропущен: ctx.filter на Canvas 2D убивает 60fps.
@@ -117,6 +219,9 @@ function draw() {
 
   // Паника-постпроцессинг — самый последний слой поверх всего
   if (gameState === "playing") drawPanicEffects();
+
+  // Debug: steering overlay (Shift+G) — поверх всего, только в playing
+  if (gameState === "playing") _drawSteeringDebug();
 
   // Сбрасываем transform в конце кадра
   ctx.setTransform(1, 0, 0, 1, 0, 0);

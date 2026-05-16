@@ -66,6 +66,8 @@ window.addEventListener("keydown", e => {
     }
   } else if (gameState === "playing") {
     if (e.key === " " || e.key === "x" || e.key === "X") shootPoop();
+    // Debug: Shift+G — переключить steering overlay
+    if (e.key === "G") { _debugSteering = !_debugSteering; }
     // Чит-код: Shift+B — телепорт в подвал (corridor) без сброса счёта/жизней
     if (e.key === "B") {
       cheatBasement = true;
