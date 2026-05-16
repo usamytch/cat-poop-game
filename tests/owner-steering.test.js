@@ -608,17 +608,12 @@ describe('steering — dynamic obstacle forces repath', () => {
 });
 
 // ---------------------------------------------------------------------------
-// REGRESSION: corner-freeze fix
-// Three changes were made to fix the owner freezing in basement corners:
-//   1. EPSILON = GRID/2 (20px) in basement (was 4px) — accounts for 52px height
-//   2. Lateral snap (30%/frame) toward corridor axis in basement
-//   3. stuckTimer threshold = 20 frames in basement (was 45)
+// Segment completion — EPSILON=8px (owner 36×36 fits in 40px cell with 4px margin)
 // ---------------------------------------------------------------------------
-describe('corner-freeze regression — basement epsilon GRID*0.4', () => {
-  it('segmentIndex advances in basement when owner is within GRID*0.4 of segment end', () => {
-    // Regression: with old EPSILON=4px, owner 52px tall could not reach exact
-    // cellToPixelCenter endpoint → segmentIndex never advanced → corner freeze.
-    // With EPSILON=GRID*0.4=16px, segment completes when owner is within 16px of end.
+describe('segment completion — epsilon 8px', () => {
+  it('segmentIndex advances when owner center is within 8px of segment end', () => {
+    // Owner 36×36px fits in 40px cell — EPSILON=8px is sufficient.
+    // Place owner center at segLen - 6px from start (within 8px of end) → must advance.
     basementMode = 'corridor';
     obstacles.length = 0;
     occupiedCells.clear();
@@ -634,9 +629,8 @@ describe('corner-freeze regression — basement epsilon GRID*0.4', () => {
     }];
     owner.segmentIndex = 0;
 
-    // Place owner center at segLen - 12px from start (within GRID*0.4=16px of end)
-    // Old EPSILON=4 would NOT advance here; new EPSILON=16 WILL advance.
-    owner.x = startPx.x + segLen - 12 - owner.width / 2;
+    // Place owner center at segLen - 6px from start (within EPSILON=8px of end)
+    owner.x = startPx.x + segLen - 6 - owner.width / 2;
     owner.y = startPx.y - owner.height / 2;
 
     owner.path = [
@@ -647,12 +641,43 @@ describe('corner-freeze regression — basement epsilon GRID*0.4', () => {
 
     owner._moveTowardTarget(player.x, player.y, owner.speed);
 
-    // With GRID*0.4 epsilon, segmentIndex must have advanced
     expect(owner.segmentIndex).toBeGreaterThan(0);
     basementMode = '';
   });
 
-  it('segmentIndex does NOT advance in basement when owner is far from segment end', () => {
+  it('segmentIndex does NOT advance when owner is 10px from segment end (> EPSILON=8px)', () => {
+    basementMode = 'corridor';
+    obstacles.length = 0;
+    occupiedCells.clear();
+
+    const startPx = cellToPixelCenter(3, 5);
+    const endPx   = cellToPixelCenter(7, 5);
+    const segLen  = endPx.x - startPx.x; // 4 cells = 160px
+
+    owner.pathSegments = [{
+      startPx: { x: startPx.x, y: startPx.y },
+      endPx:   { x: endPx.x,   y: endPx.y   },
+      dir:     { x: 1, y: 0 },
+    }];
+    owner.segmentIndex = 0;
+
+    // Place owner center at segLen - 10px from start (10px > EPSILON=8px → should NOT advance)
+    owner.x = startPx.x + segLen - 10 - owner.width / 2;
+    owner.y = startPx.y - owner.height / 2;
+
+    owner.path = [
+      { col: 3, row: 5 }, { col: 4, row: 5 },
+      { col: 5, row: 5 }, { col: 6, row: 5 }, { col: 7, row: 5 },
+    ];
+    owner.pathTimer = 100;
+
+    owner._moveTowardTarget(player.x, player.y, owner.speed);
+
+    expect(owner.segmentIndex).toBe(0);
+    basementMode = '';
+  });
+
+  it('segmentIndex does NOT advance when owner is at start of segment (far from end)', () => {
     basementMode = 'corridor';
     obstacles.length = 0;
     occupiedCells.clear();

@@ -79,8 +79,9 @@ describe('entity sizes — grid compatibility', () => {
     expect(owner.width).toBeLessThan(40);
   });
 
-  it('owner.height = 52', () => {
-    expect(owner.height).toBe(52);
+  it('owner.height = 36 (fits in 1 grid cell with margin)', () => {
+    expect(owner.height).toBe(36);
+    expect(owner.height).toBeLessThan(40); // GRID = 40
   });
 });
 

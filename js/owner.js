@@ -3,7 +3,7 @@
 // ==========================================
 
 const owner = {
-  x: 800, y: 300, width: 36, height: 52,
+  x: 800, y: 300, width: 36, height: 36,
   active: false, speed: 1.0,
 
   // Направление взгляда (нормализованный вектор) — для фонарика в подвале
@@ -482,13 +482,8 @@ const owner = {
         console.log(`[REPATH] reason=${_reason} pathTimer=${this.pathTimer} pathLen=${this.path.length} segIdx=${this.segmentIndex}/${this.pathSegments.length}`);
       }
       this.pathTimer = recalcInterval;
-      // В подвале используем размер кота (36×36) для A*.
-      // Коридоры шириной 2 ячейки (80px) физически вмещают хозяина (52px),
-      // но canPass центрирует прямоугольник 36×52 на ячейке 40px — это выходит
-      // за пределы ячейки и ложно видит коллизию со стеной.
-      const pathW = (basementMode !== "") ? player.size : this.width;
-      const pathH = (basementMode !== "") ? player.size : this.height;
-      const newPath = aStarPath(ownerCell.col, ownerCell.row, goalCell.col, goalCell.row, pathW, pathH);
+      // Хозяин 36×36px — тот же размер что и кот. A* использует реальные размеры.
+      const newPath = aStarPath(ownerCell.col, ownerCell.row, goalCell.col, goalCell.row, this.width, this.height);
       if (newPath) {
         this.path = newPath;
         // Path Smoothing (только в подвале) — пропускаем промежуточные waypoints на прямых
@@ -518,11 +513,8 @@ const owner = {
       // физическое скольжение вдоль стены не мешает прогрессу вдоль оси сегмента.
 
       // Проверяем завершение текущего сегмента (прогресс вдоль оси).
-      // EPSILON = GRID/2 (20px): хозяин 36×52px центрируется на ячейке 40px,
-      // поэтому его центр физически не может достичь точного cellToPixelCenter
-      // конечной ячейки — стена блокирует на ~6px раньше по перпендикулярной оси.
-      // Увеличенный порог гарантирует переход к следующему сегменту даже при
-      // небольшом физическом смещении от оси коридора.
+      // Хозяин 36×36px = кот 36×36px — оба помещаются в ячейку 40px с зазором 4px.
+      // EPSILON = 8px достаточно для плавного перехода к следующему сегменту.
       if (this.segmentIndex < this.pathSegments.length) {
         const seg = this.pathSegments[this.segmentIndex];
         const toOwnerX = ownerCx - seg.startPx.x;
@@ -533,12 +525,7 @@ const owner = {
         const toEndY = seg.endPx.y - seg.startPx.y;
         const segLen = toEndX * seg.dir.x + toEndY * seg.dir.y;
 
-        // В подвале используем порог GRID*0.4 = 16px из-за 52px высоты хозяина:
-        // центр хозяина физически не может достичь точного cellToPixelCenter конечной
-        // ячейки — стена блокирует на ~6px раньше. 16px > 6px с запасом, но меньше
-        // GRID/2=20px, чтобы не срабатывать на коротких сегментах (1 ячейка = 40px).
-        // На открытых уровнях достаточно 8px.
-        const EPSILON = (basementMode !== "") ? GRID * 0.4 : 8;
+        const EPSILON = 8;
         if (progress >= segLen - EPSILON) {
           this.segmentIndex++;
           // Синхронизируем path[] для sign logic (draw() проверяет path.length >= 2)
