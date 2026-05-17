@@ -5,9 +5,9 @@
 // OPT 5: Date.now() один раз за кадр
 let _now = 0;
 
-// ===== DEBUG: Steering overlay (Shift+G) =====
-// Показывает: красные точки = сырой A* путь, жёлтые линии = сегменты,
-// голубая точка = steering target, зелёная точка = проекция хозяина на сегмент.
+// ===== DEBUG: Grid-node overlay (Shift+G) =====
+// Показывает: красные точки = A* путь, синяя линия = текущий сегмент (currentNode→nextNode),
+// зелёная точка = nextNode, оранжевые точки = nodeQueue, прогресс-бар сегмента.
 var _debugSteering = false;
 
 function _drawSteeringDebug() {
@@ -15,89 +15,87 @@ function _drawSteeringDebug() {
 
   ctx.save();
 
-  // --- Красные точки: сырой A* путь ---
-  ctx.fillStyle = "rgba(255,60,60,0.85)";
+  // --- Красные точки: A* путь (owner.path) ---
+  ctx.fillStyle = "rgba(255,60,60,0.75)";
   for (const cell of owner.path) {
     const px = cellToPixelCenter(cell.col, cell.row);
+    ctx.beginPath();
+    ctx.arc(px.x, px.y, 3, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // --- Оранжевые точки: nodeQueue (предстоящие узлы) ---
+  ctx.fillStyle = "rgba(255,160,0,0.85)";
+  for (const node of owner.nodeQueue) {
+    const px = cellToPixelCenter(node.col, node.row);
+    ctx.beginPath();
+    ctx.arc(px.x, px.y, 5, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // --- Синяя линия: текущий сегмент currentNode → nextNode ---
+  if (owner.currentNode && owner.nextNode) {
+    const fromPx = cellToPixelCenter(owner.currentNode.col, owner.currentNode.row);
+    const toPx   = cellToPixelCenter(owner.nextNode.col,   owner.nextNode.row);
+
+    // Линия сегмента
+    ctx.strokeStyle = "rgba(60,160,255,0.9)";
+    ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    ctx.moveTo(fromPx.x, fromPx.y);
+    ctx.lineTo(toPx.x, toPx.y);
+    ctx.stroke();
+
+    // Прогресс-бар вдоль сегмента
+    const prog = owner.moveProgress;
+    const midX = fromPx.x + (toPx.x - fromPx.x) * prog;
+    const midY = fromPx.y + (toPx.y - fromPx.y) * prog;
+    ctx.fillStyle = "rgba(60,160,255,1)";
+    ctx.beginPath();
+    ctx.arc(midX, midY, 5, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Белая точка: currentNode
+    ctx.fillStyle = "rgba(255,255,255,0.9)";
+    ctx.beginPath();
+    ctx.arc(fromPx.x, fromPx.y, 4, 0, Math.PI * 2);
+    ctx.fill();
+  } else if (owner.currentNode) {
+    // Нет nextNode — стоим на месте
+    const px = cellToPixelCenter(owner.currentNode.col, owner.currentNode.row);
+    ctx.fillStyle = "rgba(255,255,255,0.9)";
     ctx.beginPath();
     ctx.arc(px.x, px.y, 4, 0, Math.PI * 2);
     ctx.fill();
   }
 
-  // --- Жёлтые линии: сжатые сегменты ---
-  ctx.strokeStyle = "rgba(255,220,0,0.9)";
-  ctx.lineWidth = 2;
-  for (let i = 0; i < owner.pathSegments.length; i++) {
-    const seg = owner.pathSegments[i];
-    const isActive = (i === owner.segmentIndex);
-    ctx.strokeStyle = isActive ? "rgba(255,220,0,1)" : "rgba(255,220,0,0.45)";
-    ctx.lineWidth = isActive ? 3 : 1.5;
+  // --- Зелёная точка: nextNode (цель текущего шага) ---
+  if (owner.nextNode) {
+    const px = cellToPixelCenter(owner.nextNode.col, owner.nextNode.row);
+    ctx.fillStyle = "rgba(60,255,120,0.95)";
     ctx.beginPath();
-    ctx.moveTo(seg.startPx.x, seg.startPx.y);
-    ctx.lineTo(seg.endPx.x, seg.endPx.y);
-    ctx.stroke();
-    // Стрелка в конце сегмента
-    ctx.fillStyle = ctx.strokeStyle;
-    ctx.beginPath();
-    ctx.arc(seg.endPx.x, seg.endPx.y, isActive ? 5 : 3, 0, Math.PI * 2);
+    ctx.arc(px.x, px.y, 6, 0, Math.PI * 2);
     ctx.fill();
   }
 
-  // --- Зелёная точка: проекция хозяина на активный сегмент ---
-  if (owner.segmentIndex < owner.pathSegments.length) {
-    const seg = owner.pathSegments[owner.segmentIndex];
-    const ownerCx = owner.x + owner.width / 2;
-    const ownerCy = owner.y + owner.height / 2;
-    const toOwnerX = ownerCx - seg.startPx.x;
-    const toOwnerY = ownerCy - seg.startPx.y;
-    const t = toOwnerX * seg.dir.x + toOwnerY * seg.dir.y;
-    const projX = seg.startPx.x + seg.dir.x * t;
-    const projY = seg.startPx.y + seg.dir.y * t;
-    ctx.fillStyle = "rgba(60,255,120,0.9)";
-    ctx.beginPath();
-    ctx.arc(projX, projY, 6, 0, Math.PI * 2);
-    ctx.fill();
-    // Линия от хозяина до проекции
-    ctx.strokeStyle = "rgba(60,255,120,0.5)";
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.moveTo(ownerCx, ownerCy);
-    ctx.lineTo(projX, projY);
-    ctx.stroke();
-  }
-
-  // --- Голубая точка: steering target ---
-  const steerTarget = owner._getSteeringTarget();
-  if (steerTarget) {
-    ctx.fillStyle = "rgba(0,220,255,0.95)";
-    ctx.beginPath();
-    ctx.arc(steerTarget.x, steerTarget.y, 7, 0, Math.PI * 2);
-    ctx.fill();
-    // Линия от хозяина до steering target
-    const ownerCx = owner.x + owner.width / 2;
-    const ownerCy = owner.y + owner.height / 2;
-    ctx.strokeStyle = "rgba(0,220,255,0.6)";
-    ctx.lineWidth = 1.5;
-    ctx.setLineDash([4, 4]);
-    ctx.beginPath();
-    ctx.moveTo(ownerCx, ownerCy);
-    ctx.lineTo(steerTarget.x, steerTarget.y);
-    ctx.stroke();
-    ctx.setLineDash([]);
-  }
-
-  // --- Легенда ---
+  // --- Легенда + текущее состояние ---
   ctx.font = "bold 11px monospace";
   ctx.textAlign = "left";
   ctx.textBaseline = "top";
-  const lx = 8, ly = WORLD.height - 90;
-  ctx.fillStyle = "rgba(0,0,0,0.6)";
-  ctx.fillRect(lx - 2, ly - 2, 200, 84);
+  const lx = 8, ly = WORLD.height - 110;
+  ctx.fillStyle = "rgba(0,0,0,0.65)";
+  ctx.fillRect(lx - 2, ly - 2, 230, 104);
+
+  const cn = owner.currentNode;
+  const nn = owner.nextNode;
+  const prog = owner.moveProgress.toFixed(2);
+  const qLen = owner.nodeQueue.length;
   const lines = [
     { color: "rgba(255,60,60,0.9)",   text: "● A* path cells" },
-    { color: "rgba(255,220,0,1)",     text: "— segments (active=bright)" },
-    { color: "rgba(60,255,120,0.9)",  text: "● owner projection" },
-    { color: "rgba(0,220,255,0.95)",  text: "● steering target" },
+    { color: "rgba(255,160,0,0.9)",   text: "● nodeQueue (" + qLen + " nodes)" },
+    { color: "rgba(60,160,255,1)",    text: "— current segment (progress=" + prog + ")" },
+    { color: "rgba(60,255,120,0.95)", text: "● nextNode" },
+    { color: "rgba(255,255,255,0.9)", text: "● currentNode" + (cn ? " (" + cn.col + "," + cn.row + ")" : " null") },
   ];
   lines.forEach((l, i) => {
     ctx.fillStyle = l.color;

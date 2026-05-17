@@ -44,18 +44,18 @@ function resetCommon() {
   owner.fleeTarget = null;
   owner.poopHits = 0;
   owner.facePoops = [];
-  owner.stuckTimer = 0;
-  owner.lastX = owner.x;
-  owner.lastY = owner.y;
-  owner.driftAngle = 0;
-  owner.driftTimer = 0;
   owner.hesitateTimer = 0;
   owner.shotReactTimer = 0;
   owner.path = [];
-  owner.pathSegments = [];
-  owner.segmentIndex = 0;
   owner.pathTimer = 0;
   owner.catnipTarget = null;
+  // Grid-node state
+  owner.currentNode = null;
+  owner.nextNode = null;
+  owner.moveProgress = 0;
+  owner.segmentLength = GRID;
+  owner.nodeQueue = [];
+  owner.lastRepathGoalCell = null;
   poopProgress = 0;
   isPooping = false;
   bonuses.length = 0;
@@ -91,20 +91,19 @@ describe('owner — initial state after activate()', () => {
     expect(owner.fleeTimer).toBe(0);
   });
 
-  it('stuckTimer = 0 after activate', () => {
-    owner.stuckTimer = 99;
+  it('nodeQueue = [] after activate', () => {
+    owner.nodeQueue = [{ col: 5, row: 5 }];
     level = 2; // normal.firstLvl = 2
     difficulty = 'normal';
     owner.activate();
-    expect(owner.stuckTimer).toBe(0);
+    expect(owner.nodeQueue).toEqual([]);
   });
 
-  it('pathSegments = [] after activate', () => {
-    owner.pathSegments = [{ startPx: { x: 0, y: 0 }, endPx: { x: 40, y: 0 }, dir: { x: 1, y: 0 } }];
+  it('currentNode is set after activate (not null)', () => {
     level = 2; // normal.firstLvl = 2
     difficulty = 'normal';
     owner.activate();
-    expect(owner.pathSegments).toEqual([]);
+    expect(owner.currentNode).not.toBeNull();
   });
 
   it('shotReactTimer = 0 after activate', () => {
@@ -456,58 +455,43 @@ describe('owner.update() — pursuit and catch', () => {
 });
 
 // ---------------------------------------------------------------------------
-describe('owner.update() — anti-stuck', () => {
-  it('stuckTimer grows when owner barely moves', () => {
+describe('owner.update() — grid-node repath on obstacle escape', () => {
+  it('escapeObstacles resets grid state and forces repath (pathTimer = PATH_RECALC after update)', () => {
+    // Grid-node model: no stuckTimer. Instead, escapeObstacles() snaps to free cell
+    // and resets pathTimer=0 to force immediate repath. Then _moveTowardTarget runs
+    // and sets pathTimer = PATH_RECALC (30). So after update(), pathTimer = PATH_RECALC.
     owner.active = true;
     owner.fleeTimer = 0;
-    // Place owner far from player so it tries to move but obstacles block it
+    player.x = 100; player.y = 100;
+    owner.x = 600; owner.y = 300;
+    owner.currentNode = { col: 15, row: 7 };
+    owner.nextNode = { col: 16, row: 7 };
+    owner.nodeQueue = [{ col: 17, row: 7 }];
+    owner.moveProgress = 0.5;
+    owner.pathTimer = 100;
+    // Place obstacle on top of owner
     obstacles.push({ id: 'wall', x: owner.x - 5, y: owner.y - 5, width: 200, height: 200 });
-    owner.lastX = owner.x;
-    owner.lastY = owner.y;
-    owner.stuckTimer = 0;
-    // Move player far away to avoid catch
-    player.x = 100;
-    player.y = 100;
-    owner.x = 900;
-    owner.y = 500;
-    owner.lastX = owner.x;
-    owner.lastY = owner.y;
+    owner.update();
+    // After escape + repath: pathTimer = PATH_RECALC (repath happened)
+    expect(owner.pathTimer).toBe(owner.PATH_RECALC);
     obstacles.length = 0;
-    // Simulate stuck: owner can't move (no obstacles but target is same position)
-    // We test the logic directly: if moved < 0.5, stuckTimer++
-    owner.stuckTimer = 0;
-    // Manually simulate: owner didn't move
-    const movedDist = 0;
-    if (movedDist < 0.5) owner.stuckTimer++;
-    expect(owner.stuckTimer).toBe(1);
   });
 
-  it('net-displacement stuck detection → stuckTimer resets to 0 after MAX_STUCK_CHECKS intervals', () => {
-    // New interval-based stuck detection: stuckTimer increments once per CHECK_INTERVAL frames
-    // when net displacement < NET_THRESHOLD2. After MAX_STUCK_CHECKS increments → force repath.
-    // On open levels: CHECK_INTERVAL=15, MAX_STUCK_CHECKS=3 → need 3*15=45 frames with no movement.
+  it('after escapeObstacles: owner is not inside any obstacle', () => {
     owner.active = true;
     owner.fleeTimer = 0;
-    owner.stuckTimer = 0;
-    owner.lastCheckTimer = 0;
-    // Place owner far from player to avoid catch
     player.x = 100; player.y = 100;
-    owner.x = 900; owner.y = 500;
-    // Give owner a path so we can verify it gets cleared
-    owner.path = [{ col: 5, row: 5 }, { col: 6, row: 5 }];
-    owner.pathSegments = [{ startPx: { x: 200, y: 200 }, endPx: { x: 240, y: 200 }, dir: { x: 1, y: 0 } }];
-    owner.segmentIndex = 0;
-    owner.pathTimer = 20;
-    // Block movement so owner can't move
+    owner.x = 600; owner.y = 300;
+    owner.currentNode = { col: 15, row: 7 };
+    owner.nextNode = null;
+    owner.nodeQueue = [];
+    owner.moveProgress = 0;
+    owner.pathTimer = 100;
     obstacles.push({ id: 'wall', x: owner.x - 5, y: owner.y - 5, width: 200, height: 200 });
-    // Run enough frames to trigger 3 interval checks (3 * 15 = 45 frames on open level)
-    // After each CHECK_INTERVAL frames with no movement, stuckTimer increments.
-    // After MAX_STUCK_CHECKS=3 increments → stuckTimer reset to 0, pathTimer reset to 0 (force repath).
-    for (let i = 0; i < 46; i++) {
-      owner.update();
-    }
-    // After stuck threshold: stuckTimer reset to 0 (force-repath fired)
-    expect(owner.stuckTimer).toBe(0);
+    owner.update();
+    const or_ = { x: owner.x, y: owner.y, width: owner.width, height: owner.height };
+    const overlaps = obstacles.some(o => rectsOverlap(or_, o));
+    expect(overlaps).toBe(false);
     obstacles.length = 0;
   });
 });
@@ -815,162 +799,61 @@ describe('owner.facingX/facingY — normalized direction vector', () => {
 });
 
 // ---------------------------------------------------------------------------
-describe('owner — basement improvements (улучшения 1-5)', () => {
-  it('улучшение 1: driftAngle = 0 в подвале после update()', () => {
-    // В подвале дрейф отключён — хозяин идёт строго по пути A*, без боковых отклонений.
+describe('owner — basement grid-node (улучшения)', () => {
+  it('grid-node: в подвале hesitateTimer работает (микро-заморозка)', () => {
+    // В новой модели hesitateTimer работает на всех уровнях включая подвал.
     basementMode = "corridor";
     owner.active = true;
     owner.fleeTimer = 0;
-    owner.driftAngle = 0.18; // был ненулевой
-    owner.driftTimer = 0;    // сразу сработает обновление дрейфа
+    owner.hesitateTimer = 5;
+    const prevX = owner.x;
+    const prevY = owner.y;
     player.x = 100; player.y = 100;
     owner.x = 900; owner.y = 500;
     owner.update();
-    expect(owner.driftAngle, 'basement: driftAngle must be 0').toBe(0);
+    // hesitateTimer decrements, owner does not move
+    expect(owner.hesitateTimer).toBe(4);
     basementMode = "";
   });
 
-  it('улучшение 1: hesitateTimer не добавляется в подвале', () => {
-    // В подвале случайная микро-заморозка отключена.
-    basementMode = "corridor";
-    owner.active = true;
-    owner.fleeTimer = 0;
-    owner.hesitateTimer = 0;
-    player.x = 100; player.y = 100;
-    owner.x = 900; owner.y = 500;
-    // Запускаем много кадров — hesitateTimer не должен появиться из-за random
-    // (мы не можем контролировать Math.random, но проверяем что логика не вызывается)
-    // Проверяем косвенно: после update() в подвале driftAngle = 0
-    owner.update();
-    expect(owner.driftAngle, 'basement: driftAngle stays 0 after update').toBe(0);
-    basementMode = "";
+  it('grid-node: owner has no driftAngle property (removed)', () => {
+    expect(owner.driftAngle).toBeUndefined();
   });
 
-  it('улучшение 1: driftAngle обновляется на открытых уровнях', () => {
-    // На открытых уровнях дрейф работает как раньше.
-    basementMode = "";
-    owner.active = true;
-    owner.fleeTimer = 0;
-    owner.driftAngle = 0;
-    owner.driftTimer = 0; // сразу сработает обновление
-    player.x = 100; player.y = 100;
-    owner.x = 900; owner.y = 500;
-    // Запускаем несколько кадров — driftAngle должен стать ненулевым
-    let driftChanged = false;
-    for (let i = 0; i < 5; i++) {
-      owner.update();
-      if (owner.driftAngle !== 0) { driftChanged = true; break; }
-    }
-    expect(driftChanged, 'open level: driftAngle should update').toBe(true);
+  it('grid-node: owner has no driftTimer property (removed)', () => {
+    expect(owner.driftTimer).toBeUndefined();
   });
 
-  it('улучшение 2: _hasLineOfSight — прямая горизонтальная видимость', () => {
-    // Нет препятствий — прямая видимость по горизонтали
-    obstacles.length = 0;
-    occupiedCells.clear();
-    expect(owner._hasLineOfSight(2, 5, 8, 5)).toBe(true);
+  it('grid-node: owner has no stuckTimer property (removed)', () => {
+    expect(owner.stuckTimer).toBeUndefined();
   });
 
-  it('улучшение 2: _hasLineOfSight — прямая вертикальная видимость', () => {
-    obstacles.length = 0;
-    occupiedCells.clear();
-    expect(owner._hasLineOfSight(5, 2, 5, 10)).toBe(true);
+  it('grid-node: owner has no lastCheckTimer property (removed)', () => {
+    expect(owner.lastCheckTimer).toBeUndefined();
   });
 
-  it('улучшение 2: _hasLineOfSight — стена блокирует видимость', () => {
-    // Ставим стену на col 5, row 5 — она блокирует видимость
-    obstacles.length = 0;
-    occupiedCells.clear();
-    markCells(5, 5, 1, 1); // занимаем ячейку (5,5)
-    expect(owner._hasLineOfSight(2, 5, 8, 5)).toBe(false);
-    unmarkCells(5, 5, 1, 1);
+  it('grid-node: owner has no pathSegments property (removed)', () => {
+    expect(owner.pathSegments).toBeUndefined();
   });
 
-  it('улучшение 2: _hasLineOfSight — видимость до самой себя (одна ячейка)', () => {
-    obstacles.length = 0;
-    occupiedCells.clear();
-    expect(owner._hasLineOfSight(5, 5, 5, 5)).toBe(true);
+  it('grid-node: owner has no segmentIndex property (removed)', () => {
+    expect(owner.segmentIndex).toBeUndefined();
   });
 
-  it('улучшение 2: _smoothPath — пропускает промежуточные waypoints на прямой', () => {
-    // Прямой коридор из 5 ячеек — _smoothPath должен оставить только [0] и [4]
-    obstacles.length = 0;
-    occupiedCells.clear();
-    owner.path = [
-      { col: 2, row: 5 },
-      { col: 3, row: 5 },
-      { col: 4, row: 5 },
-      { col: 5, row: 5 },
-      { col: 6, row: 5 },
-    ];
-    owner._smoothPath(2, 5);
-    // После smoothing: path[0] = (2,5), path[1] = (6,5) — промежуточные удалены
-    expect(owner.path.length).toBe(2);
-    expect(owner.path[0]).toEqual({ col: 2, row: 5 });
-    expect(owner.path[1]).toEqual({ col: 6, row: 5 });
+  it('grid-node: owner has no _hasLineOfSight method (removed)', () => {
+    expect(owner._hasLineOfSight).toBeUndefined();
   });
 
-  it('FIX: _smoothPath — НЕ пропускает waypoints на повороте (corner freeze fix)', () => {
-    // FIX: на повороте _smoothPath возвращает early — не удаляет промежуточный waypoint.
-    // Это предотвращает ситуацию когда хозяин пытается идти через стену угла.
-    obstacles.length = 0;
-    occupiedCells.clear();
-    // Путь с поворотом: горизонталь → вертикаль
-    owner.path = [
-      { col: 2, row: 5 }, // текущая позиция
-      { col: 3, row: 5 }, // следующий waypoint (горизонталь)
-      { col: 3, row: 6 }, // поворот вниз
-      { col: 3, row: 7 },
-    ];
-    const lenBefore = owner.path.length;
-    owner._smoothPath(2, 5);
-    // На повороте путь НЕ должен сокращаться
-    expect(owner.path.length).toBe(lenBefore);
+  it('grid-node: owner has no _smoothPath method (removed)', () => {
+    expect(owner._smoothPath).toBeUndefined();
   });
 
-  it('FIX: _smoothPath — пропускает waypoints на прямой (smoothing работает на прямых)', () => {
-    // На прямом участке smoothing работает как раньше.
-    // Путь: прямо вправо (нет поворота между [0]→[1] и [1]→[2])
-    obstacles.length = 0;
-    occupiedCells.clear();
-    owner.path = [
-      { col: 2, row: 5 },
-      { col: 3, row: 5 },
-      { col: 4, row: 5 }, // прямо
-      { col: 5, row: 5 },
-    ];
-    owner._smoothPath(2, 5);
-    // На прямой — промежуточные удаляются
-    expect(owner.path.length).toBeLessThan(4);
+  it('grid-node: owner has no _compressToSegments method (removed)', () => {
+    expect(owner._compressToSegments).toBeUndefined();
   });
 
-  it('улучшение 2: _smoothPath — не пропускает waypoints если стена блокирует', () => {
-    // Стена на col 4, row 5 — нельзя пропустить через неё
-    obstacles.length = 0;
-    occupiedCells.clear();
-    markCells(4, 5, 1, 1); // стена посередине
-    owner.path = [
-      { col: 2, row: 5 },
-      { col: 3, row: 5 },
-      { col: 4, row: 5 }, // заблокировано
-      { col: 5, row: 5 },
-      { col: 6, row: 5 },
-    ];
-    owner._smoothPath(2, 5);
-    // Не может пропустить через стену — путь не должен сократиться до 2
-    expect(owner.path.length).toBeGreaterThan(2);
-    unmarkCells(4, 5, 1, 1);
-  });
-
-  it('улучшение 2: _smoothPath — не меняет путь длиной < 3', () => {
-    obstacles.length = 0;
-    occupiedCells.clear();
-    owner.path = [
-      { col: 2, row: 5 },
-      { col: 3, row: 5 },
-    ];
-    owner._smoothPath(2, 5);
-    expect(owner.path.length).toBe(2); // без изменений
+  it('grid-node: owner has no _getSteeringTarget method (removed)', () => {
+    expect(owner._getSteeringTarget).toBeUndefined();
   });
 
   it('улучшение 4: в подвале grid-node repath — pathTimer устанавливается в 30 (event-driven)', () => {

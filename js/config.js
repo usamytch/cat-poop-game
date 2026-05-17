@@ -26,9 +26,18 @@ const lifeImage = new Image(); lifeImage.src = "favicon-32.png";
 
 // ===== СЛОЖНОСТЬ =====
 const DIFF = {
-  easy:   { label:"😸 Лёгкий", urgeRate:1.0,  baseSpd:1.2, spdPerLvl:0.2,  maxSpd:3.5, firstLvl:3, poopTime:120, hitUrgeReduce:3.0, shootUrgeReduce:1.5 },
-  normal: { label:"😼 Нормал", urgeRate:1.9,  baseSpd:1.6, spdPerLvl:0.25, maxSpd:4.5, firstLvl:2, poopTime:180, hitUrgeReduce:2.0, shootUrgeReduce:1.0 },
-  chaos:  { label:"😈 Хаос",   urgeRate:3.0,  baseSpd:2.3, spdPerLvl:0.40, maxSpd:6.5, firstLvl:1, poopTime:240, hitUrgeReduce:1.5, shootUrgeReduce:0   },
+  // repathMinDist — Chebyshev cell distance deadzone for playerCellChanged repath trigger.
+  //   Prevents oscillation on open levels: owner ignores micro-shifts < repathMinDist cells.
+  //   Fallback timer (PATH_RECALC=30) still fires regardless of this value.
+  //   Chaos=2 (not 1): aggressiveness via speed/hesitation, not repath churn.
+  //
+  // hesitateBaseProb  — base probability of micro-freeze per frame (~once per N sec at 60fps)
+  // hesitateProbDecay — hyperbolic decay coefficient: prob = base / (1 + (level-1) * decay)
+  // hesitateMinProb   — floor probability (never goes below this)
+  // hesitateDur       — duration of micro-freeze in frames
+  easy:   { label:"😸 Лёгкий", urgeRate:1.0,  baseSpd:1.2, spdPerLvl:0.2,  maxSpd:3.5, firstLvl:3, poopTime:120, hitUrgeReduce:3.0, shootUrgeReduce:1.5, repathMinDist:3, hesitateBaseProb:0.008, hesitateProbDecay:0.08, hesitateMinProb:0.003, hesitateDur:18 },
+  normal: { label:"😼 Нормал", urgeRate:1.9,  baseSpd:1.6, spdPerLvl:0.25, maxSpd:4.5, firstLvl:2, poopTime:180, hitUrgeReduce:2.0, shootUrgeReduce:1.0, repathMinDist:2, hesitateBaseProb:0.004, hesitateProbDecay:0.10, hesitateMinProb:0.001, hesitateDur:12 },
+  chaos:  { label:"😈 Хаос",   urgeRate:3.0,  baseSpd:2.3, spdPerLvl:0.40, maxSpd:6.5, firstLvl:1, poopTime:240, hitUrgeReduce:1.5, shootUrgeReduce:0,   repathMinDist:2, hesitateBaseProb:0.002, hesitateProbDecay:0.20, hesitateMinProb:0.0,  hesitateDur:8  },
 };
 
 // Скорость снаряда-какашки

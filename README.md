@@ -66,7 +66,7 @@ python3 -m http.server 8080
 ```bash
 npm install
 npm test
-# 458 passed
+# 499 passed
 ```
 
 ---

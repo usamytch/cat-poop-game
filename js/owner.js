@@ -1,5 +1,8 @@
 // ==========================================
 // OWNER — human AI: A* navigation, flee, humanness
+// Single grid-node locomotion engine for ALL levels.
+// Paradigm: AI thinks in cells, physics renders in pixels.
+// No wall sliding, no centering, no threshold oscillation.
 // ==========================================
 
 const owner = {
@@ -11,24 +14,21 @@ const owner = {
   facingY: 0,
 
   // A* навигация
-  path: [],           // [{col, row}, ...] — текущий путь по сетке (для sign logic и repath)
-  pathTimer: 0,       // пересчитываем путь каждые N кадров
-  PATH_RECALC: 30,    // пересчёт каждые 30 кадров (~0.5 сек)
+  path: [],           // [{col, row}, ...] — текущий путь (для sign logic и repath)
+  pathTimer: 0,       // fallback repath таймер
+  PATH_RECALC: 30,    // fallback интервал (~0.5 сек)
 
-  // ===== GRID-NODE MOVEMENT (только в подвале) =====
-  // Парадигма: AI думает в ячейках, физика рендерит в пикселях.
-  // Хозяин гарантированно переходит из node A в node B — нет осцилляции,
-  // нет threshold hell, нет perpendicular drift.
+  // ===== GRID-NODE MOVEMENT (все уровни) =====
+  // Инварианты:
+  //   1. nextNode всегда adjacent (col±1 или row±1) — никаких длинных сегментов
+  //   2. moveProgress монотонно возрастает — осцилляция невозможна
+  //   3. owner.x/y — точный cellToPixel(node) или lerp между соседними ячейками
   currentNode: null,   // {col, row} — узел, из которого движемся
   nextNode: null,      // {col, row} — узел, к которому движемся
   moveProgress: 0,     // 0.0 → 1.0, прогресс между currentNode и nextNode
   segmentLength: 40,   // px между currentNode и nextNode (явно, не GRID — future-proof)
   nodeQueue: [],       // [{col, row}, ...] — оставшиеся узлы A* пути
-  lastPlayerCell: null, // для детекции смены ячейки игрока (event-based repath)
-
-  // Steering corridor model (только на открытых уровнях)
-  pathSegments: [],   // [{startPx:{x,y}, endPx:{x,y}, dir:{x,y}}, ...] — сжатые сегменты пути
-  segmentIndex: 0,    // индекс активного сегмента в pathSegments
+  lastRepathGoalCell: null, // последняя цель repath (Chebyshev deadzone guard)
 
   // Бегство после комбо
   fleeTimer: 0,
@@ -41,15 +41,7 @@ const owner = {
   poopHits: 0,
   facePoops: [],
 
-  // Анти-застревание (только на открытых уровнях)
-  stuckTimer: 0,      // кадры без значимого движения
-  lastX: 800,         // позиция N кадров назад (для детекции осцилляции)
-  lastY: 300,
-  lastCheckTimer: 0,  // счётчик до следующей проверки net-displacement
-
   // Человечность
-  driftAngle: 0,      // текущее угловое отклонение (рад)
-  driftTimer: 0,      // кадры до следующей смены дрейфа
   hesitateTimer: 0,   // кадры микро-заморозки
   shotReactTimer: 0,  // кадры отображения реакции на выстрел
 
@@ -59,7 +51,7 @@ const owner = {
     this.active = true;
     this.speed = Math.min(diff.baseSpd + (level-1)*diff.spdPerLvl, diff.maxSpd);
 
-    // ===== УЛУЧШЕНИЕ 5: Безопасный ячеечный спавн в подвале =====
+    // ===== Безопасный ячеечный спавн в подвале =====
     // В подвале пиксельные углы могут попасть в заблокированные колонки (DFS: cols 28-29).
     // Используем ячеечный поиск: spiral search от углов сетки, максимально далёких от кота.
     let best = null;
@@ -150,24 +142,26 @@ const owner = {
 
     this.x = best.x; this.y = best.y;
     this.path = [];
+
     // Grid-node state reset
-    this.currentNode = (best.col !== undefined) ? { col: best.col, row: best.row } : null;
+    if (best.col !== undefined) {
+      // Подвал: ячеечный спавн — currentNode точный
+      this.currentNode = { col: best.col, row: best.row };
+    } else {
+      // Открытые уровни: вычисляем ячейку из пиксельной позиции
+      this.currentNode = pixelToCell(this.x + this.width/2, this.y + this.height/2);
+    }
     this.nextNode = null;
     this.moveProgress = 0;
     this.segmentLength = GRID;
     this.nodeQueue = [];
-    this.lastPlayerCell = null;
-    // Corridor steering state reset (open levels)
-    this.pathSegments = [];
-    this.segmentIndex = 0;
+    this.lastRepathGoalCell = null;
+
     this.pathTimer = 0;
     this.fleeTimer = 0; this.fleeTarget = null;
     this.catnipTarget = null;
     this.poopHits = 0; this.facePoops = [];
-    this.stuckTimer = 0;
-    this.lastX = this.x; this.lastY = this.y;
-    this.lastCheckTimer = 0;
-    this.driftAngle = 0; this.driftTimer = 0; this.hesitateTimer = 0;
+    this.hesitateTimer = 0;
     this.shotReactTimer = 0;
   },
 
@@ -194,9 +188,6 @@ const owner = {
     this.nextNode = null;
     this.nodeQueue = [];
     this.moveProgress = 0;
-    // Corridor steering reset
-    this.pathSegments = [];
-    this.segmentIndex = 0;
     this.pathTimer = 0;
     this.hesitateTimer = 0;
   },
@@ -254,7 +245,14 @@ const owner = {
     if (this.fleeTimer > 0 && Math.floor(this.fleeTimer / 8) % 2 === 0) {
       ctx.globalAlpha = 0.55;
     }
-    drawSprite(masterImage, this.x, this.y, this.width, this.height, () => {
+
+    // Визуальный wobble — синусоидальное смещение спрайта ±1.5px
+    // Не влияет на owner.x/y, коллизии и A* — чисто рендер-эффект
+    const isChasing = this.nodeQueue.length > 0 || this.nextNode !== null;
+    const wobbleX = isChasing ? Math.sin(_now / 220) * 1.5 : 0;
+    const wobbleY = isChasing ? Math.cos(_now / 310) * 1.0 : 0;
+
+    drawSprite(masterImage, this.x + wobbleX, this.y + wobbleY, this.width, this.height, () => {
       ctx.fillStyle = "#e07b39"; ctx.beginPath();
       ctx.arc(this.x+this.width/2, this.y+this.height/2, this.width/2, 0, Math.PI*2); ctx.fill();
       ctx.fillStyle = "#fff"; ctx.font = "bold 22px Arial"; ctx.textAlign = "center";
@@ -302,11 +300,6 @@ const owner = {
         ctx.restore();
       } else {
         // Преследует кота — восклицательный знак
-        // В подвале: проверяем nodeQueue/nextNode; на открытых уровнях: path.length >= 2
-        const isChasing = (basementMode !== "")
-          ? (this.nodeQueue.length > 0 || this.nextNode !== null)
-          : this.path.length >= 2;
-
         if (isChasing) {
           ctx.save();
           ctx.font = "bold 20px Arial";
@@ -317,7 +310,7 @@ const owner = {
           ctx.fillStyle = "#ff2222";
           ctx.fillText("!", cx, cy + bounce);
           ctx.restore();
-        } else if (this.stuckTimer > 20 || this.hesitateTimer > 0) {
+        } else if (this.hesitateTimer > 0) {
           // Тупит / не знает куда идти — знак вопроса
           ctx.save();
           ctx.font = "bold 18px Arial";
@@ -336,6 +329,7 @@ const owner = {
   // ===== GRID-NODE: Переход к следующему узлу =====
   // Вычисляет segmentLength явно (future-proof: не предполагает GRID).
   // Обновляет facingX/Y для фонарика.
+  // Инвариант: nextNode всегда adjacent (col±1 или row±1).
   _advanceToNextNode() {
     if (this.nodeQueue.length === 0) {
       this.nextNode = null;
@@ -358,8 +352,9 @@ const owner = {
   },
 
   // ===== GRID-NODE: Инициализация движения по пути =====
-  // Вызывается при получении нового A* пути в basement.
-  // Snap к первому узлу только при старте или после escape (не mid-transition).
+  // Вызывается при получении нового A* пути.
+  // snapToFirst=true: snap к первому узлу (старт или после escape).
+  // snapToFirst=false: mid-path repath — не сбрасываем currentNode.
   _startGridMovement(path, snapToFirst) {
     if (!path || path.length < 2) {
       this.nodeQueue = [];
@@ -375,14 +370,13 @@ const owner = {
       this.moveProgress = 0;
     }
     // Очередь = остаток пути (начиная с узла после currentNode)
-    // Если currentNode уже установлен (mid-path repath), ищем его в пути
     this.nodeQueue = path.slice(1);
     if (!this.nextNode) {
       this._advanceToNextNode();
     }
   },
 
-  // ===== GRID-NODE: Обновление позиции (вызывается каждый кадр в basement) =====
+  // ===== GRID-NODE: Обновление позиции (вызывается каждый кадр) =====
   // moveProgress монотонно возрастает — никакой осцилляции невозможно.
   // Визуальная позиция — lerp между currentNode и nextNode.
   _updateGridMovement(spd) {
@@ -428,326 +422,74 @@ const owner = {
     }
   },
 
-  // ===== УЛУЧШЕНИЕ 2: Проверка прямой видимости (Bresenham по сетке) =====
-  // Возвращает true если между ячейками (c1,r1) и (c2,r2) нет стен.
-  _hasLineOfSight(c1, r1, c2, r2) {
-    let x = c1, y = r1;
-    const dx = Math.abs(c2 - c1), dy = Math.abs(r2 - r1);
-    const sx = c1 < c2 ? 1 : -1, sy = r1 < r2 ? 1 : -1;
-    let err = dx - dy;
-    while (true) {
-      if (!isCellFree(x, y)) return false;
-      if (x === c2 && y === r2) return true;
-      const e2 = 2 * err;
-      if (e2 > -dy) { err -= dy; x += sx; }
-      if (e2 < dx)  { err += dx; y += sy; }
-    }
-  },
-
-  // ===== УЛУЧШЕНИЕ 2: Path Smoothing (только на открытых уровнях) =====
-  // В подвале не нужен — grid-node модель не использует сегменты.
-  _smoothPath(ownerCol, ownerRow) {
-    if (this.path.length < 3) return;
-    const prev = this.path[0];
-    const cur  = this.path[1];
-    const next = this.path[2];
-    const curDc  = cur.col  - prev.col,  curDr  = cur.row  - prev.row;
-    const nextDc = next.col - cur.col,   nextDr = next.row - cur.row;
-    const isTurn = (curDc !== nextDc || curDr !== nextDr);
-    if (isTurn) return;
-    for (let k = this.path.length - 1; k >= 2; k--) {
-      if (this._hasLineOfSight(ownerCol, ownerRow, this.path[k].col, this.path[k].row)) {
-        this.path.splice(1, k - 1);
-        break;
-      }
-    }
-  },
-
-  // ===== STEERING: Сжатие пути в сегменты (только на открытых уровнях) =====
-  _compressToSegments(path) {
-    if (!path || path.length < 2) {
-      this.pathSegments = [];
-      this.segmentIndex = 0;
-      return;
-    }
-
-    if (typeof _debugSteering !== "undefined" && _debugSteering) {
-      const first = path[0], last = path[path.length - 1];
-      console.log(`[STEER] path len=${path.length} first=(${first.col},${first.row}) last=(${last.col},${last.row}) ownerX=${Math.round(this.x)} playerX=${Math.round(player.x)}`);
-    }
-
-    const segments = [];
-    let segStart = cellToPixelCenter(path[0].col, path[0].row);
-    let dirX = 0, dirY = 0;
-
-    for (let i = 1; i < path.length; i++) {
-      const prev = path[i - 1];
-      const curr = path[i];
-      const stepX = curr.col - prev.col;
-      const stepY = curr.row - prev.row;
-
-      if (i === 1) {
-        dirX = stepX;
-        dirY = stepY;
-      } else if (stepX !== dirX || stepY !== dirY) {
-        const segEnd = cellToPixelCenter(prev.col, prev.row);
-        const len = Math.sqrt(dirX * dirX + dirY * dirY);
-        segments.push({
-          startPx: segStart,
-          endPx: segEnd,
-          dir: { x: dirX / len, y: dirY / len },
-        });
-        segStart = cellToPixelCenter(prev.col, prev.row);
-        dirX = stepX;
-        dirY = stepY;
-      }
-    }
-
-    const lastCell = path[path.length - 1];
-    const segEnd = cellToPixelCenter(lastCell.col, lastCell.row);
-    const len = Math.sqrt(dirX * dirX + dirY * dirY);
-    if (len > 0) {
-      segments.push({
-        startPx: segStart,
-        endPx: segEnd,
-        dir: { x: dirX / len, y: dirY / len },
-      });
-    }
-
-    this.pathSegments = segments;
-    this.segmentIndex = 0;
-  },
-
-  // ===== STEERING: Вычисление цели движения (только на открытых уровнях) =====
-  _getSteeringTarget() {
-    const LOOKAHEAD = GRID * 0.8;
-    const ALIGN_THRESHOLD = 2;
-
-    if (this.segmentIndex >= this.pathSegments.length) return null;
-
-    const seg = this.pathSegments[this.segmentIndex];
-    const ownerCx = this.x + this.width / 2;
-    const ownerCy = this.y + this.height / 2;
-
-    const toEndX = seg.endPx.x - seg.startPx.x;
-    const toEndY = seg.endPx.y - seg.startPx.y;
-    const segLen = toEndX * seg.dir.x + toEndY * seg.dir.y;
-
-    if (seg.dir.x !== 0) {
-      const axisY = seg.startPx.y;
-      const perpDist = axisY - ownerCy;
-
-      if (Math.abs(perpDist) > ALIGN_THRESHOLD) {
-        if (typeof _debugSteering !== "undefined" && _debugSteering) {
-          console.log(`[STEER] seg=H state=CENTERING ownerX=${this.x.toFixed(1)} ownerY=${this.y.toFixed(1)} axisY=${axisY} perpDist=${perpDist.toFixed(2)}`);
-        }
-        return { x: ownerCx, y: axisY };
-      } else {
-        const t = (ownerCx - seg.startPx.x) * seg.dir.x;
-        const tTarget = Math.min(Math.max(t, 0) + LOOKAHEAD, segLen);
-        const targetX = seg.startPx.x + seg.dir.x * tTarget;
-        if (typeof _debugSteering !== "undefined" && _debugSteering) {
-          console.log(`[STEER] seg=H state=ADVANCING ownerX=${this.x.toFixed(1)} ownerY=${this.y.toFixed(1)} targetX=${targetX.toFixed(1)} axisY=${axisY}`);
-        }
-        return { x: targetX, y: axisY };
-      }
-    } else {
-      const axisX = seg.startPx.x;
-      const perpDist = axisX - ownerCx;
-
-      if (Math.abs(perpDist) > ALIGN_THRESHOLD) {
-        if (typeof _debugSteering !== "undefined" && _debugSteering) {
-          console.log(`[STEER] seg=V state=CENTERING ownerX=${this.x.toFixed(1)} ownerY=${this.y.toFixed(1)} axisX=${axisX} perpDist=${perpDist.toFixed(2)}`);
-        }
-        return { x: axisX, y: ownerCy };
-      } else {
-        const t = (ownerCy - seg.startPx.y) * seg.dir.y;
-        const tTarget = Math.min(Math.max(t, 0) + LOOKAHEAD, segLen);
-        const targetY = seg.startPx.y + seg.dir.y * tTarget;
-        if (typeof _debugSteering !== "undefined" && _debugSteering) {
-          console.log(`[STEER] seg=V state=ADVANCING ownerX=${this.x.toFixed(1)} ownerY=${this.y.toFixed(1)} targetY=${targetY.toFixed(1)} axisX=${axisX}`);
-        }
-        return { x: axisX, y: targetY };
-      }
-    }
-  },
-
-  // ===== A* ДВИЖЕНИЕ К ЦЕЛИ =====
+  // ===== ЕДИНЫЙ ДВИЖОК: A* движение к цели (все уровни) =====
+  // AI думает в ячейках, физика рендерит в пикселях.
+  // Нет wall sliding, нет centering, нет threshold oscillation.
+  // Инвариант: nextNode всегда adjacent — _smoothPath() не вызывается.
   _moveTowardTarget(tx, ty, spd) {
-    // ===== BASEMENT: Grid-node movement =====
-    // AI думает в ячейках, физика рендерит в пикселях.
-    // Нет wall sliding, нет centering, нет threshold oscillation.
-    if (basementMode !== "") {
-      const goalCell = pixelToCell(tx + this.width/2, ty + this.height/2);
+    const goalCell = pixelToCell(tx + this.width/2, ty + this.height/2);
 
-      // Event-based repath triggers (не только по таймеру):
-      // 1. Таймер истёк (fallback)
-      // 2. Путь исчерпан (nextNode === null и очередь пуста)
-      // 3. Игрок перешёл в другую ячейку
-      const playerCellChanged = this.lastPlayerCell !== null &&
-        (goalCell.col !== this.lastPlayerCell.col || goalCell.row !== this.lastPlayerCell.row);
-
-      this.pathTimer--;
-      const needRepath = this.pathTimer <= 0 ||
-                         (!this.nextNode && this.nodeQueue.length === 0) ||
-                         playerCellChanged;
-
-      // Repath только при прибытии в узел (moveProgress < 0.1) — предотвращает телепорт.
-      // Исключение: nextNode === null (путь исчерпан) — repath всегда разрешён.
-      const canRepath = needRepath && (this.moveProgress < 0.1 || !this.nextNode);
-
-      if (canRepath) {
-        this.pathTimer = 30; // fallback интервал в basement
-        this.lastPlayerCell = { col: goalCell.col, row: goalCell.row };
-
-        // Стартовая ячейка: currentNode если есть, иначе вычисляем из пикселей
-        const ownerCell = this.currentNode ||
-          pixelToCell(this.x + this.width/2, this.y + this.height/2);
-
-        if (typeof _debugSteering !== "undefined" && _debugSteering) {
-          console.log(`[GRID-REPATH] from=(${ownerCell.col},${ownerCell.row}) to=(${goalCell.col},${goalCell.row}) progress=${this.moveProgress.toFixed(2)}`);
-        }
-
-        const newPath = aStarPath(
-          ownerCell.col, ownerCell.row,
-          goalCell.col, goalCell.row,
-          this.width, this.height
-        );
-
-        if (newPath && newPath.length >= 2) {
-          this.path = newPath; // для draw() sign logic
-          if (!this.currentNode) {
-            // Первый старт — snap к первому узлу
-            this._startGridMovement(newPath, true);
-          } else {
-            // Mid-path repath — не сбрасываем currentNode, только обновляем очередь
-            this._startGridMovement(newPath, false);
-          }
-        } else {
-          // A* не нашёл путь — ждём следующего интервала
-          this.path = [];
-          this.nodeQueue = [];
-          // nextNode оставляем — продолжаем текущее движение если есть
-        }
-      }
-
-      this._updateGridMovement(spd);
-      return;
-    }
-
-    // ===== OPEN LEVELS: существующий continuous steering (без изменений) =====
-    const b = getPlayBounds();
-
-    const ownerCx = this.x + this.width / 2;
-    const ownerCy = this.y + this.height / 2;
-    const ownerCell = pixelToCell(ownerCx, ownerCy);
-    const goalCell = pixelToCell(tx + this.width / 2, ty + this.height / 2);
-
-    const recalcInterval = this.PATH_RECALC;
+    // Event-based repath triggers (не только по таймеру):
+    // 1. Таймер истёк (fallback)
+    // 2. Путь исчерпан (nextNode === null и очередь пуста)
+    // 3. Игрок переместился на >= repathMinDist ячеек (Chebyshev) от последней цели repath.
+    //    Chebyshev = max(|Δcol|, |Δrow|) — O(1), без sqrt, grid-native, diagonal-aware.
+    //    Это low-pass filter для replanning: owner игнорирует микро-сдвиги игрока.
+    //    repathMinDist=2 (normal/chaos) → deadzone 80px; =3 (easy) → 120px.
+    //    Chaos=2 (не 1): агрессивность через speed/hesitation, не через repath churn.
+    const repathMinDist = DIFF[difficulty].repathMinDist;
+    const playerCellChanged = this.lastRepathGoalCell !== null &&
+      Math.max(
+        Math.abs(goalCell.col - this.lastRepathGoalCell.col),
+        Math.abs(goalCell.row - this.lastRepathGoalCell.row)
+      ) >= repathMinDist;
 
     this.pathTimer--;
-    if (this.pathTimer <= 0 || this.path.length === 0) {
+    const needRepath = this.pathTimer <= 0 ||
+                       (!this.nextNode && this.nodeQueue.length === 0) ||
+                       playerCellChanged;
+
+    // Repath только при прибытии в узел (moveProgress < 0.1) — предотвращает телепорт.
+    // Исключение: nextNode === null (путь исчерпан) — repath всегда разрешён.
+    const canRepath = needRepath && (this.moveProgress < 0.1 || !this.nextNode);
+
+    if (canRepath) {
+      this.pathTimer = this.PATH_RECALC; // fallback интервал
+      this.lastRepathGoalCell = { col: goalCell.col, row: goalCell.row };
+
+      // Стартовая ячейка: currentNode если есть, иначе вычисляем из пикселей
+      const ownerCell = this.currentNode ||
+        pixelToCell(this.x + this.width/2, this.y + this.height/2);
+
       if (typeof _debugSteering !== "undefined" && _debugSteering) {
-        const _timerFired = this.pathTimer <= 0;
-        const _emptyFired = this.path.length === 0;
-        const _reason = (_timerFired && _emptyFired) ? "both" : _timerFired ? "timer" : "emptyPath";
-        console.log(`[REPATH] reason=${_reason} pathTimer=${this.pathTimer} pathLen=${this.path.length} segIdx=${this.segmentIndex}/${this.pathSegments.length}`);
+        console.log(`[GRID-REPATH] from=(${ownerCell.col},${ownerCell.row}) to=(${goalCell.col},${goalCell.row}) progress=${this.moveProgress.toFixed(2)}`);
       }
-      this.pathTimer = recalcInterval;
-      const newPath = aStarPath(ownerCell.col, ownerCell.row, goalCell.col, goalCell.row, this.width, this.height);
-      if (newPath) {
-        this.path = newPath;
-        this._smoothPath(ownerCell.col, ownerCell.row);
-        this._compressToSegments(this.path);
+
+      const newPath = aStarPath(
+        ownerCell.col, ownerCell.row,
+        goalCell.col, goalCell.row,
+        this.width, this.height
+      );
+
+      if (newPath && newPath.length >= 2) {
+        this.path = newPath; // для draw() sign logic
+        // НЕ вызываем _smoothPath() — инвариант: nextNode всегда adjacent (1 ячейка)
+        if (!this.currentNode) {
+          // Первый старт — snap к первому узлу
+          this._startGridMovement(newPath, true);
+        } else {
+          // Mid-path repath — не сбрасываем currentNode, только обновляем очередь
+          this._startGridMovement(newPath, false);
+        }
       } else {
+        // A* не нашёл путь — ждём следующего интервала
         this.path = [];
-        this.pathSegments = [];
-        this.segmentIndex = 0;
-        this.pathTimer = recalcInterval;
+        this.nodeQueue = [];
+        // nextNode оставляем — продолжаем текущее движение если есть
       }
     }
 
-    // Определяем направление движения
-    let dx = 0, dy = 0;
-
-    if (this.path.length >= 2) {
-      // Проверяем завершение текущего сегмента
-      if (this.segmentIndex < this.pathSegments.length) {
-        const seg = this.pathSegments[this.segmentIndex];
-        const toOwnerX = ownerCx - seg.startPx.x;
-        const toOwnerY = ownerCy - seg.startPx.y;
-        const progress = toOwnerX * seg.dir.x + toOwnerY * seg.dir.y;
-
-        const toEndX = seg.endPx.x - seg.startPx.x;
-        const toEndY = seg.endPx.y - seg.startPx.y;
-        const segLen = toEndX * seg.dir.x + toEndY * seg.dir.y;
-
-        const EPSILON = 8;
-        if (progress >= segLen - EPSILON) {
-          this.segmentIndex++;
-          if (this.path.length > 1) this.path.shift();
-          if (this.segmentIndex >= this.pathSegments.length) {
-            this.pathTimer = Math.min(this.pathTimer, recalcInterval);
-          }
-        }
-      }
-
-      const steerTarget = this._getSteeringTarget();
-      if (steerTarget) {
-        dx = steerTarget.x - ownerCx;
-        dy = steerTarget.y - ownerCy;
-        const dist2 = dx * dx + dy * dy;
-        if (dist2 > 0.01) {
-          const dist = Math.sqrt(dist2);
-          dx /= dist;
-          dy /= dist;
-          this.facingX = dx;
-          this.facingY = dy;
-        }
-        if (typeof _debugSteering !== "undefined" && _debugSteering && dist2 < 1) {
-          console.log(`[STEER-ZERO] steerTarget=(${Math.round(steerTarget.x)},${Math.round(steerTarget.y)}) ownerCx=${Math.round(ownerCx)} ownerCy=${Math.round(ownerCy)} dist2=${dist2.toFixed(3)} segIdx=${this.segmentIndex}/${this.pathSegments.length}`);
-        }
-      } else {
-        dx = tx - this.x;
-        dy = ty - this.y;
-        const dist2 = dx * dx + dy * dy;
-        if (dist2 > 0.01) {
-          const dist = Math.sqrt(dist2);
-          dx /= dist; dy /= dist;
-          this.facingX = dx;
-          this.facingY = dy;
-        }
-      }
-
-      // Дрейф (человечность) — только на открытых уровнях
-      if (this.driftAngle !== 0) {
-        const cos = Math.cos(this.driftAngle);
-        const sin = Math.sin(this.driftAngle);
-        const ndx = dx * cos - dy * sin;
-        const ndy = dx * sin + dy * cos;
-        dx = ndx; dy = ndy;
-      }
-    } else {
-      dx = tx - this.x;
-      dy = ty - this.y;
-      const dist2 = dx*dx + dy*dy;
-      if (dist2 > 0.01) {
-        const dist = Math.sqrt(dist2);
-        dx /= dist; dy /= dist;
-        this.facingX = dx;
-        this.facingY = dy;
-      }
-    }
-
-    // Применяем движение с раздельной проверкой осей (скольжение вдоль стен)
-    const nx = this.x + dx * spd;
-    const ny = this.y + dy * spd;
-    const nrX = {x:nx,      y:this.y, width:this.width, height:this.height};
-    const nrY = {x:this.x,  y:ny,     width:this.width, height:this.height};
-    const xOk = !hitsObstacles(nrX) && nx >= b.left && nx <= b.right  - this.width;
-    const yOk = !hitsObstacles(nrY) && ny >= b.top  && ny <= b.bottom - this.height;
-    if (xOk) this.x = nx;
-    if (yOk) this.y = ny;
+    this._updateGridMovement(spd);
   },
 
   update() {
@@ -786,8 +528,7 @@ const owner = {
     const b = getPlayBounds();
 
     // ===== ESCAPE OBSTACLES =====
-    // В подвале: hard snap к ближайшей свободной ячейке + repath.
-    // На открытых уровнях: существующий snap-to-cell код.
+    // Hard snap к ближайшей свободной ячейке + repath.
     if (escapeObstacles(this)) {
       if (typeof _debugSteering !== "undefined" && _debugSteering) {
         console.log(`[ESCAPE] owner inside obstacle → escaped to ownerX=${Math.round(this.x)} ownerY=${Math.round(this.y)}`);
@@ -817,13 +558,11 @@ const owner = {
               if (typeof _debugSteering !== "undefined" && _debugSteering) {
                 console.log(`[SNAP] snapped to cell (${sc},${sr}) ownerX=${this.x} ownerY=${this.y}`);
               }
-              if (basementMode !== "") {
-                // В подвале: полный сброс grid state — repath с новой позиции
-                this.currentNode = { col: sc, row: sr };
-                this.nextNode = null;
-                this.nodeQueue = [];
-                this.moveProgress = 0;
-              }
+              // Полный сброс grid state — repath с новой позиции
+              this.currentNode = { col: sc, row: sr };
+              this.nextNode = null;
+              this.nodeQueue = [];
+              this.moveProgress = 0;
               break outer_snap;
             }
           }
@@ -831,8 +570,6 @@ const owner = {
       }
 
       // Сбрасываем путь и форсируем repath
-      this.pathSegments = [];
-      this.segmentIndex = 0;
       this.pathTimer = 0;
     }
 
@@ -862,62 +599,29 @@ const owner = {
     // ===== ТАЙМЕР РЕАКЦИИ НА ВЫСТРЕЛ =====
     if (this.shotReactTimer > 0) this.shotReactTimer--;
 
-    // ===== МИКРО-ЗАМОРОЗКА (человечность, только на открытых уровнях) =====
+    // ===== МИКРО-ЗАМОРОЗКА (человечность) =====
     if (this.hesitateTimer > 0) {
       this.hesitateTimer--;
       return;
     }
 
-    // ===== ДРЕЙФ И МИКРО-ЗАМОРОЗКИ — только на открытых уровнях =====
-    if (basementMode === "") {
-      this.driftTimer--;
-      if (this.driftTimer <= 0) {
-        this.driftAngle = (Math.random() - 0.5) * 0.36;
-        this.driftTimer = 80 + Math.floor(Math.random() * 40);
-      }
-      if (Math.random() < 0.004) {
-        this.hesitateTimer = 12;
-      }
-    } else {
-      this.driftAngle = 0;
+    // Случайные микро-заморозки — вероятность убывает с уровнем (гиперболический decay).
+    // base / (1 + (level-1) * decay) — плавная кривая, быстрый спад в начале, медленный к флору.
+    // На Chaos уровень 10+ → почти нет заморозок (relentless pursuit).
+    // На Easy всегда остаётся минимальная заморозка (hesitateMinProb).
+    const diff = DIFF[difficulty];
+    const hesitateProb = Math.max(
+      diff.hesitateMinProb,
+      diff.hesitateBaseProb / (1 + (level - 1) * diff.hesitateProbDecay)
+    );
+    if (Math.random() < hesitateProb) {
+      this.hesitateTimer = diff.hesitateDur;
     }
 
     // Преследование кота через A*
     const tx = player.x + player.size/2 - this.width/2;
     const ty = player.y + player.size/2 - this.height/2;
     this._moveTowardTarget(tx, ty, this.speed);
-
-    // ===== АНТИ-ЗАСТРЕВАНИЕ (только на открытых уровнях) =====
-    // В подвале grid-node модель не может осциллировать — moveProgress монотонно возрастает.
-    if (basementMode === "") {
-      const CHECK_INTERVAL = 15;
-      const NET_THRESHOLD2 = 4;
-      const MAX_STUCK_CHECKS = 3;
-
-      this.lastCheckTimer++;
-      if (this.lastCheckTimer >= CHECK_INTERVAL) {
-        this.lastCheckTimer = 0;
-        const netDx = this.x - this.lastX;
-        const netDy = this.y - this.lastY;
-        const netDist2 = netDx * netDx + netDy * netDy;
-        if (netDist2 < NET_THRESHOLD2) {
-          this.stuckTimer++;
-          if (this.stuckTimer >= MAX_STUCK_CHECKS) {
-            if (typeof _debugSteering !== "undefined" && _debugSteering) {
-              console.log(`[STUCK] force repath at ownerX=${Math.round(this.x)} ownerY=${Math.round(this.y)} netDist2=${netDist2.toFixed(2)}`);
-            }
-            this.pathSegments = [];
-            this.segmentIndex = 0;
-            this.pathTimer = 0;
-            this.stuckTimer = 0;
-          }
-        } else {
-          this.stuckTimer = 0;
-        }
-        this.lastX = this.x;
-        this.lastY = this.y;
-      }
-    }
 
     // Поймал кота
     if (rectsOverlap(playerRect(), ownerRect(), -6)) {

@@ -186,18 +186,9 @@ GRID = 40px
 
 Хозяин использует **алгоритм A\*** по сетке для обхода препятствий.
 
-### Два режима движения
+### Единый движок: Grid-Node Movement (Pac-Man модель)
 
-| Режим | Где | Принцип |
-|-------|-----|---------|
-| **Grid-node (tile-based)** | Подвал (`basementMode !== ""`) | AI думает в ячейках, физика рендерит в пикселях |
-| **Continuous steering** | Открытые уровни (`basementMode === ""`) | Ортогональная машина состояний с сегментами |
-
----
-
-### 🏚️ Подвал: Grid-Node Movement (Pac-Man модель)
-
-Полная смена парадигмы для подвала — устраняет все freeze-баги через архитектурное решение, а не через пороговые значения.
+Один движок для всех уровней — устраняет freeze-баги через архитектурное решение, а не через пороговые значения.
 
 **Ключевые поля:**
 - `currentNode {col, row}` — узел, из которого движемся
@@ -215,54 +206,56 @@ GRID = 40px
 **Repath triggers (event-based, не только по таймеру):**
 - `nodeQueue` исчерпан (`nextNode === null`)
 - Игрок перешёл в другую ячейку (`lastPlayerCell` изменился)
-- Fallback таймер (30 кадров)
+- Fallback таймер (`PATH_RECALC=30` кадров, ~0.5 сек)
 - **Repath только у узла** (`moveProgress < 0.1`) — предотвращает телепорт при mid-transition repath
 
 **Ключевые инварианты:**
 - `moveProgress` **монотонно возрастает** — осцилляция невозможна
 - `owner.x/y` — всегда точный `cellToPixel(node)` или линейный lerp между двумя соседними ячейками
 - Нет `ALIGN_THRESHOLD`, нет `EPSILON`, нет `perpDist` — эти концепции не существуют
-- Нет wall sliding в подвале — движение по свободным ячейкам A*
+- Нет wall sliding — движение по свободным ячейкам A*
 - `escapeObstacles` → hard snap к ближайшей свободной ячейке + полный сброс grid state + repath
+- **Нет Path Smoothing** — `_smoothPath()` и `_hasLineOfSight()` удалены; инвариант adjacent nodes гарантируется самим A*
 
 **Debug log (Shift+G):** `[GRID] (6,10)->(7,10) progress=0.43 x=260.0 y=410.0`
 
----
-
-### 🏠 Открытые уровни: Continuous Steering (ортогональная модель)
-
-- Путь пересчитывается каждые **~0.5 сек** (`PATH_RECALC=30` кадров)
-- **Orthogonal steering model** — хозяин движется строго по горизонтали ИЛИ по вертикали:
-  1. `_compressToSegments(path)` — сжимает A* путь в сегменты `{startPx, endPx, dir}`
-  2. `_getSteeringTarget()` — два состояния:
-     - **ADVANCING** (`|perp| ≤ 2px`): цель = точка на оси сегмента на `LOOKAHEAD=32px` вперёд
-     - **CENTERING** (`|perp| > 2px`): цель = точка на оси коридора (перпендикулярно)
-  3. **Segment completion**: `progress >= segLen - EPSILON=8px`
-- **Path Smoothing**: `_hasLineOfSight()` (Bresenham) + `_smoothPath()` — только на прямых участках
-- **Анти-застревание**: net-displacement за `CHECK_INTERVAL=15` кадров, `NET_THRESHOLD2=4px²`, `MAX_STUCK_CHECKS=3`
-- **Snap-to-cell после escape**: spiral search (радиус 0–3) → snap к `cellToPixel(col, row)`
-
----
-
 - Если A* не находит путь — ждём следующего интервала (не бесконечный цикл)
-- **`_debugSteering` — глобальный флаг**: `var _debugSteering = false` в [`js/renderer.js`](js/renderer.js). Переключается **Shift+G**. Логи: `[GRID]`, `[GRID-REPATH]`, `[REPATH]`, `[STEER]`, `[STUCK]`, `[ESCAPE]`, `[SNAP]`
+- **`_debugSteering` — глобальный флаг**: `var _debugSteering = false` в [`js/renderer.js`](js/renderer.js). Переключается **Shift+G**. Логи: `[GRID]`, `[GRID-REPATH]`, `[ESCAPE]`, `[SNAP]`
 
-### Поведение хозяина — «человечность» (только на открытых уровнях)
+### Поведение хозяина — «человечность»
 
-- **Дрейф** — случайное угловое отклонение ±10°, меняется каждые ~1.5 сек
-- **Микро-заморозка** — ~раз в 4 сек замирает на 0.2 сек
-- **Реакция на выстрел** — немедленный пересчёт пути
+- **Микро-заморозка** — вероятность убывает с уровнем по гиперболическому закону: `base / (1 + (level-1) * decay)`. На Chaos уровень 10+ → почти нет заморозок. На Easy всегда остаётся минимальная заморозка (`hesitateMinProb`).
+- **Реакция на выстрел** — немедленный пересчёт пути (`shotReactTimer = 30`)
+- **Визуальный wobble** — синусоидальное смещение спрайта ±1.5px во время преследования; не влияет на коллизии и A*
 
-> В подвале дрейф и микро-заморозки **отключены** — в коридорах они вызывали застревание у стен.
+### Replanning Hysteresis (Chebyshev distance guard)
+
+Предотвращает осцилляцию хозяина на открытых уровнях. `playerCellChanged` срабатывает только если игрок переместился на ≥ `repathMinDist` ячеек (Chebyshev = `max(|Δcol|, |Δrow|)`) от последней цели repath (`lastRepathGoalCell`).
+
+| Режим | `repathMinDist` | Deadzone |
+|---|---|---|
+| 😸 Лёгкий | 3 | 120px |
+| 😼 Нормал | 2 | 80px |
+| 😈 Хаос | 2 | 80px |
+
+Fallback таймер (`PATH_RECALC=30`) и "путь исчерпан" (`nextNode===null`) срабатывают независимо от дистанции.
+
+### Константы микро-заморозки по сложностям
+
+| Режим | `hesitateBaseProb` | `hesitateProbDecay` | `hesitateMinProb` | `hesitateDur` |
+|---|---|---|---|---|
+| 😸 Лёгкий | 0.008 | 0.08 | 0.003 | 18 кадров |
+| 😼 Нормал | 0.004 | 0.10 | 0.001 | 12 кадров |
+| 😈 Хаос | 0.002 | 0.20 | 0.0 | 8 кадров |
 
 ### Визуальные индикаторы хозяина
 
 | Знак | Состояние |
 |---|---|
-| `!` красный | Преследует кота |
-| `‼` оранжевый | Услышал выстрел |
-| `?` жёлтый | Потерялся / задумался |
-| 😵 | Под действием котовника |
+| `!` красный | Преследует кота (`nodeQueue` не пуст или `nextNode ≠ null`) |
+| 😱 | Услышал выстрел (`shotReactTimer > 0`) |
+| `?` жёлтый | Микро-заморозка (`hesitateTimer > 0`) |
+| 😵 | Под действием котовника (`catnipTimer > 0`) |
 | *(нет знака)* | Убегает после комбо (мигает) |
 
 ---
@@ -383,6 +376,7 @@ cat-poop-game/
 │   ├── projectiles.test.js   # выстрел, движение, попадание, комбо
 │   ├── player.test.js        # player: движение, срочность, авария, лоток, паника, бонусы
 │   ├── owner.test.js         # owner: activate, flee, onShotFired, update, AI, basement
+│   ├── owner-grid.test.js    # grid-node движок: node arrival, repath, open levels, corridor
 │   ├── level.test.js         # generateLevel, updateObstacles, basement
 │   ├── grid.test.js          # cellKey, markCells, cellsFree, pixelToCell, aStarPath
 │   ├── game.test.js          # stats, startGame, respawnPlayer, update, input
@@ -415,6 +409,7 @@ npm test
 | `tests/projectiles.test.js` | выстрел, движение, попадание, комбо |
 | `tests/player.test.js` | игрок: движение, авария, лоток, паника, бонусы |
 | `tests/owner.test.js` | хозяин: activate, flee, onShotFired, update, AI, catnip, speed cap, basement |
+| `tests/owner-grid.test.js` | grid-node движок: node arrival, repath, open levels, corridor, flee/activate reset |
 | `tests/level.test.js` | генерация уровня, движущиеся препятствия, `cheatBasement` |
 | `tests/grid.test.js` | cellKey, markCells, cellsFree, pixelToCell, aStarPath |
 | `tests/game.test.js` | статистика, startGame, respawnPlayer, update |
