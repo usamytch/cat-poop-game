@@ -1141,3 +1141,279 @@ describe('hesitation scaling — hyperbolic decay by level', () => {
     expect(DIFF.easy.repathMinDist).toBeGreaterThan(DIFF.normal.repathMinDist);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Self-loop guard — _advanceToNextNode skips currentNode duplicates
+// ---------------------------------------------------------------------------
+describe('self-loop guard — _advanceToNextNode skips currentNode duplicates', () => {
+  it('skips a single self-loop node: nextNode becomes the next adjacent node', () => {
+    obstacles.length = 0;
+    occupiedCells.clear();
+
+    owner.currentNode = { col: 5, row: 7 };
+    // nodeQueue starts with a duplicate of currentNode, then a real next node
+    owner.nodeQueue = [
+      { col: 5, row: 7 }, // duplicate — should be skipped
+      { col: 6, row: 7 }, // real next node
+    ];
+    owner.nextNode = null;
+    owner.moveProgress = 0;
+    owner.segmentLength = GRID;
+
+    const fromPx = cellToPixel(5, 7);
+    owner.x = fromPx.x;
+    owner.y = fromPx.y;
+
+    owner._advanceToNextNode();
+
+    // Must skip the self-loop and pick the real adjacent node
+    expect(owner.nextNode).not.toBeNull();
+    expect(owner.nextNode.col).toBe(6);
+    expect(owner.nextNode.row).toBe(7);
+    // nodeQueue should now be empty (the real node was shifted)
+    expect(owner.nodeQueue).toHaveLength(0);
+  });
+
+  it('skips multiple consecutive self-loop nodes', () => {
+    obstacles.length = 0;
+    occupiedCells.clear();
+
+    owner.currentNode = { col: 3, row: 4 };
+    owner.nodeQueue = [
+      { col: 3, row: 4 }, // duplicate 1
+      { col: 3, row: 4 }, // duplicate 2
+      { col: 3, row: 5 }, // real next node
+      { col: 3, row: 6 },
+    ];
+    owner.nextNode = null;
+    owner.moveProgress = 0;
+    owner.segmentLength = GRID;
+
+    const fromPx = cellToPixel(3, 4);
+    owner.x = fromPx.x;
+    owner.y = fromPx.y;
+
+    owner._advanceToNextNode();
+
+    expect(owner.nextNode).not.toBeNull();
+    expect(owner.nextNode.col).toBe(3);
+    expect(owner.nextNode.row).toBe(5);
+    // One real node remains in queue
+    expect(owner.nodeQueue).toHaveLength(1);
+    expect(owner.nodeQueue[0].row).toBe(6);
+  });
+
+  it('if all nodes are self-loops, nextNode becomes null (path exhausted)', () => {
+    obstacles.length = 0;
+    occupiedCells.clear();
+
+    owner.currentNode = { col: 7, row: 2 };
+    owner.nodeQueue = [
+      { col: 7, row: 2 }, // duplicate
+      { col: 7, row: 2 }, // duplicate
+    ];
+    owner.nextNode = null;
+    owner.moveProgress = 0;
+    owner.segmentLength = GRID;
+
+    const fromPx = cellToPixel(7, 2);
+    owner.x = fromPx.x;
+    owner.y = fromPx.y;
+
+    owner._advanceToNextNode();
+
+    // All duplicates skipped → path exhausted → nextNode = null
+    expect(owner.nextNode).toBeNull();
+    expect(owner.nodeQueue).toHaveLength(0);
+  });
+
+  it('non-duplicate node is NOT skipped (normal case)', () => {
+    obstacles.length = 0;
+    occupiedCells.clear();
+
+    owner.currentNode = { col: 10, row: 5 };
+    owner.nodeQueue = [
+      { col: 11, row: 5 }, // adjacent — must NOT be skipped
+      { col: 12, row: 5 },
+    ];
+    owner.nextNode = null;
+    owner.moveProgress = 0;
+    owner.segmentLength = GRID;
+
+    const fromPx = cellToPixel(10, 5);
+    owner.x = fromPx.x;
+    owner.y = fromPx.y;
+
+    owner._advanceToNextNode();
+
+    expect(owner.nextNode).not.toBeNull();
+    expect(owner.nextNode.col).toBe(11);
+    expect(owner.nextNode.row).toBe(5);
+    expect(owner.nodeQueue).toHaveLength(1);
+  });
+
+  it('after self-loop skip: segmentLength > 0 (no zero-distance freeze)', () => {
+    obstacles.length = 0;
+    occupiedCells.clear();
+
+    owner.currentNode = { col: 5, row: 7 };
+    owner.nodeQueue = [
+      { col: 5, row: 7 }, // duplicate — skip
+      { col: 5, row: 8 }, // real next
+    ];
+    owner.nextNode = null;
+    owner.moveProgress = 0;
+    owner.segmentLength = GRID;
+
+    const fromPx = cellToPixel(5, 7);
+    owner.x = fromPx.x;
+    owner.y = fromPx.y;
+
+    owner._advanceToNextNode();
+
+    // segmentLength must be > 0 — no zero-distance freeze
+    expect(owner.segmentLength).toBeGreaterThan(0);
+    // And nextNode is the real adjacent node
+    expect(owner.nextNode.col).toBe(5);
+    expect(owner.nextNode.row).toBe(8);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// plannedGoalStillClose — smarter repath policy
+// ---------------------------------------------------------------------------
+describe('plannedGoalStillClose — repath skipped when plan still leads to goal', () => {
+  function setupForRepathTest(difficulty_) {
+    difficulty = difficulty_;
+    basementMode = '';
+    obstacles.length = 0;
+    occupiedCells.clear();
+
+    owner.active = true;
+    owner.fleeTimer = 0;
+    owner.speed = 2.0;
+    owner.currentNode = { col: 5, row: 7 };
+    owner.nextNode = { col: 6, row: 7 };
+    owner.nodeQueue = [{ col: 7, row: 7 }, { col: 8, row: 7 }];
+    owner.moveProgress = 0.05; // < 0.1 → canRepath allowed
+    owner.segmentLength = GRID;
+    owner.pathTimer = 100; // high — won't fire by timer
+
+    const fromPx = cellToPixel(5, 7);
+    owner.x = fromPx.x + (cellToPixel(6, 7).x - fromPx.x) * 0.05;
+    owner.y = fromPx.y;
+  }
+
+  it('normal: repath skipped when lastPlannedNode is within repathMinDist of goalCell', () => {
+    // normal repathMinDist = 2
+    setupForRepathTest('normal');
+
+    // lastRepathGoalCell far from current goal → playerCellChanged = true
+    owner.lastRepathGoalCell = { col: 0, row: 0 };
+
+    // nodeQueue last node = (8,7). goalCell = (9,7). Chebyshev = 1 ≤ repathMinDist=2
+    // → plannedGoalStillClose = true → repath skipped
+    const goalPx = cellToPixel(9, 7);
+    player.x = goalPx.x - owner.width / 2;
+    player.y = goalPx.y - owner.height / 2;
+
+    const prevPathTimer = owner.pathTimer;
+    owner._moveTowardTarget(player.x, player.y, owner.speed);
+
+    // pathTimer decremented (not reset to PATH_RECALC) → repath was skipped
+    expect(owner.pathTimer).toBe(prevPathTimer - 1);
+  });
+
+  it('normal: repath fires when lastPlannedNode is far from goalCell', () => {
+    // normal repathMinDist = 2
+    setupForRepathTest('normal');
+
+    // lastRepathGoalCell far from current goal → playerCellChanged = true
+    owner.lastRepathGoalCell = { col: 0, row: 0 };
+
+    // nodeQueue last node = (8,7). goalCell = (20,7). Chebyshev = 12 > repathMinDist=2
+    // → plannedGoalStillClose = false → repath fires
+    const goalPx = cellToPixel(20, 7);
+    player.x = goalPx.x - owner.width / 2;
+    player.y = goalPx.y - owner.height / 2;
+
+    owner._moveTowardTarget(player.x, player.y, owner.speed);
+
+    // pathTimer reset to PATH_RECALC → repath happened
+    expect(owner.pathTimer).toBe(owner.PATH_RECALC);
+  });
+
+  it('easy: larger repathMinDist=3 means plan stays valid for wider goal zone', () => {
+    // easy repathMinDist = 3
+    setupForRepathTest('easy');
+
+    owner.lastRepathGoalCell = { col: 0, row: 0 };
+
+    // nodeQueue last node = (8,7). goalCell = (11,7). Chebyshev = 3 ≤ repathMinDist=3
+    // → plannedGoalStillClose = true → repath skipped
+    const goalPx = cellToPixel(11, 7);
+    player.x = goalPx.x - owner.width / 2;
+    player.y = goalPx.y - owner.height / 2;
+
+    const prevPathTimer = owner.pathTimer;
+    owner._moveTowardTarget(player.x, player.y, owner.speed);
+
+    expect(owner.pathTimer).toBe(prevPathTimer - 1);
+  });
+
+  it('path exhausted always triggers repath regardless of plannedGoalStillClose', () => {
+    setupForRepathTest('normal');
+
+    // Path exhausted
+    owner.nextNode = null;
+    owner.nodeQueue = [];
+    owner.moveProgress = 0;
+    owner.pathTimer = 100;
+    owner.lastRepathGoalCell = { col: 0, row: 0 };
+
+    // goalCell very close to lastPlannedNode (null) → plannedGoalStillClose = false
+    // But needRepath fires because path exhausted
+    const goalPx = cellToPixel(6, 7);
+    player.x = goalPx.x - owner.width / 2;
+    player.y = goalPx.y - owner.height / 2;
+
+    owner._moveTowardTarget(player.x, player.y, owner.speed);
+
+    expect(owner.pathTimer).toBe(owner.PATH_RECALC);
+  });
+
+  it('fallback timer always triggers repath regardless of plannedGoalStillClose', () => {
+    setupForRepathTest('normal');
+
+    // lastRepathGoalCell same as goal → playerCellChanged = false
+    // But pathTimer = 0 → fallback fires
+    const goalPx = cellToPixel(9, 7);
+    player.x = goalPx.x - owner.width / 2;
+    player.y = goalPx.y - owner.height / 2;
+    owner.lastRepathGoalCell = pixelToCell(player.x + owner.width / 2, player.y + owner.height / 2);
+    owner.pathTimer = 0;
+
+    owner._moveTowardTarget(player.x, player.y, owner.speed);
+
+    expect(owner.pathTimer).toBe(owner.PATH_RECALC);
+  });
+
+  it('when nextNode=null and nodeQueue empty: lastPlannedNode=null → plannedGoalStillClose=false', () => {
+    // Verify the logic: null lastPlannedNode → plannedGoalStillClose = false
+    // This means path-exhausted always triggers repath (covered above, but explicit check)
+    setupForRepathTest('normal');
+    owner.nextNode = null;
+    owner.nodeQueue = [];
+    owner.moveProgress = 0;
+    owner.pathTimer = 100;
+    owner.lastRepathGoalCell = { col: 0, row: 0 };
+
+    const goalPx = cellToPixel(8, 7);
+    player.x = goalPx.x - owner.width / 2;
+    player.y = goalPx.y - owner.height / 2;
+
+    // needRepath = true (path exhausted) → canRepath = true (moveProgress=0 < 0.1)
+    owner._moveTowardTarget(player.x, player.y, owner.speed);
+    expect(owner.pathTimer).toBe(owner.PATH_RECALC);
+  });
+});

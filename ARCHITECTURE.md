@@ -196,7 +196,7 @@ GRID = 40px
 - `moveProgress` (0→1) — прогресс между узлами
 - `segmentLength` — расстояние между узлами в px (явно, не `GRID` — future-proof)
 - `nodeQueue [{col,row}, ...]` — оставшиеся узлы A* пути
-- `lastPlayerCell` — для event-based repath при смене ячейки игрока
+- `lastRepathGoalCell` — последняя цель repath (Chebyshev deadzone guard)
 
 **Алгоритм (каждый кадр):**
 1. `_updateGridMovement(spd)`: `moveProgress += spd / segmentLength`
@@ -204,14 +204,18 @@ GRID = 40px
 3. Иначе: `owner.x/y = lerp(fromPx, toPx, moveProgress)` — визуально плавно
 
 **Repath triggers (event-based, не только по таймеру):**
-- `nodeQueue` исчерпан (`nextNode === null`)
-- Игрок перешёл в другую ячейку (`lastPlayerCell` изменился)
+- `nodeQueue` исчерпан (`nextNode === null` и очередь пуста)
 - Fallback таймер (`PATH_RECALC=30` кадров, ~0.5 сек)
+- Игрок переместился на ≥ `repathMinDist` ячеек (Chebyshev) от `lastRepathGoalCell` **И** текущий план уже не ведёт к цели (`plannedGoalStillClose = false`)
 - **Repath только у узла** (`moveProgress < 0.1`) — предотвращает телепорт при mid-transition repath
+
+**`plannedGoalStillClose` — умный lookahead:**
+Chebyshev-расстояние от последнего узла текущего плана (`nodeQueue.last || nextNode`) до `goalCell`. Если ≤ `repathMinDist` — план актуален, repath по `playerCellChanged` пропускается. Это умнее чем проверка длины очереди: длина ≠ направление.
 
 **Ключевые инварианты:**
 - `moveProgress` **монотонно возрастает** — осцилляция невозможна
 - `owner.x/y` — всегда точный `cellToPixel(node)` или линейный lerp между двумя соседними ячейками
+- **`nextNode ≠ currentNode`** — `_advanceToNextNode()` пропускает дублирующие узлы (defensive programming против edge cases repath)
 - Нет `ALIGN_THRESHOLD`, нет `EPSILON`, нет `perpDist` — эти концепции не существуют
 - Нет wall sliding — движение по свободным ячейкам A*
 - `escapeObstacles` → hard snap к ближайшей свободной ячейке + полный сброс grid state + repath

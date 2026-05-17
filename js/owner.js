@@ -329,8 +329,17 @@ const owner = {
   // ===== GRID-NODE: Переход к следующему узлу =====
   // Вычисляет segmentLength явно (future-proof: не предполагает GRID).
   // Обновляет facingX/Y для фонарика.
-  // Инвариант: nextNode всегда adjacent (col±1 или row±1).
+  // Инвариант: nextNode всегда adjacent (col±1 или row±1) и nextNode ≠ currentNode.
   _advanceToNextNode() {
+    // Инвариант: nextNode никогда не должен совпадать с currentNode.
+    // Пропускаем дублирующие узлы — defensive programming против edge cases repath.
+    // A* не должен возвращать дубликаты, но при repath в момент carry-over
+    // граничные условия могут дать path[1] == currentNode.
+    while (this.nodeQueue.length > 0) {
+      const candidate = this.nodeQueue[0];
+      if (candidate.col !== this.currentNode.col || candidate.row !== this.currentNode.row) break;
+      this.nodeQueue.shift();
+    }
     if (this.nodeQueue.length === 0) {
       this.nextNode = null;
       this.segmentLength = GRID;
@@ -432,11 +441,17 @@ const owner = {
     // Event-based repath triggers (не только по таймеру):
     // 1. Таймер истёк (fallback)
     // 2. Путь исчерпан (nextNode === null и очередь пуста)
-    // 3. Игрок переместился на >= repathMinDist ячеек (Chebyshev) от последней цели repath.
-    //    Chebyshev = max(|Δcol|, |Δrow|) — O(1), без sqrt, grid-native, diagonal-aware.
-    //    Это low-pass filter для replanning: owner игнорирует микро-сдвиги игрока.
-    //    repathMinDist=2 (normal/chaos) → deadzone 80px; =3 (easy) → 120px.
-    //    Chaos=2 (не 1): агрессивность через speed/hesitation, не через repath churn.
+    // 3. Игрок переместился на >= repathMinDist ячеек (Chebyshev) от последней цели repath
+    //    И текущий план уже не ведёт к актуальной цели (plannedGoalStillClose=false).
+    //
+    // Chebyshev = max(|Δcol|, |Δrow|) — O(1), без sqrt, grid-native, diagonal-aware.
+    // repathMinDist=2 (normal/chaos) → deadzone 80px; =3 (easy) → 120px.
+    // Chaos=2 (не 1): агрессивность через speed/hesitation, не через repath churn.
+    //
+    // plannedGoalStillClose: конец текущего плана всё ещё близок к goalCell?
+    // Если да — repath по playerCellChanged пропускается (план актуален).
+    // Если нет — игрок ушёл в другую сторону, нужен repath.
+    // Это умнее чем queueSufficient (длина очереди): длина ≠ направление.
     const repathMinDist = DIFF[difficulty].repathMinDist;
     const playerCellChanged = this.lastRepathGoalCell !== null &&
       Math.max(
@@ -444,10 +459,23 @@ const owner = {
         Math.abs(goalCell.row - this.lastRepathGoalCell.row)
       ) >= repathMinDist;
 
+    // Последний узел текущего плана (конец очереди или nextNode если очередь пуста)
+    const lastPlannedNode =
+      this.nodeQueue.length > 0
+        ? this.nodeQueue[this.nodeQueue.length - 1]
+        : this.nextNode;
+
+    // Текущий план всё ещё ведёт примерно к цели?
+    const plannedGoalStillClose = lastPlannedNode !== null &&
+      Math.max(
+        Math.abs(lastPlannedNode.col - goalCell.col),
+        Math.abs(lastPlannedNode.row - goalCell.row)
+      ) <= repathMinDist;
+
     this.pathTimer--;
     const needRepath = this.pathTimer <= 0 ||
                        (!this.nextNode && this.nodeQueue.length === 0) ||
-                       playerCellChanged;
+                       (playerCellChanged && !plannedGoalStillClose);
 
     // Repath только при прибытии в узел (moveProgress < 0.1) — предотвращает телепорт.
     // Исключение: nextNode === null (путь исчерпан) — repath всегда разрешён.
