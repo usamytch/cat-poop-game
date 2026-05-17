@@ -716,117 +716,100 @@ describe('owner.facingX/facingY — normalized direction vector', () => {
     expect(len).toBeCloseTo(1.0, 2);
   });
 
-  it('steering: segment advances when owner reaches end of segment (progress >= segLen - epsilon)', () => {
-    // Новая модель: сегмент засчитывается по прогрессу вдоль оси, а не по расстоянию до точки.
-    // Хозяин в конце сегмента (progress >= segLen - 4px) → segmentIndex++, path.shift().
+  it('grid-node: owner advances to nextNode after enough frames (basement)', () => {
+    // Новая модель (basement): grid-node movement.
+    // Хозяин движется от currentNode к nextNode через moveProgress 0→1.
+    // После достаточного числа кадров currentNode должен смениться.
     basementMode = "corridor";
     owner.active = true;
     owner.fleeTimer = 0;
     obstacles.length = 0;
+    occupiedCells.clear();
     owner.speed = 4.5;
 
-    // Сегмент: горизонтальный, от (5,5) до (7,5) — длина = 2 ячейки = 80px
-    const startPx = cellToPixelCenter(5, 5);
-    const endPx   = cellToPixelCenter(7, 5);
-    const segLen  = endPx.x - startPx.x; // 80px
+    // Устанавливаем grid-node state: currentNode=(5,5), nextNode=(6,5)
+    owner.currentNode = { col: 5, row: 5 };
+    owner.nextNode    = { col: 6, row: 5 };
+    owner.nodeQueue   = [{ col: 7, row: 5 }];
+    owner.moveProgress = 0;
+    owner.segmentLength = GRID; // 40px
+    owner.facingX = 1; owner.facingY = 0;
 
-    // Ставим хозяина в конце сегмента: progress = segLen - 2px (> segLen - 4px = epsilon)
-    owner.x = startPx.x + segLen - 2 - owner.width / 2;
-    owner.y = startPx.y - owner.height / 2;
+    // Snap owner to currentNode pixel
+    const fromPx = cellToPixel(5, 5);
+    owner.x = fromPx.x;
+    owner.y = fromPx.y;
 
-    owner.path = [
-      { col: 5, row: 5 },
-      { col: 6, row: 5 },
-      { col: 7, row: 5 },
-    ];
-    owner.pathSegments = [{
-      startPx: { x: startPx.x, y: startPx.y },
-      endPx:   { x: endPx.x,   y: endPx.y   },
-      dir:     { x: 1, y: 0 },
-    }];
-    owner.segmentIndex = 0;
+    owner.path = [{ col: 5, row: 5 }, { col: 6, row: 5 }, { col: 7, row: 5 }];
     owner.pathTimer = 100;
 
-    const segIdxBefore = owner.segmentIndex;
-    owner._moveTowardTarget(player.x, player.y, owner.speed);
+    // Нужно ceil(40/4.5) ≈ 9 кадров чтобы пройти 40px при speed=4.5
+    for (let i = 0; i < 10; i++) {
+      owner._updateGridMovement(owner.speed);
+    }
 
-    // Прогресс >= segLen - 4px → segmentIndex должен увеличиться
-    expect(owner.segmentIndex, 'segment should advance when owner reaches end').toBeGreaterThan(segIdxBefore);
+    // После 10 кадров moveProgress >= 1 → currentNode должен смениться на (6,5)
+    expect(owner.currentNode.col, 'currentNode should advance to col=6').toBeGreaterThan(5);
     basementMode = "";
   });
 
-  it('steering: segment does NOT advance when owner is far from end (progress << segLen)', () => {
-    // Хозяин в начале сегмента — прогресс мал, сегмент не засчитывается.
+  it('grid-node: moveProgress advances monotonically (no oscillation, basement)', () => {
+    // Ключевой инвариант: moveProgress только растёт, никогда не осциллирует.
     basementMode = "corridor";
     owner.active = true;
     owner.fleeTimer = 0;
     obstacles.length = 0;
-    owner.speed = 4.5;
+    occupiedCells.clear();
+    owner.speed = 2.0;
 
-    const startPx = cellToPixelCenter(5, 5);
-    const endPx   = cellToPixelCenter(7, 5);
+    owner.currentNode = { col: 3, row: 5 };
+    owner.nextNode    = { col: 4, row: 5 };
+    owner.nodeQueue   = [{ col: 5, row: 5 }, { col: 6, row: 5 }];
+    owner.moveProgress = 0;
+    owner.segmentLength = GRID;
 
-    // Хозяин в начале сегмента: progress ≈ 0 (далеко от конца)
-    owner.x = startPx.x - owner.width / 2;
-    owner.y = startPx.y - owner.height / 2;
-
-    owner.path = [
-      { col: 5, row: 5 },
-      { col: 6, row: 5 },
-      { col: 7, row: 5 },
-    ];
-    owner.pathSegments = [{
-      startPx: { x: startPx.x, y: startPx.y },
-      endPx:   { x: endPx.x,   y: endPx.y   },
-      dir:     { x: 1, y: 0 },
-    }];
-    owner.segmentIndex = 0;
+    const fromPx = cellToPixel(3, 5);
+    owner.x = fromPx.x;
+    owner.y = fromPx.y;
+    owner.path = [{ col: 3, row: 5 }, { col: 4, row: 5 }, { col: 5, row: 5 }];
     owner.pathTimer = 100;
 
-    owner._moveTowardTarget(player.x, player.y, owner.speed);
+    let prevProgress = 0;
+    let oscillations = 0;
+    for (let i = 0; i < 30; i++) {
+      const before = owner.moveProgress;
+      owner._updateGridMovement(owner.speed);
+      // After node arrival moveProgress resets via carry-over (< 1), that's fine
+      // Oscillation = progress goes backward without node arrival
+      if (owner.currentNode.col === 3 && owner.moveProgress < before - 0.01) {
+        oscillations++;
+      }
+    }
 
-    // Прогресс мал → segmentIndex не должен измениться
-    expect(owner.segmentIndex, 'segment should NOT advance when owner is at start').toBe(0);
+    expect(oscillations, 'moveProgress must not oscillate').toBe(0);
     basementMode = "";
   });
 
-  it('steering: facingX points along segment direction after _moveTowardTarget', () => {
-    // После вызова _moveTowardTarget с горизонтальным сегментом вправо
-    // facingX должен быть > 0 (хозяин смотрит вправо вдоль оси сегмента).
+  it('grid-node: facingX points right when moving from (5,5) to (6,5)', () => {
+    // После _advanceToNextNode с движением вправо facingX должен быть > 0.
     basementMode = "corridor";
     owner.active = true;
     owner.fleeTimer = 0;
     obstacles.length = 0;
-    owner.speed = 4.5;
     owner.facingX = 0;
     owner.facingY = 0;
 
-    const startPx = cellToPixelCenter(5, 5);
-    const endPx   = cellToPixelCenter(9, 5);
+    owner.currentNode = { col: 5, row: 5 };
+    owner.nextNode = null;
+    owner.nodeQueue = [{ col: 6, row: 5 }];
+    owner.moveProgress = 0;
+    owner.segmentLength = GRID;
 
-    // Хозяин в середине сегмента
-    owner.x = startPx.x + 40 - owner.width / 2;
-    owner.y = startPx.y - owner.height / 2;
+    // _advanceToNextNode sets facingX/Y from currentNode→nextNode direction
+    owner._advanceToNextNode();
 
-    owner.path = [
-      { col: 5, row: 5 },
-      { col: 6, row: 5 },
-      { col: 7, row: 5 },
-      { col: 8, row: 5 },
-      { col: 9, row: 5 },
-    ];
-    owner.pathSegments = [{
-      startPx: { x: startPx.x, y: startPx.y },
-      endPx:   { x: endPx.x,   y: endPx.y   },
-      dir:     { x: 1, y: 0 },
-    }];
-    owner.segmentIndex = 0;
-    owner.pathTimer = 100;
-
-    owner._moveTowardTarget(player.x, player.y, owner.speed);
-
-    // Steering target вправо → facingX > 0
-    expect(owner.facingX, 'facingX should point along segment direction (right)').toBeGreaterThan(0);
+    expect(owner.facingX, 'facingX should point right (>0)').toBeGreaterThan(0);
+    expect(owner.facingY, 'facingY should be 0 for horizontal movement').toBeCloseTo(0, 5);
     basementMode = "";
   });
 });
@@ -990,26 +973,32 @@ describe('owner — basement improvements (улучшения 1-5)', () => {
     expect(owner.path.length).toBe(2); // без изменений
   });
 
-  it('улучшение 4: в подвале recalcInterval = 15 (не 30)', () => {
-    // Проверяем что recalcInterval в подвале = 15 (не 30).
-    // После пересчёта pathTimer устанавливается в 15, но может быть сброшен в 0
-    // если путь сразу опустел (owner уже в целевой ячейке). Проверяем через spy на recalcInterval.
-    // Косвенная проверка: на открытом уровне pathTimer = 30, в подвале — меньше или равно 15.
+  it('улучшение 4: в подвале grid-node repath — pathTimer устанавливается в 30 (event-driven)', () => {
+    // Новая модель: в подвале repath event-driven (player cell change, queue exhausted).
+    // Fallback таймер = 30 кадров (не 15 — таймер теперь вторичен, основной триггер — события).
+    // На открытых уровнях pathTimer = PATH_RECALC = 30 (без изменений).
+    // Ключевое отличие: в подвале repath происходит только у узла (moveProgress < 0.1),
+    // что предотвращает телепорт при mid-transition repath.
     basementMode = "corridor";
     owner.active = true;
     owner.fleeTimer = 0;
     obstacles.length = 0;
+    occupiedCells.clear();
     owner.path = [];
     owner.pathTimer = 0; // форсируем пересчёт
+    owner.currentNode = null;
+    owner.nextNode = null;
+    owner.nodeQueue = [];
+    owner.moveProgress = 0;
     // Ставим хозяина и кота далеко друг от друга, чтобы путь был длинным
     player.x = 900; player.y = 500;
     owner.x = 100; owner.y = 100;
     owner._moveTowardTarget(player.x, player.y, owner.speed);
-    // После пересчёта pathTimer должен быть 15 (recalcInterval в подвале),
-    // или 0 если путь сразу опустел (тоже корректно — немедленный пересчёт).
-    // Главное: НЕ должен быть 30 (это был бы открытый уровень).
-    expect(owner.pathTimer).not.toBe(owner.PATH_RECALC); // не 30
-    expect(owner.pathTimer).toBeLessThanOrEqual(15);
+    // После пересчёта pathTimer должен быть 30 (fallback интервал в basement grid-node модели).
+    // Или 0 если путь сразу опустел (nextNode=null → pathTimer=0 → немедленный пересчёт).
+    // Главное: pathTimer > 0 (не застрял в бесконечном цикле) и <= 30.
+    expect(owner.pathTimer).toBeGreaterThan(0);
+    expect(owner.pathTimer).toBeLessThanOrEqual(30);
     basementMode = "";
   });
 
