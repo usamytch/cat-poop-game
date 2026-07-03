@@ -171,18 +171,16 @@ export function resetGameState() {
   owner.catnipTarget = null;
   owner.poopHits = 0;
   owner.facePoops = [];
-  owner.stuckTimer = 0;
-  owner.lastCheckTimer = 0;
-  owner.lastX = 800;
-  owner.lastY = 300;
-  owner.driftAngle = 0;
-  owner.driftTimer = 0;
   owner.hesitateTimer = 0;
   owner.shotReactTimer = 0;
   owner.path = [];
-  owner.pathSegments = [];
-  owner.segmentIndex = 0;
   owner.pathTimer = 0;
+  owner.currentNode = null;
+  owner.nextNode = null;
+  owner.moveProgress = 0;
+  owner.segmentLength = GRID;
+  owner.nodeQueue = [];
+  owner.lastRepathGoalCell = null;
 
   // Массивы
   poops.length = 0;

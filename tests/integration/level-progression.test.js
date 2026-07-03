@@ -101,7 +101,7 @@ describe('Level progression via litter box', () => {
 
   it('owner.activate() is called after level advance', () => {
     // On level 1 normal, owner should become active after advance to level 2
-    difficulty = 'normal'; // firstLvl = 1, so owner is active from level 1
+    difficulty = 'normal'; // firstLvl = 2, so owner becomes active after level 1 → 2
     level = 1;
     poopProgress = DIFF.normal.poopTime - 1;
     player.update();

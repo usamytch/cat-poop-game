@@ -123,7 +123,7 @@
 
 ### Вмурованные предметы в стенах
 
-Чисто визуальный декор, без коллизий. Количество: 4–7 за уровень (`BASEMENT.wallEmbedCount`).
+Чисто визуальный декор, без коллизий. Количество: 10–15 за уровень (`BASEMENT.wallEmbedCount`).
 
 | Предмет | Описание |
 |---|---|
@@ -372,6 +372,7 @@ cat-poop-game/
 │   └── game.js         # Canvas init, состояние, ввод, игровой цикл
 ├── tests/
 │   ├── setup.js              # Моки + loadGame() + resetGameState() + hitOwner()
+│   ├── audio.test.js         # Web Audio моки, эффекты, мелодия
 │   ├── math.test.js          # clamp, RNG, rectsOverlap, circleRect
 │   ├── utils.test.js         # getPlayBounds, playerRect, ownerRect, escapeObstacles, hitsObstacles
 │   ├── config.test.js        # DIFF, WORLD, BONUS_TYPES, obstacleCatalog
@@ -384,11 +385,13 @@ cat-poop-game/
 │   ├── level.test.js         # generateLevel, updateObstacles, basement
 │   ├── grid.test.js          # cellKey, markCells, cellsFree, pixelToCell, aStarPath
 │   ├── game.test.js          # stats, startGame, respawnPlayer, update, input
+│   ├── touch.test.js         # мобильное управление
 │   └── integration/
 │       ├── combo-flow.test.js
 │       ├── urge-flow.test.js
+│       ├── play-feel-regression.test.js
 │       └── level-progression.test.js
-├── plans/              # Планы разработки и рефакторинга
+├── plans/              # Актуальные планы тестирования
 └── screenshots/        # Скриншоты
 ```
 
@@ -405,6 +408,7 @@ npm test
 
 | Файл | Что покрыто |
 |---|---|
+| `tests/audio.test.js` | Web Audio моки, звуковые эффекты, мелодия |
 | `tests/math.test.js` | `clamp`, RNG, `rectsOverlap`, `circleRect` |
 | `tests/utils.test.js` | `getPlayBounds`, `playerRect`, `ownerRect`, `escapeObstacles`, `hitsObstacles` |
 | `tests/config.test.js` | DIFF, WORLD, BONUS_TYPES, obstacleCatalog |
@@ -417,8 +421,10 @@ npm test
 | `tests/level.test.js` | генерация уровня, движущиеся препятствия, `cheatBasement` |
 | `tests/grid.test.js` | cellKey, markCells, cellsFree, pixelToCell, aStarPath |
 | `tests/game.test.js` | статистика, startGame, respawnPlayer, update |
+| `tests/touch.test.js` | мобильное управление |
 | `tests/integration/combo-flow.test.js` | полный флоу 3 попаданий → бегство → очистка |
 | `tests/integration/urge-flow.test.js` | рост срочности, таблетка, авария, паника |
+| `tests/integration/play-feel-regression.test.js` | повторяемые сценарии play-feel: открытое преследование, подвал, паника, комбо |
 | `tests/integration/level-progression.test.js` | прогресс уровней, активация хозяина |
 
 ---
