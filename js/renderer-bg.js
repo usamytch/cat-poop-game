@@ -45,6 +45,62 @@ function _rrectTo(bctx, x, y, w, h, r, fill) {
   bctx.fill();
 }
 
+function _strokeRrectTo(bctx, x, y, w, h, r, stroke, lineWidth) {
+  bctx.strokeStyle = stroke;
+  bctx.lineWidth = lineWidth;
+  bctx.beginPath();
+  bctx.roundRect(x, y, w, h, r);
+  bctx.stroke();
+}
+
+function _softLineTo(bctx, x1, y1, x2, y2, stroke, lineWidth) {
+  bctx.save();
+  bctx.strokeStyle = stroke;
+  bctx.lineWidth = lineWidth;
+  bctx.lineCap = "round";
+  bctx.beginPath();
+  bctx.moveTo(x1, y1);
+  bctx.lineTo(x2, y2);
+  bctx.stroke();
+  bctx.restore();
+}
+
+function _woodGrainTo(bctx, x, y, w, h, stroke) {
+  const lines = Math.max(2, Math.min(4, Math.floor(h / 24)));
+  for (let i = 0; i < lines; i++) {
+    const yy = y + 12 + i * Math.max(12, (h - 24) / Math.max(1, lines - 1));
+    _softLineTo(bctx, x + 16, yy, x + w - 18, yy + (i % 2 ? -2 : 2), stroke, 2);
+  }
+}
+
+function _simpleWeaveTo(bctx, x, y, w, h, stroke) {
+  const cols = Math.max(2, Math.min(5, Math.floor(w / 42)));
+  const rows = Math.max(1, Math.min(4, Math.floor(h / 34)));
+  for (let i = 1; i < cols; i++) {
+    const xx = x + (w * i) / cols;
+    _softLineTo(bctx, xx, y + 14, xx, y + h - 14, stroke, 1.5);
+  }
+  for (let i = 1; i <= rows; i++) {
+    const yy = y + (h * i) / (rows + 1);
+    _softLineTo(bctx, x + 14, yy, x + w - 14, yy, stroke, 1.5);
+  }
+}
+
+function _cornerDotsTo(bctx, x, y, w, h, fill) {
+  bctx.fillStyle = fill;
+  const dots = [
+    [x + 18, y + 18],
+    [x + w - 18, y + 18],
+    [x + 18, y + h - 18],
+    [x + w - 18, y + h - 18],
+  ];
+  for (const [dx, dy] of dots) {
+    bctx.beginPath();
+    bctx.arc(dx, dy, 3, 0, Math.PI * 2);
+    bctx.fill();
+  }
+}
+
 // ===== РИСОВАНИЕ ДЕКОРА (фоновые элементы, без коллизий) =====
 function _drawDecorItemTo(bctx, d) {
   const {x, y, width: w, height: h, drawStyle} = d;
@@ -62,6 +118,11 @@ function _drawDecorItemTo(bctx, d) {
       bctx.moveTo(x + w/2, y + 14); bctx.lineTo(x + w/2, y + h - 14);
       bctx.moveTo(x + 14, y + h/2); bctx.lineTo(x + w - 14, y + h/2);
       bctx.stroke();
+      bctx.globalAlpha = 0.24;
+      _softLineTo(bctx, x + 22, y + 24, x + w - 22, y + 24, p.trim, 2);
+      _softLineTo(bctx, x + 22, y + h - 24, x + w - 22, y + h - 24, p.trim, 2);
+      _simpleWeaveTo(bctx, x + 18, y + 18, w - 36, h - 36, p.trim);
+      _cornerDotsTo(bctx, x + 12, y + 12, w - 24, h - 24, p.trim);
       break;
     }
     case "mat": {
@@ -69,6 +130,9 @@ function _drawDecorItemTo(bctx, d) {
       bctx.beginPath(); bctx.roundRect(x + 4, y + 4, w - 8, h - 8, 8); bctx.fill();
       bctx.strokeStyle = p.accent; bctx.lineWidth = 3;
       bctx.beginPath(); bctx.roundRect(x + 8, y + 8, w - 16, h - 16, 5); bctx.stroke();
+      bctx.globalAlpha = 0.24;
+      _simpleWeaveTo(bctx, x + 10, y + 10, w - 20, h - 20, p.accent);
+      _softLineTo(bctx, x + 18, y + h/2, x + w - 18, y + h/2, p.accent, 2);
       break;
     }
     case "bathmat": {
@@ -81,16 +145,28 @@ function _drawDecorItemTo(bctx, d) {
         bctx.lineTo(x + 8 + i * ((w - 16) / 3), y + h - 8);
         bctx.stroke();
       }
+      bctx.globalAlpha = 0.42;
+      _softLineTo(bctx, x + 14, y + 18, x + w - 14, y + 18, "#d6c7aa", 2);
+      _softLineTo(bctx, x + 14, y + h - 18, x + w - 14, y + h - 18, "#d6c7aa", 2);
+      _cornerDotsTo(bctx, x + 4, y + 4, w - 8, h - 8, "#c8b89a");
       break;
     }
     case "tiles_decor": {
       // Lower alpha for tile grid — it's a dense pattern and looks like a debug overlay at 0.38
-      bctx.globalAlpha = 0.13;
+      bctx.globalAlpha = 0.16;
       bctx.strokeStyle = p.trim; bctx.lineWidth = 1;
+      bctx.fillStyle = p.trim;
       const tileSize = GRID / 2;
       for (let ty = y; ty < y + h; ty += tileSize) {
         for (let tx = x; tx < x + w; tx += tileSize) {
-          bctx.strokeRect(tx + 2, ty + 2, tileSize - 4, tileSize - 4);
+          bctx.beginPath();
+          bctx.roundRect(tx + 2, ty + 2, tileSize - 4, tileSize - 4, 3);
+          bctx.stroke();
+          if ((((tx - x) / tileSize + (ty - y) / tileSize) | 0) % 2 === 0) {
+            bctx.beginPath();
+            bctx.arc(tx + tileSize / 2, ty + tileSize / 2, 2.2, 0, Math.PI * 2);
+            bctx.fill();
+          }
         }
       }
       break;
@@ -101,6 +177,8 @@ function _drawDecorItemTo(bctx, d) {
       bctx.globalAlpha = 0.6;
       bctx.fillStyle = "#6f8f4f"; bctx.font = "14px Arial"; bctx.textAlign = "center";
       bctx.fillText("🌿", x + w/2, y + h/2 + 5);
+      bctx.globalAlpha = 0.28;
+      _softLineTo(bctx, x + w*0.24, y + h*0.48, x + w*0.76, y + h*0.52, "#5f7f45", 2);
       break;
     }
     case "stone": {
@@ -113,7 +191,7 @@ function _drawDecorItemTo(bctx, d) {
     case "stone_patch": {
       // Каменная плитка подвала — тёмные прямоугольники с трещинами
       bctx.fillStyle = "#2a2420";
-      bctx.beginPath(); bctx.roundRect(x + 4, y + 4, w - 8, h - 8, 4); bctx.fill();
+      bctx.beginPath(); bctx.roundRect(x + 4, y + 4, w - 8, h - 8, 7); bctx.fill();
       bctx.strokeStyle = "#3e3530"; bctx.lineWidth = 1;
       // Сетка плит
       const ps = Math.floor(w / 2);
@@ -123,6 +201,10 @@ function _drawDecorItemTo(bctx, d) {
       for (let py = y + 4; py < y + h - 4; py += ps) {
         bctx.beginPath(); bctx.moveTo(x + 4, py); bctx.lineTo(x + w - 4, py); bctx.stroke();
       }
+      bctx.globalAlpha = 0.30;
+      _softLineTo(bctx, x + 14, y + 18, x + w - 16, y + h - 20, "#4a4038", 1.5);
+      _softLineTo(bctx, x + w - 18, y + 16, x + w*0.58, y + h - 16, "#4a4038", 1.5);
+      _cornerDotsTo(bctx, x + 4, y + 4, w - 8, h - 8, "#3e3530");
       break;
     }
     case "fishBones": {
@@ -250,13 +332,17 @@ function _drawObstacleTo(bctx, ob) {
     bctx.fillStyle = currentLocation.palette.shadow;
     bctx.beginPath(); bctx.ellipse(w/2, h-4, w*0.42, 7, 0, 0, Math.PI*2); bctx.fill();
   } else {
-    bctx.fillStyle = currentLocation.palette.shadow; bctx.fillRect(8, h-10, w-16, 12);
+    bctx.fillStyle = currentLocation.palette.shadow;
+    bctx.beginPath();
+    bctx.ellipse(w/2, h-4, Math.max(12, (w-16)/2), 7, 0, 0, Math.PI*2);
+    bctx.fill();
   }
   switch (type) {
     case "wardrobe": case "cabinet": case "fridge":
       _rrectTo(bctx,0,0,w,h,10,meta.color); _rrectTo(bctx,8,8,w-16,h-16,8,meta.detail);
+      _strokeRrectTo(bctx,14,14,w-28,h-28,6,"rgba(255,255,255,0.16)",2);
       // Divider line
-      bctx.fillStyle = meta.color; bctx.fillRect(w/2-3,12,6,h-24);
+      _rrectTo(bctx,w/2-3,12,6,h-24,3,meta.color);
       // Door handles — visible contrasting rounded rects
       _rrectTo(bctx, w/4-3, h/2-7, 6, 14, 3, meta.detail === "#c89b6d" ? "#5a3010" : "#4a7a90");
       _rrectTo(bctx, w*3/4-3, h/2-7, 6, 14, 3, meta.detail === "#c89b6d" ? "#5a3010" : "#4a7a90");
@@ -264,10 +350,11 @@ function _drawObstacleTo(bctx, ob) {
       _rrectTo(bctx, 12, 10, Math.min(w*0.28, 36), 6, 3, "rgba(255,255,255,0.22)");
       break;
     case "dresser": case "counter":
-      _rrectTo(bctx,0,0,w,h,10,meta.color);
+      _rrectTo(bctx,0,0,w,h,12,meta.color);
+      _woodGrainTo(bctx, 10, 10, w - 20, h - 20, "rgba(255,255,255,0.12)");
       for (let i=1; i<=3; i++) {
         const dy=(h/4)*i-10;
-        bctx.fillStyle=meta.detail; bctx.fillRect(10,dy,w-20,12);
+        _rrectTo(bctx,10,dy,w-20,12,3,meta.detail);
         // Drawer pull — small dark rounded rect centered on each drawer
         _rrectTo(bctx, w/2-6, dy+3, 12, 6, 3, "rgba(0,0,0,0.28)");
       }
@@ -278,7 +365,8 @@ function _drawObstacleTo(bctx, ob) {
       _rrectTo(bctx,10,18,w-20,h-18,18,meta.color); _rrectTo(bctx,0,0,w,34,16,meta.detail);
       // Seat cushion — slightly lighter inset rounded rect
       _rrectTo(bctx, 16, 36, w-32, h-54, 12, "rgba(255,255,255,0.22)");
-      bctx.fillStyle = meta.color; bctx.fillRect(8,h-18,10,18); bctx.fillRect(w-18,h-18,10,18);
+      _softLineTo(bctx, 22, 42, w - 22, 42, "rgba(255,255,255,0.12)", 2);
+      _rrectTo(bctx,8,h-18,10,18,3,meta.color); _rrectTo(bctx,w-18,h-18,10,18,3,meta.color);
       if (type === "rockingChair") { bctx.strokeStyle=meta.detail; bctx.lineWidth=4; bctx.beginPath(); bctx.arc(w/2,h-2,w/2-8,Math.PI*0.1,Math.PI*0.9); bctx.stroke(); }
       // Top-edge sheen on backrest
       _rrectTo(bctx, 8, 6, Math.min(w*0.28, 36), 6, 3, "rgba(255,255,255,0.22)");
@@ -286,13 +374,15 @@ function _drawObstacleTo(bctx, ob) {
     case "plant": case "tree": case "bush":
       // Trunk (not for bush — it has no trunk)
       if (type !== "bush") {
-        bctx.fillStyle = meta.detail; bctx.fillRect(w/2-10,h*0.45,20,h*0.55);
+        _rrectTo(bctx,w/2-10,h*0.45,20,h*0.55,5,meta.detail);
       }
       // Fix: separate beginPath per circle to avoid triangle artifacts between arcs
       bctx.fillStyle = meta.color;
       bctx.beginPath(); bctx.arc(w/2,   h*0.28, w*0.28, 0, Math.PI*2); bctx.fill();
       bctx.beginPath(); bctx.arc(w*0.32, h*0.42, w*0.22, 0, Math.PI*2); bctx.fill();
       bctx.beginPath(); bctx.arc(w*0.68, h*0.42, w*0.22, 0, Math.PI*2); bctx.fill();
+      bctx.fillStyle = "rgba(255,255,255,0.18)";
+      bctx.beginPath(); bctx.arc(w*0.42, h*0.28, Math.max(4, w*0.06), 0, Math.PI*2); bctx.fill();
       if (type === "plant") {
         // Pot body
         _rrectTo(bctx, w/2-18, h-20, 36, 20, 6, meta.detail);
@@ -304,7 +394,7 @@ function _drawObstacleTo(bctx, ob) {
     case "sink":
       _rrectTo(bctx,10,0,w-20,26,10,meta.detail); _rrectTo(bctx,0,18,w,h-18,12,meta.color);
       // Faucet
-      bctx.fillStyle = "#9bb7c7"; bctx.fillRect(w/2-4,6,8,18);
+      _rrectTo(bctx,w/2-4,6,8,18,3,"#9bb7c7");
       // Drain hole — small dark circle in basin center
       bctx.fillStyle = "rgba(0,0,0,0.30)";
       bctx.beginPath(); bctx.arc(w/2, h*0.65, 5, 0, Math.PI*2); bctx.fill();
@@ -326,7 +416,8 @@ function _drawObstacleTo(bctx, ob) {
     case "laundry": case "barrel":
       _rrectTo(bctx,8,0,w-16,h,18,meta.color);
       bctx.strokeStyle=meta.detail; bctx.lineWidth=4;
-      bctx.strokeRect(14,12,w-28,h-24); bctx.strokeRect(14,h/2-8,w-28,16);
+      bctx.beginPath(); bctx.roundRect(14,12,w-28,h-24,8); bctx.stroke();
+      bctx.beginPath(); bctx.roundRect(14,h/2-8,w-28,16,4); bctx.stroke();
       if (type === "laundry") {
         // Lid line across top
         bctx.strokeStyle = "rgba(0,0,0,0.20)"; bctx.lineWidth = 3;
@@ -336,22 +427,23 @@ function _drawObstacleTo(bctx, ob) {
       } else {
         // Barrel: extra metal ring near bottom
         bctx.strokeStyle=meta.detail; bctx.lineWidth=3;
-        bctx.strokeRect(14, h*0.72, w-28, 10);
+        bctx.beginPath(); bctx.roundRect(14, h*0.72, w-28, 10, 4); bctx.stroke();
       }
       // No wide highlight for laundry/barrel — rounded body doesn't suit a rect sheen
       break;
     case "table": case "bench": case "woodpile":
       // Tabletop
       _rrectTo(bctx,0,0,w,20,10,meta.detail);
+      _softLineTo(bctx, 16, 10, w - 18, 10, "rgba(255,255,255,0.14)", 2);
       bctx.fillStyle = meta.color;
       if (type === "table") {
         // Varying leg thickness: left thin (8px), inner-left (10px), inner-right (10px), right thick (14px)
-        bctx.fillRect(10,   18, 8,  h-18);
-        bctx.fillRect(Math.floor(w/3)-5, 18, 10, h-18);
-        bctx.fillRect(Math.floor(w*2/3)-5, 18, 10, h-18);
-        bctx.fillRect(w-24, 18, 14, h-18);
+        _rrectTo(bctx,10,18,8,h-18,3,meta.color);
+        _rrectTo(bctx,Math.floor(w/3)-5,18,10,h-18,3,meta.color);
+        _rrectTo(bctx,Math.floor(w*2/3)-5,18,10,h-18,3,meta.color);
+        _rrectTo(bctx,w-24,18,14,h-18,4,meta.color);
       } else {
-        bctx.fillRect(10,18,12,h-18); bctx.fillRect(w-22,18,12,h-18);
+        _rrectTo(bctx,10,18,12,h-18,4,meta.color); _rrectTo(bctx,w-22,18,12,h-18,4,meta.color);
       }
       if (type === "bench") {
         // Seat slats — vertical lines across the top surface
@@ -367,8 +459,8 @@ function _drawObstacleTo(bctx, ob) {
       break;
     case "stool": case "crate":
       // No white highlight for crate/stool — it clashes with the X pattern
-      _rrectTo(bctx,0,0,w,h,10,meta.color); bctx.strokeStyle=meta.detail; bctx.lineWidth=3;
-      bctx.strokeRect(8,8,w-16,h-16);
+      _rrectTo(bctx,0,0,w,h,12,meta.color); bctx.strokeStyle=meta.detail; bctx.lineWidth=3;
+      bctx.beginPath(); bctx.roundRect(8,8,w-16,h-16,5); bctx.stroke();
       bctx.beginPath(); bctx.moveTo(8,8); bctx.lineTo(w-8,h-8); bctx.moveTo(w-8,8); bctx.lineTo(8,h-8); bctx.stroke();
       if (type === "crate") {
         // Nail dots at corners of inner rect
@@ -820,20 +912,20 @@ function _drawBgTo(bctx) {
   _drawFloorPattern(bctx, currentLocation.key, levelSeed);
 
   const dec = currentLocation.decorations;
-  if (dec.includes("window"))   { _rrectTo(bctx,70,70,170,120,16,"#dff4ff"); bctx.strokeStyle=p.trim; bctx.lineWidth=6; bctx.strokeRect(70,70,170,120); bctx.beginPath(); bctx.moveTo(155,70); bctx.lineTo(155,190); bctx.moveTo(70,130); bctx.lineTo(240,130); bctx.stroke(); }
-  if (dec.includes("painting")) { _rrectTo(bctx,WORLD.width-260,80,150,90,12,p.accent); bctx.strokeStyle=p.trim; bctx.lineWidth=5; bctx.strokeRect(WORLD.width-260,80,150,90); bctx.fillStyle="rgba(120,80,40,0.25)"; bctx.beginPath(); bctx.arc(WORLD.width-185,125,24,0,Math.PI*2); bctx.fill(); }
-  if (dec.includes("lamp"))     { bctx.fillStyle=p.trim; bctx.fillRect(WORLD.width-120,70,8,120); _rrectTo(bctx,WORLD.width-150,90,70,40,18,p.accent); }
-  if (dec.includes("mirror"))   { _rrectTo(bctx,WORLD.width-250,70,120,150,18,"#f7fbff"); bctx.strokeStyle=p.trim; bctx.lineWidth=6; bctx.strokeRect(WORLD.width-250,70,120,150); }
+  if (dec.includes("window"))   { _rrectTo(bctx,70,70,170,120,18,"#dff4ff"); _strokeRrectTo(bctx,70,70,170,120,18,p.trim,6); _softLineTo(bctx,155,74,155,186,p.trim,4); _softLineTo(bctx,74,130,236,130,p.trim,4); _softLineTo(bctx,92,92,128,92,"rgba(255,255,255,0.55)",5); }
+  if (dec.includes("painting")) { _rrectTo(bctx,WORLD.width-260,80,150,90,14,p.accent); _strokeRrectTo(bctx,WORLD.width-260,80,150,90,14,p.trim,5); bctx.fillStyle="rgba(120,80,40,0.25)"; bctx.beginPath(); bctx.arc(WORLD.width-185,125,24,0,Math.PI*2); bctx.fill(); _softLineTo(bctx,WORLD.width-240,150,WORLD.width-130,150,"rgba(255,255,255,0.18)",3); }
+  if (dec.includes("lamp"))     { _rrectTo(bctx,WORLD.width-120,70,8,120,4,p.trim); _rrectTo(bctx,WORLD.width-150,90,70,40,20,p.accent); _softLineTo(bctx,WORLD.width-136,102,WORLD.width-104,102,"rgba(255,255,255,0.28)",4); }
+  if (dec.includes("mirror"))   { _rrectTo(bctx,WORLD.width-250,70,120,150,20,"#f7fbff"); _strokeRrectTo(bctx,WORLD.width-250,70,120,150,20,p.trim,6); _softLineTo(bctx,WORLD.width-228,94,WORLD.width-186,94,"rgba(255,255,255,0.85)",5); _softLineTo(bctx,WORLD.width-146,102,WORLD.width-146,188,"rgba(160,190,205,0.45)",4); }
   if (dec.includes("tiles"))    { bctx.strokeStyle="rgba(255,255,255,0.35)"; bctx.lineWidth=1; for (let tx=0; tx<WORLD.width; tx+=60) { bctx.beginPath(); bctx.moveTo(tx,0); bctx.lineTo(tx,WORLD.height-WORLD.floorHeight); bctx.stroke(); } for (let ty=0; ty<WORLD.height-WORLD.floorHeight; ty+=60) { bctx.beginPath(); bctx.moveTo(0,ty); bctx.lineTo(WORLD.width,ty); bctx.stroke(); } }
-  if (dec.includes("towel"))    { _rrectTo(bctx,90,220,90,24,8,"#f7c6d0"); bctx.fillStyle=p.trim; bctx.fillRect(82,220,8,24); }
-  if (dec.includes("shelves"))  { bctx.fillStyle=p.trim; bctx.fillRect(70,90,180,10); bctx.fillRect(70,140,180,10); bctx.fillStyle=p.accent; bctx.fillRect(90,60,24,30); bctx.fillRect(140,110,24,30); bctx.fillRect(190,60,24,30); }
-  if (dec.includes("fridge"))   { _rrectTo(bctx,WORLD.width-180,90,90,170,14,"#eef5f8"); bctx.fillStyle="#9fb4c0"; bctx.fillRect(WORLD.width-110,130,6,40); }
+  if (dec.includes("towel"))    { _rrectTo(bctx,90,220,90,24,10,"#f7c6d0"); _rrectTo(bctx,82,220,8,24,3,p.trim); _softLineTo(bctx,106,228,154,228,"rgba(255,255,255,0.28)",3); }
+  if (dec.includes("shelves"))  { _rrectTo(bctx,70,90,180,10,5,p.trim); _rrectTo(bctx,70,140,180,10,5,p.trim); _rrectTo(bctx,90,60,24,30,5,p.accent); _rrectTo(bctx,140,110,24,30,5,p.accent); _rrectTo(bctx,190,60,24,30,5,p.accent); _softLineTo(bctx,96,66,108,66,"rgba(255,255,255,0.22)",2); }
+  if (dec.includes("fridge"))   { _rrectTo(bctx,WORLD.width-180,90,90,170,16,"#eef5f8"); _rrectTo(bctx,WORLD.width-110,130,6,40,3,"#9fb4c0"); _softLineTo(bctx,WORLD.width-164,106,WORLD.width-128,106,"rgba(255,255,255,0.55)",5); }
   if (dec.includes("clock"))    { bctx.fillStyle=p.accent; bctx.beginPath(); bctx.arc(WORLD.width-260,90,28,0,Math.PI*2); bctx.fill(); bctx.strokeStyle=p.trim; bctx.lineWidth=4; bctx.stroke(); }
   if (dec.includes("clouds"))   { bctx.fillStyle="rgba(255,255,255,0.8)"; [[120,90],[340,70],[980,110]].forEach(c => { bctx.beginPath(); bctx.arc(c[0],c[1],24,0,Math.PI*2); bctx.arc(c[0]+24,c[1]-10,20,0,Math.PI*2); bctx.arc(c[0]+48,c[1],24,0,Math.PI*2); bctx.fill(); }); }
-  if (dec.includes("fence"))    { bctx.fillStyle="#d8c39a"; for (let fx=0; fx<WORLD.width; fx+=34) { bctx.fillRect(fx,WORLD.height-WORLD.floorHeight-70,18,70); } bctx.fillRect(0,WORLD.height-WORLD.floorHeight-48,WORLD.width,10); }
+  if (dec.includes("fence"))    { bctx.fillStyle="#d8c39a"; for (let fx=0; fx<WORLD.width; fx+=34) { _rrectTo(bctx,fx,WORLD.height-WORLD.floorHeight-70,18,70,4,"#d8c39a"); } _rrectTo(bctx,0,WORLD.height-WORLD.floorHeight-48,WORLD.width,10,4,"#d8c39a"); }
   if (dec.includes("sun"))      { bctx.fillStyle="#ffd54f"; bctx.beginPath(); bctx.arc(WORLD.width-120,90,34,0,Math.PI*2); bctx.fill(); }
-  if (dec.includes("fireplace")){ _rrectTo(bctx,WORLD.width-260,90,170,150,14,"#c79a6d"); _rrectTo(bctx,WORLD.width-220,130,90,80,10,"#5a3420"); bctx.fillStyle="#ffb347"; bctx.beginPath(); bctx.arc(WORLD.width-175,185,18,0,Math.PI*2); bctx.fill(); }
-  if (dec.includes("rack"))     { bctx.fillStyle=p.trim; bctx.fillRect(90,80,10,170); bctx.fillRect(90,80,120,10); bctx.fillRect(90,160,120,10); }
+  if (dec.includes("fireplace")){ _rrectTo(bctx,WORLD.width-260,90,170,150,16,"#c79a6d"); _rrectTo(bctx,WORLD.width-220,130,90,80,12,"#5a3420"); _softLineTo(bctx,WORLD.width-238,108,WORLD.width-130,108,"rgba(255,255,255,0.16)",3); bctx.fillStyle="#ffb347"; bctx.beginPath(); bctx.arc(WORLD.width-175,185,18,0,Math.PI*2); bctx.fill(); }
+  if (dec.includes("rack"))     { _rrectTo(bctx,90,80,10,170,4,p.trim); _rrectTo(bctx,90,80,120,10,4,p.trim); _rrectTo(bctx,90,160,120,10,4,p.trim); }
   // ===== ПОДВАЛ =====
   if (dec.includes("cobweb")) {
     // Паутина в верхнем левом углу

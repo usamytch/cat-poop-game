@@ -150,26 +150,42 @@ function drawUI() {
   const urgeRatio = player.urge / player.maxUrge;
   const panic = urgeRatio > 0.75;
 
-  const hudX=14, hudY=14, hudW=310, hudH=188;
-  ctx.fillStyle = p.ui || "rgba(30,20,10,0.72)";
-  ctx.beginPath(); ctx.roundRect(hudX, hudY, hudW, hudH, 18); ctx.fill();
+  const dockY = WORLD.height - WORLD.floorHeight + 8;
+  const panelH = WORLD.floorHeight - 16;
+  const statsX = 14, statsW = 330;
+  const urgeW = 470;
+  const urgeX = WORLD.width - urgeW - 14;
+  const panelColor = p.ui || "rgba(30,20,10,0.72)";
+  const panelR = 14;
+
+  ctx.fillStyle = panelColor;
+  ctx.beginPath(); ctx.roundRect(statsX, dockY, statsW, panelH, panelR); ctx.fill();
+  ctx.beginPath(); ctx.roundRect(urgeX, dockY, urgeW, panelH, panelR); ctx.fill();
 
   ctx.fillStyle = "#fff";
-  setFont("bold 18px Arial");
-  ctx.textAlign = "left";
-  ctx.fillText("Уровень "+level, hudX+18, hudY+34);
-  ctx.fillStyle = "#ffd54f";
   setFont("bold 16px Arial");
-  ctx.fillText("Счёт: "+score, hudX+18, hudY+58);
+  ctx.textAlign = "left";
+  const locationAlpha = levelMessageTimer > 0 ? 1 : 0.84;
+  ctx.globalAlpha = locationAlpha;
+  ctx.fillText("📍 "+currentLocation.name+" · Уровень "+level, statsX+14, dockY+23);
+  ctx.globalAlpha = 1;
+  ctx.fillStyle = "#ffd54f";
+  setFont("bold 14px Arial");
+  ctx.fillText("Счёт: "+score, statsX+14, dockY+45);
   ctx.fillStyle = "#b0bec5";
-  setFont("14px Arial");
-  ctx.fillText("Рекорд: "+stats.highScore, hudX+18, hudY+78);
+  setFont("13px Arial");
+  ctx.fillText("Рекорд: "+stats.highScore, statsX+118, dockY+45);
 
   ctx.fillStyle = "#90caf9";
   setFont("13px Arial");
-  ctx.fillText(DIFF[difficulty].label, hudX+18, hudY+98);
+  ctx.fillText(DIFF[difficulty].label, statsX+14, dockY+64);
+  const muteIcon = muted ? "🔇" : "🔊";
+  setFont("15px Arial");
+  ctx.textAlign = "right";
+  ctx.fillStyle = muted ? "rgba(255,100,100,0.9)" : "rgba(255,255,255,0.7)";
+  ctx.fillText(muteIcon + " M", statsX+statsW-14, dockY+64);
 
-  const barX=hudX+18, barY=hudY+112, barW=hudW-36, barH=22;
+  const barX=urgeX+18, barY=dockY+25, barW=urgeW-36, barH=22;
   ctx.fillStyle = "rgba(0,0,0,0.4)"; ctx.beginPath(); ctx.roundRect(barX,barY,barW,barH,10); ctx.fill();
 
   let barColor;
@@ -194,80 +210,61 @@ function drawUI() {
   ctx.textAlign = "center";
   ctx.fillText(panic ? "😱 СРОЧНО!" : "💩 Хочется: "+Math.floor(urgeRatio*100)+"%", barX+barW/2, barY+15);
 
-  let bx = hudX+18;
+  let bx = urgeX+18;
+  const bonusY = dockY+62;
   if (speedBoostTimer > 0) {
     ctx.fillStyle = "#4fc3f7";
     setFont("13px Arial");
     ctx.textAlign = "left";
-    ctx.fillText("🐟 "+Math.ceil(speedBoostTimer/60)+"с", bx, hudY+152); bx += 70;
+    ctx.fillText("🐟 "+Math.ceil(speedBoostTimer/60)+"с", bx, bonusY); bx += 72;
   }
   if (yarnFreezeTimer > 0) {
     ctx.fillStyle = "#ce93d8";
     setFont("13px Arial");
     ctx.textAlign = "left";
-    ctx.fillText("🧶 "+Math.ceil(yarnFreezeTimer/60)+"с", bx, hudY+152);
+    ctx.fillText("🧶 "+Math.ceil(yarnFreezeTimer/60)+"с", bx, bonusY); bx += 72;
+  }
+  if (catnipTimer > 0) {
+    ctx.fillStyle = "#80cbc4";
+    setFont("13px Arial");
+    ctx.textAlign = "left";
+    ctx.fillText("🌿 "+Math.ceil(catnipTimer/60)+"с", bx, bonusY);
   }
 
-  ctx.fillStyle = "rgba(255,255,255,0.55)";
-  setFont("12px Arial");
-  ctx.textAlign = "left";
-  ctx.fillText("Пробел — стрелять", hudX+18, hudY+174);
-  const muteIcon = muted ? "🔇" : "🔊";
-  setFont("16px Arial");
-  ctx.textAlign = "right";
-  ctx.fillStyle = muted ? "rgba(255,100,100,0.9)" : "rgba(255,255,255,0.7)";
-  ctx.fillText(muteIcon + " M", hudX+hudW-14, hudY+174);
-
   if (levelMessageTimer > 0) {
-    const alpha = Math.min(1, levelMessageTimer/40);
-    ctx.save();
-    ctx.globalAlpha = alpha;
-    ctx.fillStyle = "rgba(0,0,0,0.55)";
-    // OPT 13: WORLD.width вместо canvas.width
-    ctx.beginPath(); ctx.roundRect(WORLD.width/2-160, 20, 320, 52, 18); ctx.fill();
-    ctx.fillStyle = "#ffd54f";
-    setFont("bold 26px Arial");
-    ctx.textAlign = "center";
-    ctx.fillText("📍 "+currentLocation.name+" — Уровень "+level, WORLD.width/2, 54);
-    ctx.restore();
     levelMessageTimer--;
   }
 
   ctx.textAlign = "left";
 }
 
-// ===== ЖИЗНИ (нижний левый угол) =====
+// ===== ЖИЗНИ (компактно, верхний левый угол) =====
 function drawLivesHUD() {
-  const lifeIconSize = 26;
-  const gap = 5;
-  // Максимум 9 слотов (кошек 9 жизней)
-  const lifeSlots = 9;
-  const totalW = lifeSlots * lifeIconSize + (lifeSlots - 1) * gap;
-  const panelPad = 10;
+  const iconSize = 22;
   const panelX = 14;
-  const panelY = WORLD.height - WORLD.floorHeight + 28;
-  const panelW = totalW + panelPad * 2;
-  const panelH = lifeIconSize + panelPad * 2;
+  const panelY = 14;
+  const panelW = 74;
+  const panelH = 34;
 
   // Фон панели
-  ctx.fillStyle = "rgba(0,0,0,0.52)";
-  ctx.beginPath(); ctx.roundRect(panelX, panelY, panelW, panelH, 12); ctx.fill();
+  ctx.fillStyle = currentLocation.palette.ui || "rgba(0,0,0,0.52)";
+  ctx.beginPath(); ctx.roundRect(panelX, panelY, panelW, panelH, 10); ctx.fill();
 
-  const iconsStartX = panelX + panelPad;
-  const iconsY = panelY + panelPad;
+  const iconX = panelX + 9;
+  const iconY = panelY + 6;
   const useImg = typeof lifeImage !== "undefined" && lifeImage.complete && lifeImage.naturalWidth > 0;
 
-  for (let i = 0; i < lifeSlots; i++) {
-    const ix = iconsStartX + i * (lifeIconSize + gap);
-    ctx.globalAlpha = i < lives ? 1.0 : 0.22;
-    if (useImg) {
-      ctx.drawImage(lifeImage, ix, iconsY, lifeIconSize, lifeIconSize);
-    } else {
-      setFont(lifeIconSize + "px Arial"); ctx.textAlign = "left";
-      ctx.fillText("🐱", ix, iconsY + lifeIconSize - 2);
-    }
+  ctx.globalAlpha = 1;
+  if (useImg) {
+    ctx.drawImage(lifeImage, iconX, iconY, iconSize, iconSize);
+  } else {
+    setFont(iconSize + "px Arial"); ctx.textAlign = "left";
+    ctx.fillText("🐱", iconX, iconY + iconSize - 2);
   }
-  ctx.globalAlpha = 1.0;
+  ctx.fillStyle = "#fff";
+  setFont("bold 17px Arial");
+  ctx.textAlign = "left";
+  ctx.fillText("×"+lives, iconX + iconSize + 8, panelY + 23);
   ctx.textAlign = "left";
 }
 
