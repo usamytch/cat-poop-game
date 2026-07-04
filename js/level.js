@@ -31,20 +31,64 @@ function cellKey(col, row) {
   return col * 100 + row;
 }
 
-function markCells(col, row, wCells, hCells) {
-  for (let r = row; r < row + hCells; r++) {
-    for (let c = col; c < col + wCells; c++) {
-      occupiedCells.add(cellKey(c, r));
+function makeCellRect(col, row, wCells, hCells) {
+  return { col, row, wCells, hCells };
+}
+
+function clampCellRect(rect) {
+  const col = clamp(rect.col, 0, GRID_COLS);
+  const row = clamp(rect.row, 0, GRID_ROWS);
+  const right = clamp(rect.col + rect.wCells, 0, GRID_COLS);
+  const bottom = clamp(rect.row + rect.hCells, 0, GRID_ROWS);
+  return makeCellRect(col, row, Math.max(0, right - col), Math.max(0, bottom - row));
+}
+
+function expandCellRect(rect, margin) {
+  return makeCellRect(
+    rect.col - margin,
+    rect.row - margin,
+    rect.wCells + margin * 2,
+    rect.hCells + margin * 2
+  );
+}
+
+function eachCellInRect(rect, fn) {
+  for (let r = rect.row; r < rect.row + rect.hCells; r++) {
+    for (let c = rect.col; c < rect.col + rect.wCells; c++) {
+      fn(c, r);
     }
   }
 }
 
+function setHasRectCells(set, rect) {
+  const clamped = clampCellRect(rect);
+  if (clamped.wCells !== rect.wCells || clamped.hCells !== rect.hCells) return true;
+  let found = false;
+  eachCellInRect(clamped, (c, r) => {
+    if (set.has(cellKey(c, r))) found = true;
+  });
+  return found;
+}
+
+function addRectCells(set, rect) {
+  eachCellInRect(clampCellRect(rect), (c, r) => {
+    set.add(cellKey(c, r));
+  });
+}
+
+function addCellSet(dst, src) {
+  if (!src) return;
+  for (const k of src) dst.add(k);
+}
+
+function markCells(col, row, wCells, hCells) {
+  addRectCells(occupiedCells, makeCellRect(col, row, wCells, hCells));
+}
+
 function unmarkCells(col, row, wCells, hCells) {
-  for (let r = row; r < row + hCells; r++) {
-    for (let c = col; c < col + wCells; c++) {
-      occupiedCells.delete(cellKey(c, r));
-    }
-  }
+  eachCellInRect(clampCellRect(makeCellRect(col, row, wCells, hCells)), (c, r) => {
+    occupiedCells.delete(cellKey(c, r));
+  });
 }
 
 // Проверяет, что все ячейки в прямоугольнике col..col+wCells-1, row..row+hCells-1
@@ -90,6 +134,46 @@ function cellToPixel(col, row) {
     x: b.left + col * GRID,
     y: b.top  + row * GRID,
   };
+}
+
+function pixelRectToCellRect(x, y, width, height, marginCells) {
+  const b = getPlayBounds();
+  const col = Math.floor((x - b.left) / GRID) - marginCells;
+  const row = Math.floor((y - b.top) / GRID) - marginCells;
+  const right = Math.ceil((x + width - b.left) / GRID) + marginCells;
+  const bottom = Math.ceil((y + height - b.top) / GRID) + marginCells;
+  return clampCellRect(makeCellRect(col, row, right - col, bottom - row));
+}
+
+function getFixedDecorationRects(theme) {
+  const dec = theme.decorations || [];
+  const rects = [];
+  const add = (name, x, y, w, h, margin = 1) => {
+    if (dec.includes(name)) rects.push(pixelRectToCellRect(x, y, w, h, margin));
+  };
+
+  // Fixed fixtures are wall/furniture-like background objects. They are not
+  // gameplay blockers, but generated obstacles must not visually cover them.
+  add("window", 70, 70, 170, 120);
+  add("painting", WORLD.width - 260, 80, 150, 90);
+  add("lamp", WORLD.width - 150, 70, 70, 120);
+  add("mirror", WORLD.width - 250, 70, 120, 150);
+  add("towel", 82, 220, 98, 24);
+  add("shelves", 70, 60, 180, 90);
+  add("fridge", WORLD.width - 180, 90, 90, 170);
+  add("clock", WORLD.width - 288, 62, 56, 56);
+  add("fireplace", WORLD.width - 260, 90, 170, 150);
+  add("rack", 90, 80, 120, 170);
+
+  return rects;
+}
+
+function buildFixedDecorationCells(theme) {
+  const cells = new Set();
+  for (const rect of getFixedDecorationRects(theme)) {
+    addRectCells(cells, rect);
+  }
+  return cells;
 }
 
 // ===== VALUE NOISE =====
@@ -193,7 +277,27 @@ function pickZonedPosition(rng, zone, wCells, hCells, profile) {
 }
 
 // ===== ГЕНЕРАЦИЯ ПРЕПЯТСТВИЯ =====
-function generateObstacle(theme, rng, index, movingAllowed, profile) {
+function obstacleSweepCellRect(col, row, wCells, hCells, moving, axis, range) {
+  let sweepCol = col;
+  let sweepRow = row;
+  let sweepW = wCells;
+  let sweepH = hCells;
+
+  if (moving && range > 0) {
+    const rangeCells = Math.ceil(range / GRID);
+    if (axis === "x") {
+      sweepCol -= rangeCells;
+      sweepW += rangeCells * 2;
+    } else {
+      sweepRow -= rangeCells;
+      sweepH += rangeCells * 2;
+    }
+  }
+
+  return clampCellRect(makeCellRect(sweepCol, sweepRow, sweepW, sweepH));
+}
+
+function generateObstacle(theme, rng, index, movingAllowed, profile, visualBlockedCells = null) {
   const type = theme.obstacleTypes[randInt(rng, 0, theme.obstacleTypes.length - 1)];
   const meta = obstacleCatalog[type];
 
@@ -251,6 +355,11 @@ function generateObstacle(theme, rng, index, movingAllowed, profile) {
   const range = moving ? GRID : 0;
   const speed = moving ? randRange(rng, 0.008, 0.02) : 0;
 
+  if (visualBlockedCells &&
+      setHasRectCells(visualBlockedCells, obstacleSweepCellRect(col, row, wCells, hCells, moving, axis, range))) {
+    return null;
+  }
+
   // Маркируем только сам объект (без padding) — инвариант коллизий сохраняется
   markCells(col, row, wCells, hCells);
 
@@ -265,18 +374,53 @@ function generateObstacle(theme, rng, index, movingAllowed, profile) {
   };
 }
 
+function _litterBoxCellRect(margin) {
+  const lb = pixelToCell(litterBox.x, litterBox.y);
+  const wCells = Math.ceil(litterBox.width / GRID);
+  const hCells = Math.ceil(litterBox.height / GRID);
+  return makeCellRect(lb.col - margin, lb.row - margin, wCells + margin * 2, hCells + margin * 2);
+}
+
+function _obstacleVisualCellRect(ob) {
+  // Obstacles draw shadows, rounded corners and rocking-chair arcs close to
+  // their cell edges. Keep one visual cell of air so decor cannot read as
+  // being tucked under furniture.
+  return clampCellRect(expandCellRect(
+    obstacleSweepCellRect(ob.col, ob.row, ob.wCells, ob.hCells, ob.moving, ob.axis, ob.range),
+    1
+  ));
+}
+
+function _buildDecorReservedCells(options) {
+  const reserved = new Set();
+
+  addCellSet(reserved, options && options.fixedDecorationCells);
+
+  for (const ob of obstacles) {
+    addRectCells(reserved, _obstacleVisualCellRect(ob));
+  }
+
+  addRectCells(reserved, _litterBoxCellRect(1));
+
+  if (options && options.spawnZone) {
+    addRectCells(reserved, options.spawnZone);
+  }
+
+  return reserved;
+}
+
 // ===== ГЕНЕРАЦИЯ ДЕКОРА =====
-function generateDecor(theme, rng, count) {
+function generateDecor(theme, rng, count, options = {}) {
   decorItems.length = 0;
   if (!theme.decorTypes || theme.decorTypes.length === 0) return;
 
-  // Отдельный Set занятых декором ячеек — декор не перекрывает другой декор,
-  // но может лежать под препятствиями (это нормально визуально)
-  const decorCells = new Set();
+  // Отдельный визуальный резерв: декор остаётся без коллизий, но не ложится
+  // под препятствия, лоток, спавн и swept-зону движущихся объектов.
+  const decorCells = _buildDecorReservedCells(options);
 
   let placed = 0;
   let attempts = 0;
-  const maxAttempts = count * 40;
+  const maxAttempts = Math.max(240, count * 120);
 
   while (placed < count && attempts < maxAttempts) {
     attempts++;
@@ -286,27 +430,10 @@ function generateDecor(theme, rng, count) {
     const hCells = randInt(rng, meta.hCells[0], meta.hCells[1]);
     const col = randInt(rng, 0, GRID_COLS - wCells);
     const row = randInt(rng, 0, GRID_ROWS - hCells);
+    const decorRect = makeCellRect(col, row, wCells, hCells);
 
-    // Единый проход: пробуем занять ячейки; при первом конфликте откатываем уже добавленные.
-    // Это вдвое сокращает число Set-операций на happy path (нет отдельного check-прохода).
-    const added = [];
-    let overlap = false;
-    for (let r = row; r < row + hCells && !overlap; r++) {
-      for (let c = col; c < col + wCells && !overlap; c++) {
-        const k = cellKey(c, r);
-        if (decorCells.has(k)) {
-          overlap = true;
-        } else {
-          decorCells.add(k);
-          added.push(k);
-        }
-      }
-    }
-    if (overlap) {
-      // Откат: удаляем только те ячейки, что успели добавить до конфликта
-      for (const k of added) decorCells.delete(k);
-      continue;
-    }
+    if (setHasRectCells(decorCells, decorRect)) continue;
+    addRectCells(decorCells, decorRect);
 
     const pos = cellToPixel(col, row);
     decorItems.push({
@@ -726,6 +853,7 @@ function generateLevel() {
   bonuses.length = 0;
   catnipTimer = 0;  // сброс котовника при старте нового уровня
   occupiedCells.clear();
+  const fixedDecorationCells = buildFixedDecorationCells(currentLocation);
 
   // Спавн кота — случайный угол сетки (детерминировано через RNG)
   // 0=левый нижний, 1=правый нижний, 2=левый верхний, 3=правый верхний
@@ -769,7 +897,7 @@ function generateLevel() {
     let att = 0;
     while (obstacles.length < obstCount && att < obstCount * 80) {
       att++;
-      const ob = generateObstacle(currentLocation, rng, obstacles.length, movingAllowed, profile);
+      const ob = generateObstacle(currentLocation, rng, obstacles.length, movingAllowed, profile, fixedDecorationCells);
       if (ob) obstacles.push(ob);
     }
   }
@@ -804,7 +932,10 @@ function generateLevel() {
   const decorMin = level <= 3 ? 4 : level <= 7 ? 5 : 6;
   const decorMax = level <= 3 ? 6 : level <= 7 ? 7 : 8;
   const decorCount = randInt(rng, decorMin, decorMax);
-  generateDecor(currentLocation, rng, decorCount);
+  generateDecor(currentLocation, rng, decorCount, {
+    fixedDecorationCells,
+    spawnZone: makeCellRect(blockCol, blockRow, 3, 3),
+  });
 
   // Вмурованные предметы в стенах подвала — добавляются ПОСЛЕ generateDecor(),
   // т.к. generateDecor() сбрасывает decorItems.length = 0 в начале.

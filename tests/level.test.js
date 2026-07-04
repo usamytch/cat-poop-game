@@ -23,6 +23,73 @@ beforeEach(() => {
   globalSeed = 0;
 });
 
+function rectsOverlapCells(a, b) {
+  return a.col < b.col + b.wCells &&
+    a.col + a.wCells > b.col &&
+    a.row < b.row + b.hCells &&
+    a.row + a.hCells > b.row;
+}
+
+function rectOverlapsCellSet(rect, cells) {
+  for (let r = rect.row; r < rect.row + rect.hCells; r++) {
+    for (let c = rect.col; c < rect.col + rect.wCells; c++) {
+      if (cells.has(cellKey(c, r))) return true;
+    }
+  }
+  return false;
+}
+
+function itemCellRect(item) {
+  return { col: item.col, row: item.row, wCells: item.wCells, hCells: item.hCells };
+}
+
+function expandTestRect(rect, margin) {
+  return {
+    col: Math.max(0, rect.col - margin),
+    row: Math.max(0, rect.row - margin),
+    wCells: Math.min(GRID_COLS, rect.col + rect.wCells + margin) - Math.max(0, rect.col - margin),
+    hCells: Math.min(GRID_ROWS, rect.row + rect.hCells + margin) - Math.max(0, rect.row - margin),
+  };
+}
+
+function litterMarginRect(margin = 1) {
+  const lb = pixelToCell(litterBox.x, litterBox.y);
+  return {
+    col: lb.col - margin,
+    row: lb.row - margin,
+    wCells: litterBox.width / GRID + margin * 2,
+    hCells: litterBox.height / GRID + margin * 2,
+  };
+}
+
+function currentSpawnSafetyRect() {
+  const spawnCell = pixelToCell(player.x, player.y);
+  return {
+    col: Math.max(0, Math.min(spawnCell.col, GRID_COLS - 3)),
+    row: Math.max(0, Math.min(spawnCell.row - (spawnCell.row > 0 ? 2 : 0), GRID_ROWS - 3)),
+    wCells: 3,
+    hCells: 3,
+  };
+}
+
+function movingSweepRect(ob) {
+  const rangeCells = ob.moving && ob.range > 0 ? Math.ceil(ob.range / GRID) : 0;
+  if (ob.axis === 'x') {
+    return {
+      col: Math.max(0, ob.col - rangeCells),
+      row: ob.row,
+      wCells: Math.min(GRID_COLS, ob.col + ob.wCells + rangeCells) - Math.max(0, ob.col - rangeCells),
+      hCells: ob.hCells,
+    };
+  }
+  return {
+    col: ob.col,
+    row: Math.max(0, ob.row - rangeCells),
+    wCells: ob.wCells,
+    hCells: Math.min(GRID_ROWS, ob.row + ob.hCells + rangeCells) - Math.max(0, ob.row - rangeCells),
+  };
+}
+
 // ---------------------------------------------------------------------------
 describe('generateLevel()', () => {
   it('obstacles array is not empty after generation', () => {
@@ -566,6 +633,124 @@ describe('generateLevel()', () => {
     }
   });
 
+  it('normal decor items keep a 1-cell visual margin from obstacle grid cells', () => {
+    for (let s = 0; s < 10; s++) {
+      globalSeed = s * 1777;
+      level = 6;
+      score = s * 20;
+      obstacles.length = 0; bonuses.length = 0; occupiedCells.clear();
+      generateLevel();
+
+      for (const d of decorItems) {
+        if (d.wallEmbed) continue;
+        const decorRect = itemCellRect(d);
+        for (const ob of obstacles) {
+          expect(
+            rectsOverlapCells(decorRect, expandTestRect(itemCellRect(ob), 1)),
+            `seed=${s}: decor "${d.type}" is inside visual margin of obstacle ${ob.id}`
+          ).toBe(false);
+        }
+      }
+    }
+  });
+
+  it('normal decor items do not overlap litterBox or its 1-cell visual margin', () => {
+    for (let s = 0; s < 10; s++) {
+      globalSeed = s * 1889;
+      level = 4;
+      score = s * 30;
+      obstacles.length = 0; bonuses.length = 0; occupiedCells.clear();
+      generateLevel();
+
+      const marginRect = litterMarginRect(1);
+      for (const d of decorItems) {
+        if (d.wallEmbed) continue;
+        expect(
+          rectsOverlapCells(itemCellRect(d), marginRect),
+          `seed=${s}: decor "${d.type}" overlaps litterBox visual margin`
+        ).toBe(false);
+      }
+    }
+  });
+
+  it('normal decor items do not overlap the 3x3 player spawn safety zone', () => {
+    for (let s = 0; s < 10; s++) {
+      globalSeed = s * 1999;
+      level = 3;
+      score = s * 40;
+      obstacles.length = 0; bonuses.length = 0; occupiedCells.clear();
+      generateLevel();
+
+      const spawnRect = currentSpawnSafetyRect();
+      for (const d of decorItems) {
+        if (d.wallEmbed) continue;
+        expect(
+          rectsOverlapCells(itemCellRect(d), spawnRect),
+          `seed=${s}: decor "${d.type}" overlaps spawn safety zone`
+        ).toBe(false);
+      }
+    }
+  });
+
+  it('normal decor items avoid moving obstacle swept cells', () => {
+    let testedMoving = false;
+    for (let s = 0; s < 20; s++) {
+      globalSeed = s * 2113;
+      level = 5;
+      score = s * 50;
+      obstacles.length = 0; bonuses.length = 0; occupiedCells.clear();
+      generateLevel();
+
+      const movingObs = obstacles.filter(o => o.moving);
+      if (movingObs.length === 0) continue;
+      testedMoving = true;
+
+      for (const d of decorItems) {
+        if (d.wallEmbed) continue;
+        const decorRect = itemCellRect(d);
+        for (const ob of movingObs) {
+          expect(
+            rectsOverlapCells(decorRect, expandTestRect(movingSweepRect(ob), 1)),
+            `seed=${s}: decor "${d.type}" overlaps visual swept margin of ${ob.id}`
+          ).toBe(false);
+        }
+      }
+    }
+    expect(testedMoving, 'no moving obstacles found across 20 seeds at level 5').toBe(true);
+  });
+
+  it('obstacles avoid fixed background fixture cells', () => {
+    const fixtureThemes = locationThemes.filter(t =>
+      t.key !== 'basement' && buildFixedDecorationCells(t).size > 0
+    );
+
+    for (const theme of fixtureThemes) {
+      let found = false;
+      for (let s = 0; s < 300; s++) {
+        level = 5;
+        score = s * 17;
+        globalSeed = s * 2371;
+        obstacles.length = 0; bonuses.length = 0; occupiedCells.clear();
+        generateLevel();
+        if (currentLocation.key === theme.key) {
+          found = true;
+          break;
+        }
+      }
+
+      expect(found, `fixture theme ${theme.key} was not generated across seeds`).toBe(true);
+      const fixtureCells = buildFixedDecorationCells(currentLocation);
+      expect(fixtureCells.size, `${theme.key}: fixture cells should not be empty`).toBeGreaterThan(0);
+
+      for (const ob of obstacles) {
+        expect(
+          rectOverlapsCellSet(movingSweepRect(ob), fixtureCells),
+          `${theme.key}: obstacle ${ob.id} overlaps fixed background fixture cells`
+        ).toBe(false);
+      }
+    }
+  });
+
   it('obstacles have wCells and hCells properties', () => {
     generateLevel();
     for (const ob of obstacles) {
@@ -929,6 +1114,36 @@ describe('_placeWallEmbeds — вмурованные предметы в сте
     const embeds = decorItems.filter(d => EMBED_TYPES.has(d.type));
     for (const e of embeds) {
       expect(e.drawStyle).toBe(e.type);
+    }
+  });
+
+  it('wall-embed items are placed only inside wall_h or wall_v cells', () => {
+    for (const cheat of ['corridor', 'dfs']) {
+      level = 1;
+      globalSeed = 0;
+      obstacles.length = 0; bonuses.length = 0; occupiedCells.clear();
+      if (cheat === 'corridor') cheatBasement = true;
+      else cheatDfs = true;
+      generateLevel();
+
+      const wallCells = new Set();
+      for (const ob of obstacles) {
+        if (ob.type !== 'wall_h' && ob.type !== 'wall_v') continue;
+        for (let r = ob.row; r < ob.row + ob.hCells; r++) {
+          for (let c = ob.col; c < ob.col + ob.wCells; c++) {
+            wallCells.add(`${c},${r}`);
+          }
+        }
+      }
+
+      const embeds = decorItems.filter(d => EMBED_TYPES.has(d.type));
+      expect(embeds.length).toBeGreaterThan(0);
+      for (const e of embeds) {
+        expect(
+          wallCells.has(`${e.col},${e.row}`),
+          `${cheat}: embed ${e.type} at (${e.col},${e.row}) is not inside a wall cell`
+        ).toBe(true);
+      }
     }
   });
 });
