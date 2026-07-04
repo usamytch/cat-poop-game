@@ -166,8 +166,10 @@ function drawUI() {
   setFont("bold 16px Arial");
   ctx.textAlign = "left";
   const locationAlpha = levelMessageTimer > 0 ? 1 : 0.84;
+  const progression = currentLevelProgression || getLevelProgression(level);
+  const actLabel = progression.actStep + "/" + progression.actLength;
   ctx.globalAlpha = locationAlpha;
-  ctx.fillText("📍 "+currentLocation.name+" · Уровень "+level, statsX+14, dockY+23);
+  ctx.fillText("📍 "+currentLocation.name+" · "+actLabel+" · Ур. "+level, statsX+14, dockY+23);
   ctx.globalAlpha = 1;
   ctx.fillStyle = "#ffd54f";
   setFont("bold 14px Arial");
@@ -178,7 +180,8 @@ function drawUI() {
 
   ctx.fillStyle = "#90caf9";
   setFont("13px Arial");
-  ctx.fillText(DIFF[difficulty].label, statsX+14, dockY+64);
+  const modeText = progression.modifier ? DIFF[difficulty].label+" · "+progression.modifier.label : DIFF[difficulty].label;
+  ctx.fillText(modeText, statsX+14, dockY+64);
   const muteIcon = muted ? "🔇" : "🔊";
   setFont("15px Arial");
   ctx.textAlign = "right";

@@ -153,11 +153,11 @@ describe('owner.activate()', () => {
     expect(owner.active).toBe(true);
   });
 
-  it('speed = baseSpd + (level-1) * spdPerLvl', () => {
+  it('speed = baseSpd + (effectiveLevel-1) * spdPerLvl', () => {
     difficulty = 'normal';
     level = 3;
     owner.activate();
-    const expected = DIFF.normal.baseSpd + (3 - 1) * DIFF.normal.spdPerLvl;
+    const expected = DIFF.normal.baseSpd + (getEffectiveLevel(level) - 1) * DIFF.normal.spdPerLvl;
     expect(owner.speed).toBeCloseTo(expected);
   });
 

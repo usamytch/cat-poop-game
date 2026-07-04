@@ -186,6 +186,45 @@ describe('generateLevel()', () => {
     expect(lb1).toEqual(lb2);
   });
 
+  it('getLevelProgression maps raw levels to 5-level acts and effectiveLevel', () => {
+    const cases = [
+      { lvl: 1,  actIndex: 0, actStep: 1, effectiveLevel: 1.0,  loc: 'hall',     variantTier: 0, modifier: null },
+      { lvl: 5,  actIndex: 0, actStep: 5, effectiveLevel: 5.0,  loc: 'hall',     variantTier: 0, modifier: null },
+      { lvl: 6,  actIndex: 1, actStep: 1, effectiveLevel: 2.5,  loc: 'bathroom', variantTier: 0, modifier: null },
+      { lvl: 10, actIndex: 1, actStep: 5, effectiveLevel: 6.5,  loc: 'bathroom', variantTier: 0, modifier: null },
+      { lvl: 11, actIndex: 2, actStep: 1, effectiveLevel: 4.0,  loc: 'kitchen',  variantTier: 0, modifier: null },
+      { lvl: 25, actIndex: 4, actStep: 5, effectiveLevel: 11.0, loc: 'country',  variantTier: 0, modifier: null },
+      { lvl: 26, actIndex: 5, actStep: 1, effectiveLevel: 8.5,  loc: 'hall',     variantTier: 1, modifier: 'clutter' },
+    ];
+
+    for (const c of cases) {
+      const p = getLevelProgression(c.lvl);
+      expect(p.actIndex, `level ${c.lvl} actIndex`).toBe(c.actIndex);
+      expect(p.actStep, `level ${c.lvl} actStep`).toBe(c.actStep);
+      expect(p.effectiveLevel, `level ${c.lvl} effectiveLevel`).toBeCloseTo(c.effectiveLevel);
+      expect(p.locationTheme.key, `level ${c.lvl} location`).toBe(c.loc);
+      expect(p.variantTier, `level ${c.lvl} variantTier`).toBe(c.variantTier);
+      expect(p.modifier ? p.modifier.key : null, `level ${c.lvl} modifier`).toBe(c.modifier);
+    }
+  });
+
+  it('effectiveLevel has sawtooth pacing across act boundaries', () => {
+    expect(getEffectiveLevel(5)).toBeGreaterThan(getEffectiveLevel(4));
+    expect(getEffectiveLevel(6)).toBeLessThan(getEffectiveLevel(5));
+    expect(getEffectiveLevel(6)).toBeGreaterThan(getEffectiveLevel(1));
+  });
+
+  it('normal locations follow 5-level blocks before variants repeat', () => {
+    expect(getLevelProgression(1).locationTheme.key).toBe('hall');
+    expect(getLevelProgression(5).locationTheme.key).toBe('hall');
+    expect(getLevelProgression(6).locationTheme.key).toBe('bathroom');
+    expect(getLevelProgression(10).locationTheme.key).toBe('bathroom');
+    expect(getLevelProgression(11).locationTheme.key).toBe('kitchen');
+    expect(getLevelProgression(21).locationTheme.key).toBe('country');
+    expect(getLevelProgression(26).locationTheme.key).toBe('hall');
+    expect(getLevelProgression(26).variantTier).toBe(1);
+  });
+
   it('from level 5, some obstacles have moving = true', () => {
     level = 5;
     score = 0;
@@ -515,31 +554,24 @@ describe('generateLevel()', () => {
   });
 
   // ---------------------------------------------------------------------------
-  // getLevelProfile: correct profile returned for each phase
+  // getLevelProfile: act-step pressure
   // ---------------------------------------------------------------------------
-  it('getLevelProfile returns correct padding for each phase', () => {
-    // Early levels (1-3): padding=1
-    for (const lvl of [1, 2, 3]) {
-      level = lvl;
-      const p = getLevelProfile(lvl);
-      expect(p.padding, `level ${lvl} should have padding=1`).toBe(1);
-    }
-    // Mid levels (4-7): padding=1
-    for (const lvl of [4, 5, 7]) {
-      const p = getLevelProfile(lvl);
-      expect(p.padding, `level ${lvl} should have padding=1`).toBe(1);
-    }
-    // Late levels (8+): padding=0
-    for (const lvl of [8, 10, 15]) {
-      const p = getLevelProfile(lvl);
-      expect(p.padding, `level ${lvl} should have padding=0`).toBe(0);
-    }
+  it('getLevelProfile makes act peaks denser than act breathers', () => {
+    const breather = getLevelProfile(6); // 1/5, second act
+    const peak = getLevelProfile(10);    // 5/5, same act
+    expect(breather.padding).toBe(1);
+    expect(peak.padding).toBe(0);
+    expect(breather.centerOpen).toBeGreaterThan(peak.centerOpen);
+    expect(breather.noiseThreshold).toBeGreaterThan(peak.noiseThreshold);
+    expect(peak.movingChance).toBeGreaterThan(breather.movingChance);
   });
 
-  it('getLevelProfile returns higher centerOpen on early levels than late levels', () => {
-    const early = getLevelProfile(1);
-    const late  = getLevelProfile(10);
-    expect(early.centerOpen).toBeGreaterThan(late.centerOpen);
+  it('getLevelProfile applies late modifiers without endless raw scaling', () => {
+    const normalPeak = getLevelProfile(25);
+    const clutterBreather = getLevelProfile(26);
+    expect(getLevelProgression(26).modifier.key).toBe('clutter');
+    expect(clutterBreather.centerOpen).toBeLessThan(getLevelProfile(1).centerOpen);
+    expect(normalPeak.movingChance).toBeLessThanOrEqual(0.72);
   });
 
   // ---------------------------------------------------------------------------
@@ -723,31 +755,94 @@ describe('generateLevel()', () => {
     const fixtureThemes = locationThemes.filter(t =>
       t.key !== 'basement' && buildFixedDecorationCells(t).size > 0
     );
+    const oldCorridorProb = BASEMENT.corridorProb;
+    const oldDfsProb = BASEMENT.dfsProb;
+    BASEMENT.corridorProb = 0;
+    BASEMENT.dfsProb = 0;
 
-    for (const theme of fixtureThemes) {
-      let found = false;
-      for (let s = 0; s < 300; s++) {
-        level = 5;
-        score = s * 17;
-        globalSeed = s * 2371;
+    try {
+      const normalThemes = getNormalLocationThemes();
+      for (const theme of fixtureThemes) {
+        const themeIndex = normalThemes.findIndex(t => t.key === theme.key);
+        level = themeIndex * ACT.length + ACT.length;
+        score = 0;
+        globalSeed = themeIndex * 2371;
         obstacles.length = 0; bonuses.length = 0; occupiedCells.clear();
         generateLevel();
-        if (currentLocation.key === theme.key) {
-          found = true;
-          break;
+        expect(currentLocation.key, `level ${level} should use ${theme.key}`).toBe(theme.key);
+
+        const fixtureCells = buildFixedDecorationCells(currentLocation);
+        expect(fixtureCells.size, `${theme.key}: fixture cells should not be empty`).toBeGreaterThan(0);
+
+        for (const ob of obstacles) {
+          expect(
+            rectOverlapsCellSet(movingSweepRect(ob), fixtureCells),
+            `${theme.key}: obstacle ${ob.id} overlaps fixed background fixture cells`
+          ).toBe(false);
         }
       }
+    } finally {
+      BASEMENT.corridorProb = oldCorridorProb;
+      BASEMENT.dfsProb = oldDfsProb;
+    }
+  });
 
-      expect(found, `fixture theme ${theme.key} was not generated across seeds`).toBe(true);
-      const fixtureCells = buildFixedDecorationCells(currentLocation);
-      expect(fixtureCells.size, `${theme.key}: fixture cells should not be empty`).toBeGreaterThan(0);
+  it('act peak levels guarantee pill plus a control bonus', () => {
+    const oldCorridorProb = BASEMENT.corridorProb;
+    const oldDfsProb = BASEMENT.dfsProb;
+    BASEMENT.corridorProb = 0;
+    BASEMENT.dfsProb = 0;
+    try {
+      level = 5; score = 0; globalSeed = 0; lives = 3;
+      obstacles.length = 0; bonuses.length = 0; occupiedCells.clear();
+      generateLevel();
+      expect(bonuses.some(b => b.type === 'pill')).toBe(true);
+      expect(bonuses.some(b => b.type === 'yarn')).toBe(true);
 
-      for (const ob of obstacles) {
-        expect(
-          rectOverlapsCellSet(movingSweepRect(ob), fixtureCells),
-          `${theme.key}: obstacle ${ob.id} overlaps fixed background fixture cells`
-        ).toBe(false);
+      level = 10; score = 0; globalSeed = 0; lives = 3;
+      obstacles.length = 0; bonuses.length = 0; occupiedCells.clear();
+      generateLevel();
+      expect(bonuses.some(b => b.type === 'pill')).toBe(true);
+      expect(bonuses.some(b => b.type === 'catnip')).toBe(true);
+    } finally {
+      BASEMENT.corridorProb = oldCorridorProb;
+      BASEMENT.dfsProb = oldDfsProb;
+    }
+  });
+
+  it('life bonus weighting is anti-snowball', () => {
+    level = 10;
+    lives = 1;
+    const lowLivesPool = getBonusPool(getLevelProgression(level));
+    lives = 5;
+    const highLivesPool = getBonusPool(getLevelProgression(level));
+    const countType = (pool, type) => pool.filter(x => x === type).length;
+    expect(countType(lowLivesPool, 'life')).toBeGreaterThan(countType(highLivesPool, 'life'));
+  });
+
+  it('levels 1-40 have a path from spawn to litterBox on every difficulty', () => {
+    const oldCorridorProb = BASEMENT.corridorProb;
+    const oldDfsProb = BASEMENT.dfsProb;
+    BASEMENT.corridorProb = 0;
+    BASEMENT.dfsProb = 0;
+    try {
+      for (const diff of ['easy', 'normal', 'chaos']) {
+        difficulty = diff;
+        for (let lvl = 1; lvl <= 40; lvl++) {
+          level = lvl;
+          score = 0;
+          globalSeed = lvl * 1009;
+          obstacles.length = 0; bonuses.length = 0; occupiedCells.clear();
+          generateLevel();
+          const start = pixelToCell(player.x + player.size / 2, player.y + player.size / 2);
+          const end = pixelToCell(litterBox.x + litterBox.width / 2, litterBox.y + litterBox.height / 2);
+          const path = aStarPath(start.col, start.row, end.col, end.row, player.size, player.size, 2000);
+          expect(path, `${diff} level ${lvl}: path from spawn to litterBox`).not.toBeNull();
+        }
       }
+    } finally {
+      BASEMENT.corridorProb = oldCorridorProb;
+      BASEMENT.dfsProb = oldDfsProb;
     }
   });
 

@@ -85,8 +85,8 @@ const player = {
       spawnPawTrail(this.x + this.size / 2, this.y + this.size * 0.75);
     }
 
-    // Срочность — рост ограничен мягким капом ×1.8 (достигается ~на уровне 11)
-    const urgeRate = diff.urgeRate * Math.min(1 + (level-1)*0.08, 1.8);
+    // Срочность растёт по актовому effectiveLevel и ограничена мягким капом.
+    const urgeRate = diff.urgeRate * getUrgeScale(level);
     this.urge = clamp(this.urge + urgeRate/60, 0, this.maxUrge);
 
     // Паника

@@ -87,7 +87,7 @@ describe('entity sizes — grid compatibility', () => {
 
 // ---------------------------------------------------------------------------
 describe('player.update() — urge growth', () => {
-  it('urge grows each frame by urgeRate/60 * (1 + (level-1)*0.08)', () => {
+  it('urge grows each frame by urgeRate/60 * getUrgeScale(level)', () => {
     player.urge = 0;
     level = 1;
     difficulty = 'normal';
@@ -97,7 +97,7 @@ describe('player.update() — urge growth', () => {
     litterBox.x = 900;
     litterBox.y = 400;
     owner.active = false;
-    const expectedGrowth = DIFF.normal.urgeRate / 60 * (1 + (1 - 1) * 0.08);
+    const expectedGrowth = DIFF.normal.urgeRate / 60 * getUrgeScale(level);
     player.update();
     expect(player.urge).toBeCloseTo(expectedGrowth, 5);
   });
@@ -310,62 +310,61 @@ describe('escapeObstacles — player is never inside obstacles', () => {
 
 // ---------------------------------------------------------------------------
 describe('player.update() — urge rate soft cap', () => {
-  it('urge rate at level 11 equals diff.urgeRate * 1.8 (cap reached)', () => {
+  it('urge rate at level 25 equals diff.urgeRate * 1.8 (cap reached by effectiveLevel)', () => {
     difficulty = 'normal';
-    level = 11;
+    level = 25;
     player.urge = 0;
     owner.active = false;
     litterBox.x = 900; litterBox.y = 400;
     player.update();
-    // urgeRate = DIFF.normal.urgeRate * min(1 + 10*0.08, 1.8) = urgeRate * 1.8
     const expectedRate = DIFF.normal.urgeRate * 1.8 / 60;
     expect(player.urge).toBeCloseTo(expectedRate, 5);
   });
 
-  it('urge rate at level 15 equals same as level 11 (cap holds)', () => {
+  it('urge rate at level 30 equals same as level 25 (cap holds)', () => {
     difficulty = 'normal';
     player.urge = 0;
     owner.active = false;
     litterBox.x = 900; litterBox.y = 400;
 
-    level = 11;
+    level = 25;
     player.update();
-    const urgeAt11 = player.urge;
+    const urgeAt25 = player.urge;
 
     player.urge = 0;
-    level = 15;
+    level = 30;
     player.update();
-    const urgeAt15 = player.urge;
+    const urgeAt30 = player.urge;
 
-    expect(urgeAt15).toBeCloseTo(urgeAt11, 5);
+    expect(urgeAt30).toBeCloseTo(urgeAt25, 5);
   });
 
-  it('urge rate at level 20 equals same as level 11 (cap holds)', () => {
+  it('urge rate at level 50 equals same as level 25 (cap holds)', () => {
     difficulty = 'chaos';
     player.urge = 0;
     owner.active = false;
     litterBox.x = 900; litterBox.y = 400;
 
-    level = 11;
+    level = 25;
     player.update();
-    const urgeAt11 = player.urge;
+    const urgeAt25 = player.urge;
 
     player.urge = 0;
-    level = 20;
+    level = 50;
     player.update();
-    const urgeAt20 = player.urge;
+    const urgeAt50 = player.urge;
 
-    expect(urgeAt20).toBeCloseTo(urgeAt11, 5);
+    expect(urgeAt50).toBeCloseTo(urgeAt25, 5);
   });
 
-  it('urge rate at level 5 is below cap (1 + 4*0.08 = 1.32 < 1.8)', () => {
+  it('urge rate at level 5 is below cap (effectiveLevel 5)', () => {
     difficulty = 'normal';
     level = 5;
     player.urge = 0;
     owner.active = false;
     litterBox.x = 900; litterBox.y = 400;
     player.update();
-    const expectedRate = DIFF.normal.urgeRate * 1.32 / 60;
+    const expectedRate = DIFF.normal.urgeRate * getUrgeScale(level) / 60;
     expect(player.urge).toBeCloseTo(expectedRate, 5);
   });
 });

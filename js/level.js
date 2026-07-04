@@ -3,6 +3,7 @@
 // ==========================================
 
 let currentLocation = locationThemes[0];
+let currentLevelProgression = null;
 let levelSeed = 1;
 // "corridor" | "dfs" | "" — режим подвала для текущего уровня
 let basementMode = "";
@@ -186,6 +187,103 @@ function valueNoise(col, row, seed) {
   return (h & 0x7fffffff) / 0x7fffffff; // [0..1]
 }
 
+// ===== АКТОВАЯ ПРОГРЕССИЯ =====
+function getNormalLocationThemes() {
+  return locationThemes.filter(t => t.key !== "basement");
+}
+
+function romanNumeral(n) {
+  const map = [
+    [1000, "M"], [900, "CM"], [500, "D"], [400, "CD"],
+    [100, "C"], [90, "XC"], [50, "L"], [40, "XL"],
+    [10, "X"], [9, "IX"], [5, "V"], [4, "IV"], [1, "I"],
+  ];
+  let out = "";
+  for (const [value, glyph] of map) {
+    while (n >= value) { out += glyph; n -= value; }
+  }
+  return out || "I";
+}
+
+function adjustHexColor(hex, amount) {
+  if (typeof hex !== "string" || !/^#[0-9a-fA-F]{6}$/.test(hex)) return hex;
+  const n = parseInt(hex.slice(1), 16);
+  const r = clamp(((n >> 16) & 255) + amount, 0, 255);
+  const g = clamp(((n >> 8) & 255) + amount, 0, 255);
+  const b = clamp((n & 255) + amount, 0, 255);
+  return "#" + [r, g, b].map(v => Math.round(v).toString(16).padStart(2, "0")).join("");
+}
+
+function tintPaletteForVariant(palette, variantTier) {
+  if (variantTier <= 0) return palette;
+  const tier = Math.min(variantTier, 6);
+  const floorShift = -10 * tier;
+  const wallShift = -6 * tier;
+  const trimShift = -14 * tier;
+  const accentShift = tier % 2 === 0 ? 8 * tier : -4 * tier;
+  return {
+    ...palette,
+    wall:   adjustHexColor(palette.wall, wallShift),
+    floor:  adjustHexColor(palette.floor, floorShift),
+    trim:   adjustHexColor(palette.trim, trimShift),
+    accent: adjustHexColor(palette.accent, accentShift),
+  };
+}
+
+function makeActLocationTheme(theme, variantTier) {
+  if (variantTier <= 0) return theme;
+  const copy = {
+    ...theme,
+    name: `${theme.name} ${romanNumeral(variantTier + 1)}`,
+    palette: tintPaletteForVariant(theme.palette, variantTier),
+  };
+  return copy;
+}
+
+function getLevelProgression(lvl = level) {
+  const normalThemes = getNormalLocationThemes();
+  const rawLevel = Math.max(1, Math.floor(lvl || 1));
+  const actIndex = Math.floor((rawLevel - 1) / ACT.length);
+  const actStep = ((rawLevel - 1) % ACT.length) + 1;
+  const variantTier = Math.floor(actIndex / normalThemes.length);
+  const locationIndex = actIndex % normalThemes.length;
+  const effectiveLevel = 1 + Math.min(actIndex, ACT.maxScalingAct) * 1.5 + ACT.stepCurve[actStep - 1];
+  const modifier = variantTier > 0
+    ? ACT.modifiers[actIndex % ACT.modifiers.length]
+    : null;
+
+  return {
+    rawLevel,
+    actIndex,
+    actNumber: actIndex + 1,
+    actStep,
+    actLength: ACT.length,
+    variantTier,
+    locationIndex,
+    locationTheme: normalThemes[locationIndex],
+    effectiveLevel,
+    isActPeak: actStep === ACT.length,
+    isActBreather: actStep === 1,
+    modifier,
+  };
+}
+
+function getEffectiveLevel(lvl = level) {
+  return getLevelProgression(lvl).effectiveLevel;
+}
+
+function getUrgeScale(lvl = level) {
+  const p = getLevelProgression(lvl);
+  let scale = Math.min(1 + (p.effectiveLevel - 1) * 0.08, 1.8);
+  if (p.modifier && p.modifier.key === "panic") scale = Math.min(scale * 1.08, 1.9);
+  return scale;
+}
+
+function getOwnerSpeedScale(lvl = level) {
+  const p = getLevelProgression(lvl);
+  return p.modifier && p.modifier.key === "hunt" ? 1.08 : 1.0;
+}
+
 // ===== ПРОФИЛЬ УРОВНЯ =====
 // Определяет параметры генерации в зависимости от уровня:
 // - padding: зазор вокруг объекта при проверке свободности (0 = вплотную разрешено)
@@ -193,16 +291,92 @@ function valueNoise(col, row, seed) {
 // - centerOpen: вероятность отклонить позицию в центре (сохраняет открытое пространство)
 // - noiseThreshold: порог noise для принятия позиции (ниже = плотнее кластеры)
 function getLevelProfile(lvl) {
-  if (lvl <= 3) {
-    // Просторно: объекты у стен, центр свободен, большие зазоры
-    return { padding: 1, wallBias: 0.80, centerOpen: 0.70, noiseThreshold: 0.40 };
+  const p = getLevelProgression(lvl);
+  const actPressure = Math.min(p.actIndex, ACT.maxScalingAct);
+  const profiles = [
+    { padding: 1, wallBias: 0.80, centerOpen: 0.66, noiseThreshold: 0.40, movingChance: 0.02, movingSpeedScale: 0.85 },
+    { padding: 1, wallBias: 0.68, centerOpen: 0.48, noiseThreshold: 0.32, movingChance: 0.08, movingSpeedScale: 0.95 },
+    { padding: 1, wallBias: 0.58, centerOpen: 0.32, noiseThreshold: 0.25, movingChance: 0.18, movingSpeedScale: 1.00 },
+    { padding: p.actIndex >= 2 ? 0 : 1, wallBias: 0.50, centerOpen: 0.18, noiseThreshold: 0.20, movingChance: 0.30, movingSpeedScale: 1.10 },
+    { padding: 0, wallBias: 0.42, centerOpen: 0.08, noiseThreshold: 0.16, movingChance: 0.46, movingSpeedScale: 1.20 },
+  ];
+  const profile = { ...profiles[p.actStep - 1] };
+
+  profile.wallBias = clamp(profile.wallBias - actPressure * 0.018, 0.35, 0.82);
+  profile.centerOpen = clamp(profile.centerOpen - actPressure * 0.018, 0.04, 0.70);
+  profile.noiseThreshold = clamp(profile.noiseThreshold - actPressure * 0.010, 0.11, 0.42);
+  profile.movingChance = clamp(profile.movingChance + actPressure * 0.010, 0, 0.58);
+
+  if (p.modifier) {
+    if (p.modifier.key === "clutter") {
+      profile.centerOpen = clamp(profile.centerOpen - 0.08, 0.03, 0.70);
+      profile.noiseThreshold = clamp(profile.noiseThreshold - 0.04, 0.08, 0.42);
+    } else if (p.modifier.key === "motion") {
+      profile.movingChance = clamp(profile.movingChance + 0.18, 0, 0.72);
+      profile.movingSpeedScale += 0.18;
+    } else if (p.modifier.key === "open") {
+      profile.centerOpen = clamp(profile.centerOpen + 0.20, 0.03, 0.76);
+      profile.noiseThreshold = clamp(profile.noiseThreshold + 0.06, 0.08, 0.46);
+    }
   }
-  if (lvl <= 7) {
-    // Обжитое: смешанное размещение, умеренные кластеры
-    return { padding: 1, wallBias: 0.60, centerOpen: 0.35, noiseThreshold: 0.28 };
+
+  return profile;
+}
+
+function getObstacleCount(progress) {
+  const actPressure = Math.min(progress.actIndex, ACT.maxScalingAct);
+  const stepAdd = [0, 1, 2, 3, 4][progress.actStep - 1];
+  let count = 4 + Math.floor(actPressure * 0.6) + stepAdd;
+  if (progress.isActPeak) count++;
+  if (progress.modifier) {
+    if (progress.modifier.key === "clutter") count++;
+    if (progress.modifier.key === "open") count--;
   }
-  // Захламлено: плотные кластеры, объекты могут касаться
-  return { padding: 0, wallBias: 0.45, centerOpen: 0.10, noiseThreshold: 0.18 };
+  return clamp(count, 4, 13);
+}
+
+function getDecorCountRange(progress) {
+  if (progress.actStep <= 2) return { min: 4, max: 6 };
+  if (progress.actStep <= 4) return { min: 5, max: 7 };
+  return { min: 6, max: 8 };
+}
+
+function getBonusCount(progress) {
+  let count = progress.effectiveLevel >= 11 ? 6 :
+    progress.effectiveLevel >= 8 ? 5 :
+    progress.effectiveLevel >= 5 ? 4 :
+    progress.effectiveLevel >= 3 ? 3 : 2;
+  if (progress.isActPeak) count = Math.max(count, 4);
+  return clamp(count, 2, 6);
+}
+
+function getBonusPool(progress) {
+  const pool = progress.effectiveLevel >= 8
+    ? ["fish","yarn","yarn","pill","pill","pill","catnip","catnip","life","life"]
+    : progress.effectiveLevel >= 5
+      ? ["fish","fish","yarn","yarn","pill","pill","pill","pill","catnip","life"]
+      : progress.effectiveLevel >= 3
+        ? ["fish","fish","fish","yarn","yarn","yarn","pill","pill","pill","pill"]
+        : ["fish","fish","fish","fish","yarn","yarn","yarn","pill","pill","pill"];
+
+  let filtered = pool.filter(type => {
+    if (type === "life" && progress.rawLevel < 5) return false;
+    if (type === "catnip" && progress.rawLevel < 7) return false;
+    return true;
+  });
+
+  // Анти-сноуболл: жизнь чаще при угрозе проигрыша и почти исчезает при запасе.
+  if (progress.rawLevel >= 5) {
+    if (lives <= 2) filtered = filtered.concat(["life","life","life"]);
+    else if (lives >= 4) filtered = filtered.filter(type => type !== "life").concat(["life"]);
+  }
+
+  return filtered.length > 0 ? filtered : ["fish","yarn","pill"];
+}
+
+function getGuaranteedBonusTypes(progress) {
+  if (!progress.isActPeak) return [];
+  return ["pill", progress.rawLevel >= 7 ? "catnip" : "yarn"];
 }
 
 // ===== ЗОНАЛЬНОЕ РАЗМЕЩЕНИЕ =====
@@ -336,7 +510,7 @@ function generateObstacle(theme, rng, index, movingAllowed, profile, visualBlock
 
   const pos = cellToPixel(col, row);
 
-  let moving = movingAllowed && rng() > 0.72;
+  let moving = movingAllowed && rng() < (profile.movingChance || 0);
   const axis = rng() > 0.5 ? "x" : "y";
   // Движущиеся препятствия двигаются на 1 ячейку в каждую сторону.
   // Инвариант: щель между препятствиями должна быть либо 0 (вплотную),
@@ -353,7 +527,7 @@ function generateObstacle(theme, rng, index, movingAllowed, profile, visualBlock
     if (!clearOk) moving = false;
   }
   const range = moving ? GRID : 0;
-  const speed = moving ? randRange(rng, 0.008, 0.02) : 0;
+  const speed = moving ? randRange(rng, 0.008, 0.02) * (profile.movingSpeedScale || 1) : 0;
 
   if (visualBlockedCells &&
       setHasRectCells(visualBlockedCells, obstacleSweepCellRect(col, row, wCells, hCells, moving, axis, range))) {
@@ -482,7 +656,7 @@ function _placeLitterBoxAt(c, r, lbW, lbH) {
 function placeLitterBox(rng, spawnCol, spawnRow) {
   // Лоток занимает 2×2 ячейки (80×80px при GRID=40)
   const lbW = 2, lbH = 2;
-  const minDist = Math.min(3 + Math.floor((level - 1) * 0.5), 8); // минимум ячеек от спавна
+  const minDist = Math.min(3 + Math.floor((getEffectiveLevel(level) - 1) * 0.5), 8); // минимум ячеек от спавна
 
   // Перемешанный список всех возможных позиций
   const candidates = [];
@@ -779,6 +953,27 @@ function _ensureBasementReachable(spawnCol, spawnRow) {
   }
 }
 
+function _ensureLevelReachable(spawnCol, spawnRow) {
+  const lbCell = pixelToCell(
+    litterBox.x + litterBox.width / 2,
+    litterBox.y + litterBox.height / 2
+  );
+
+  for (let attempt = 0; attempt <= obstacles.length; attempt++) {
+    const path = aStarPath(
+      spawnCol, spawnRow,
+      lbCell.col, lbCell.row,
+      player.size, player.size,
+      2000
+    );
+    if (path) break;
+
+    const toRemove = obstacles.pop();
+    if (!toRemove) break;
+    unmarkCells(toRemove.col, toRemove.row, toRemove.wCells, toRemove.hCells);
+  }
+}
+
 // ===== ВМУРОВАННЫЕ ПРЕДМЕТЫ В СТЕНАХ ПОДВАЛА =====
 // Выбирает случайные ячейки внутри wall_h/wall_v и добавляет декоративные предметы
 // в decorItems (без коллизий). Работает для обоих режимов: corridor и dfs.
@@ -822,12 +1017,13 @@ function _placeWallEmbeds(rng) {
 function generateLevel() {
   levelSeed = level * 9973 + score * 17 + globalSeed * 31 + 13;
   const rng = createRng(levelSeed);
+  const progression = getLevelProgression(level);
+  currentLevelProgression = progression;
 
   // ===== ВЫБОР ЛОКАЦИИ =====
   // Подвал — закрытая локация, появляется только с уровня 9+.
   // DFS-режим (сложнее) проверяется первым — он перекрывает corridor при level>=20.
-  // Обычные локации выбираются из 5 тем (без подвала).
-  const normalThemes = locationThemes.filter(t => t.key !== "basement");
+  // Обычные локации идут актами по 5 уровней: Зал → Ванная → Кухня → Двор → Дача.
   basementMode = "";
   if (cheatDfs) {
     // Чит-код Shift+D: форсируем подвал (dfs) независимо от уровня
@@ -846,7 +1042,7 @@ function generateLevel() {
     currentLocation = locationThemes.find(t => t.key === "basement");
     basementMode = "corridor";
   } else {
-    currentLocation = normalThemes[randInt(rng, 0, normalThemes.length - 1)];
+    currentLocation = makeActLocationTheme(progression.locationTheme, progression.variantTier);
   }
 
   obstacles.length = 0;
@@ -891,7 +1087,7 @@ function generateLevel() {
     }
   } else {
     // ===== ОБЫЧНЫЙ УРОВЕНЬ: препятствия =====
-    const obstCount = Math.min(4 + level, 12);
+    const obstCount = getObstacleCount(progression);
     const movingAllowed = level >= 5;
     const profile = getLevelProfile(level);
     let att = 0;
@@ -920,6 +1116,8 @@ function generateLevel() {
   // путь к лотку — удаляем декоративные препятствия по одному до восстановления пути.
   if (currentLocation.key === "basement") {
     _ensureBasementReachable(spawnCol, spawnRow);
+  } else {
+    _ensureLevelReachable(spawnCol, spawnRow);
   }
 
   // Позиция игрока
@@ -927,10 +1125,10 @@ function generateLevel() {
   player.y = spawn.y;
   levelMessageTimer = 180;
 
-  // Декор: больше элементов на поздних уровнях (5–8 вместо 3–5)
-  // Ранние уровни — меньше декора, поздние — богаче
-  const decorMin = level <= 3 ? 4 : level <= 7 ? 5 : 6;
-  const decorMax = level <= 3 ? 6 : level <= 7 ? 7 : 8;
+  // Декор следует шагу акта: на выдохе меньше шума, на пике богаче сцена.
+  const decorRange = getDecorCountRange(progression);
+  const decorMin = decorRange.min;
+  const decorMax = decorRange.max;
   const decorCount = randInt(rng, decorMin, decorMax);
   generateDecor(currentLocation, rng, decorCount, {
     fixedDecorationCells,
@@ -944,39 +1142,55 @@ function generateLevel() {
     _placeWallEmbeds(rng);
   }
 
-  // Спавн бонусов — на свободных ячейках сетки
-  // Количество бонусов растёт с уровнем: больше бонусов на поздних уровнях
-  const bonusCount = level >= 12 ? 6 : level >= 10 ? 5 : level >= 7 ? 4 : level >= 4 ? 3 : 2;
+  // Спавн бонусов — на свободных ячейках сетки.
+  const bonusCount = getBonusCount(progression);
+  const bonusPool = getBonusPool(progression);
+  const usedBonusCells = new Set();
+  let lifeSpawned = 0; // не более 1 жизни за уровень
 
-  // Взвешенный пул типов бонусов — на поздних уровнях больше таблеток, жизней и котовника.
-  // Жизнь (life) появляется только с уровня 5.
-  // Котовник (catnip) появляется только с уровня 7.
-  // Уровни 1–3:  fish 40%, yarn 30%, pill 30%
-  // Уровни 4–6:  fish 30%, yarn 30%, pill 40%
-  // Уровни 7–9:  fish 18%, yarn 18%, pill 36%, life 18%, catnip 9%
-  // Уровни 10+:  fish 9%, yarn 18%, pill 27%, life 27%, catnip 18%
-  const bonusPool = level >= 10
-    ? ["fish","yarn","yarn","pill","pill","pill","catnip","catnip","life","life","life"]
-    : level >= 7
-      ? ["fish","fish","yarn","yarn","pill","pill","pill","pill","catnip","life","life"]
-      : level >= 4
-        ? ["fish","fish","fish","yarn","yarn","yarn","pill","pill","pill","pill"]
-        : ["fish","fish","fish","fish","yarn","yarn","yarn","pill","pill","pill"];
+  function spawnBonus(type, maxAttempts = 200) {
+    let batt = 0;
+    while (batt < maxAttempts) {
+      batt++;
+      let btype = type;
+      if (btype === "life") {
+        if (lifeSpawned >= 1 || progression.rawLevel < 5) btype = "pill";
+        else lifeSpawned++;
+      }
+      if (btype === "catnip" && progression.rawLevel < 7) btype = "yarn";
+
+      const bc = randInt(rng, 1, GRID_COLS - 2);
+      const br = randInt(rng, 1, GRID_ROWS - 2);
+      const key = cellKey(bc, br);
+      if (usedBonusCells.has(key) || !isCellFree(bc, br)) continue;
+      usedBonusCells.add(key);
+      const center = cellToPixelCenter(bc, br);
+      bonuses.push({ x: center.x, y: center.y, type: btype, alive: true, pulse: Math.random() * Math.PI * 2 });
+      return true;
+    }
+    return false;
+  }
+
+  for (const type of getGuaranteedBonusTypes(progression)) {
+    if (bonuses.length >= bonusCount) break;
+    spawnBonus(type, 300);
+  }
 
   let batt = 0;
-  let lifeSpawned = 0; // не более 1 жизни за уровень
-  while (bonuses.length < bonusCount && batt < 200) {
+  while (bonuses.length < bonusCount && batt < 300) {
     batt++;
     const bc = randInt(rng, 1, GRID_COLS - 2);
     const br = randInt(rng, 1, GRID_ROWS - 2);
-    if (!isCellFree(bc, br)) continue;
+    const key = cellKey(bc, br);
+    if (usedBonusCells.has(key) || !isCellFree(bc, br)) continue;
+    usedBonusCells.add(key);
     const center = cellToPixelCenter(bc, br);
     let btype = bonusPool[randInt(rng, 0, bonusPool.length - 1)];
-    // Ограничиваем жизнь: максимум 1 за уровень
     if (btype === "life") {
-      if (lifeSpawned >= 1) btype = "pill";
+      if (lifeSpawned >= 1 || progression.rawLevel < 5) btype = "pill";
       else lifeSpawned++;
     }
+    if (btype === "catnip" && progression.rawLevel < 7) btype = "yarn";
     bonuses.push({ x: center.x, y: center.y, type: btype, alive: true, pulse: Math.random() * Math.PI * 2 });
   }
 

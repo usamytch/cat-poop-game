@@ -40,6 +40,23 @@ const DIFF = {
   chaos:  { label:"😈 Хаос",   urgeRate:3.0,  baseSpd:2.3, spdPerLvl:0.40, maxSpd:6.5, firstLvl:1, poopTime:240, hitUrgeReduce:1.5, shootUrgeReduce:0,   repathMinDist:2, hesitateBaseProb:0.002, hesitateProbDecay:0.20, hesitateMinProb:0.0,  hesitateDur:8  },
 };
 
+// ===== АКТЫ ПОЗДНЕЙ ИГРЫ =====
+// 5 уровней на акт: 1/5 выдох, 5/5 пик.
+// effectiveLevel растёт ступеньками и насыщается, чтобы поздняя игра
+// не превращалась в бесконечное выкручивание чисел.
+const ACT = {
+  length: 5,
+  stepCurve: [0, 0.7, 1.5, 2.5, 4.0],
+  maxScalingAct: 10,
+  modifiers: [
+    { key:"clutter", label:"Захламлено" },
+    { key:"hunt",    label:"Охота" },
+    { key:"panic",   label:"Паника" },
+    { key:"motion",  label:"Движуха" },
+    { key:"open",    label:"Открыто" },
+  ],
+};
+
 // Скорость снаряда-какашки
 const POOP_SPEED = 7;
 

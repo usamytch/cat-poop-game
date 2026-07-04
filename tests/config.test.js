@@ -108,6 +108,19 @@ describe('DIFF — balance: urge reduction vs urge growth per cooldown', () => {
 });
 
 // ---------------------------------------------------------------------------
+describe('ACT — late-game act pacing', () => {
+  it('uses 5-level acts with the expected step curve', () => {
+    expect(ACT.length).toBe(5);
+    expect(ACT.stepCurve).toEqual([0, 0.7, 1.5, 2.5, 4.0]);
+  });
+
+  it('defines deterministic late-act modifiers', () => {
+    expect(ACT.maxScalingAct).toBe(10);
+    expect(ACT.modifiers.map(m => m.key)).toEqual(['clutter', 'hunt', 'panic', 'motion', 'open']);
+  });
+});
+
+// ---------------------------------------------------------------------------
 describe('WORLD', () => {
   // sidePadding может быть 0 (игровая зона = весь экран) — проверяем >= 0
   const fieldsPositive = ['width', 'height', 'floorHeight', 'topPadding'];

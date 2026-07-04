@@ -49,7 +49,8 @@ const owner = {
     const diff = DIFF[difficulty];
     if (level < diff.firstLvl) { this.active = false; return; }
     this.active = true;
-    this.speed = Math.min(diff.baseSpd + (level-1)*diff.spdPerLvl, diff.maxSpd);
+    const effectiveLevel = getEffectiveLevel(level);
+    this.speed = Math.min((diff.baseSpd + (effectiveLevel-1)*diff.spdPerLvl) * getOwnerSpeedScale(level), diff.maxSpd);
 
     // ===== Безопасный ячеечный спавн в подвале =====
     // В подвале пиксельные углы могут попасть в заблокированные колонки (DFS: cols 28-29).
