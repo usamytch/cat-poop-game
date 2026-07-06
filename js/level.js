@@ -652,6 +652,124 @@ function _placeLitterBoxAt(c, r, lbW, lbH) {
   litterBox.height = lbH * GRID;
 }
 
+function _currentLitterCellRect() {
+  const lb = pixelToCell(litterBox.x, litterBox.y);
+  return makeCellRect(
+    lb.col,
+    lb.row,
+    Math.ceil(litterBox.width / GRID),
+    Math.ceil(litterBox.height / GRID)
+  );
+}
+
+function _forEachLitterEntryCell(litterRect, fn) {
+  const seen = new Set();
+  const tryCell = (c, r) => {
+    if (c < 0 || r < 0 || c >= GRID_COLS || r >= GRID_ROWS) return;
+    const key = cellKey(c, r);
+    if (seen.has(key)) return;
+    seen.add(key);
+    fn(c, r);
+  };
+
+  for (let r = litterRect.row; r < litterRect.row + litterRect.hCells; r++) {
+    tryCell(litterRect.col - 1, r);
+    tryCell(litterRect.col + litterRect.wCells, r);
+  }
+  for (let c = litterRect.col; c < litterRect.col + litterRect.wCells; c++) {
+    tryCell(c, litterRect.row - 1);
+    tryCell(c, litterRect.row + litterRect.hCells);
+  }
+}
+
+function _canEntityOccupyCell(col, row, entityW, entityH) {
+  if (!isCellFree(col, row)) return false;
+  if (entityW && entityH) {
+    const center = cellToPixelCenter(col, row);
+    const rect = {
+      x: center.x - entityW / 2,
+      y: center.y - entityH / 2,
+      width: entityW,
+      height: entityH,
+    };
+    if (hitsObstacles(rect)) return false;
+  }
+  return true;
+}
+
+function _findPathToLitterEntry(spawnCol, spawnRow, entityW, entityH, litterRect) {
+  const lb = litterRect || _currentLitterCellRect();
+  let bestPath = null;
+
+  _forEachLitterEntryCell(lb, (entryCol, entryRow) => {
+    if (!_canEntityOccupyCell(entryCol, entryRow, entityW, entityH)) return;
+    const path = aStarPath(spawnCol, spawnRow, entryCol, entryRow, entityW, entityH, 2000);
+    if (path && (!bestPath || path.length < bestPath.length)) bestPath = path;
+  });
+
+  return bestPath;
+}
+
+function _candidateHasReachableLitterEntry(c, r, lbW, lbH, spawnCol, spawnRow, entityW, entityH) {
+  markCells(c, r, lbW, lbH);
+  const reachable = !!_findPathToLitterEntry(
+    spawnCol,
+    spawnRow,
+    entityW,
+    entityH,
+    makeCellRect(c, r, lbW, lbH)
+  );
+  unmarkCells(c, r, lbW, lbH);
+  return reachable;
+}
+
+function _litterBoxAllowedAt(c, lbW) {
+  if (basementMode === "corridor") {
+    return c >= 2 && c + lbW <= GRID_COLS - 2;
+  }
+  return true;
+}
+
+function _relocateLitterBoxToReachableEntry(rng, spawnCol, spawnRow) {
+  const oldRect = _currentLitterCellRect();
+  const lbW = oldRect.wCells || 2;
+  const lbH = oldRect.hCells || 2;
+  const minDist = Math.min(3 + Math.floor((getEffectiveLevel(level) - 1) * 0.5), 8);
+
+  unmarkCells(oldRect.col, oldRect.row, oldRect.wCells, oldRect.hCells);
+
+  const candidates = [];
+  for (let r = 0; r < GRID_ROWS - lbH + 1; r++) {
+    for (let c = 0; c < GRID_COLS - lbW + 1; c++) {
+      const dist = Math.abs(c - spawnCol) + Math.abs(r - spawnRow);
+      candidates.push({ c, r, preferred: dist >= minDist });
+    }
+  }
+
+  for (let i = candidates.length - 1; i > 0; i--) {
+    const j = randInt(rng, 0, i);
+    [candidates[i], candidates[j]] = [candidates[j], candidates[i]];
+  }
+
+  const hudCols = 8, hudRows = 6;
+  for (const preferredOnly of [true, false]) {
+    for (const { c, r, preferred } of candidates) {
+      if (preferredOnly && !preferred) continue;
+      if (c < hudCols && r < hudRows) continue;
+      if (!_litterBoxAllowedAt(c, lbW)) continue;
+      if (!cellsFree(c, r, lbW, lbH)) continue;
+      if (!_candidateHasReachableLitterEntry(c, r, lbW, lbH, spawnCol, spawnRow, player.size, player.size)) continue;
+      _placeLitterBoxAt(c, r, lbW, lbH);
+      return true;
+    }
+  }
+
+  if (cellsFree(oldRect.col, oldRect.row, oldRect.wCells, oldRect.hCells)) {
+    _placeLitterBoxAt(oldRect.col, oldRect.row, oldRect.wCells, oldRect.hCells);
+  }
+  return false;
+}
+
 // ===== РАЗМЕЩЕНИЕ ЛОТКА =====
 function placeLitterBox(rng, spawnCol, spawnRow) {
   // Лоток занимает 2×2 ячейки (80×80px при GRID=40)
@@ -679,6 +797,7 @@ function placeLitterBox(rng, spawnCol, spawnRow) {
   for (const {c, r} of candidates) {
     // Не ставить под HUD
     if (c < hudCols && r < hudRows) continue;
+    if (!_litterBoxAllowedAt(c, lbW)) continue;
     // Проверяем лоток + 2 ячейки отступа со всех сторон (чтобы не касался препятствий)
     const pad = 2;
     const mc = Math.max(0, c - pad);
@@ -696,6 +815,7 @@ function placeLitterBox(rng, spawnCol, spawnRow) {
   for (let r = 0; r < GRID_ROWS - lbH + 1; r++) {
     for (let c = 0; c < GRID_COLS - lbW + 1; c++) {
       if (c < hudCols && r < hudRows) continue;
+      if (!_litterBoxAllowedAt(c, lbW)) continue;
       const pad = 1; // в крайнем случае хватит 1 ячейки
       const mc = Math.max(0, c - pad);
       const mr = Math.max(0, r - pad);
@@ -712,38 +832,82 @@ function placeLitterBox(rng, spawnCol, spawnRow) {
   // и без отступа. Проверяем occupiedCells, чтобы не попасть в DFS-полосы или стены.
   for (let r = 0; r < GRID_ROWS - lbH + 1; r++) {
     for (let c = 0; c < GRID_COLS - lbW + 1; c++) {
+      if (!_litterBoxAllowedAt(c, lbW)) continue;
       if (!cellsFree(c, r, lbW, lbH)) continue;
       _placeLitterBoxAt(c, r, lbW, lbH);
       return;
     }
   }
   // Последний резерв — фиксированная позиция (на практике не должна достигаться)
-  _placeLitterBoxAt(Math.max(0, GRID_COLS - lbW - 2), Math.max(0, GRID_ROWS - lbH - 2), lbW, lbH);
+  const fallbackCol = basementMode === "corridor" ? 2 : Math.max(0, GRID_COLS - lbW - 2);
+  _placeLitterBoxAt(fallbackCol, Math.max(0, GRID_ROWS - lbH - 2), lbW, lbH);
 }
 
 // ===== ПОДВАЛ: CORRIDOR MAZE =====
 // Размещает горизонтальные и вертикальные стены с проходами.
 // Стены — объекты типа wall_h / wall_v в массиве obstacles.
-// Гарантирует проходимость: каждая стена имеет минимум 2 прохода шириной 2 ячейки.
+// Гарантирует проходимость: каждая стена имеет проходы шириной минимум 2 ячейки.
 function generateCorridorMaze(rng) {
-  const b = getPlayBounds();
+  const hWallRows = [3, 6, 9, 12];
+  const vWallCols = [7, 14, 21];
 
   // Вспомогательная функция: добавить wall-сегмент в obstacles
   function addWall(col, row, wCells, hCells) {
     _makeWallObstacle(col, row, wCells, hCells);
   }
 
+  function sealBoundedOneCellRuns(length, isFree, sealCell) {
+    let changed = false;
+    let i = 0;
+    while (i < length) {
+      while (i < length && !isFree(i)) i++;
+      const start = i;
+      while (i < length && isFree(i)) i++;
+      const end = i;
+      const run = end - start;
+      const boundedBefore = start > 0 && !isFree(start - 1);
+      const boundedAfter = end < length && !isFree(end);
+      if (run === 1 && boundedBefore && boundedAfter) {
+        sealCell(start);
+        changed = true;
+      }
+    }
+    return changed;
+  }
+
+  function sealNarrowGaps() {
+    let changed = true;
+    let guard = 0;
+    while (changed && guard < 4) {
+      changed = false;
+      guard++;
+      for (const row of hWallRows) {
+        changed = sealBoundedOneCellRuns(
+          GRID_COLS,
+          c => isCellFree(c, row),
+          c => addWall(c, row, 1, 1)
+        ) || changed;
+      }
+      for (const col of vWallCols) {
+        changed = sealBoundedOneCellRuns(
+          GRID_ROWS,
+          r => isCellFree(col, r),
+          r => addWall(col, r, 1, 1)
+        ) || changed;
+      }
+    }
+  }
+
   // Горизонтальные стены на строках 3, 6, 9, 12
   // Каждая стена — полная ширина с 2 проходами по 2 ячейки
-  const hWallRows = [3, 6, 9, 12];
   for (const row of hWallRows) {
     // Генерируем 2 прохода: случайные позиции, не перекрывающиеся.
-    // Горизонтальные стены занимают cols 1..GRID_COLS-2 (не трогают col 0 и col GRID_COLS-1),
-    // чтобы боковые полосы оставались полностью свободными для прохода.
+    // Горизонтальные стены не трогают две крайние колонки с каждой стороны,
+    // чтобы боковые полосы не превращались в тесные одноклеточные щели.
     const gapWidth = 2;
-    const wallStart = 1;
-    const wallEnd = GRID_COLS - 1;
-    const totalCols = wallEnd - wallStart; // 28
+    const wallStart = 2;
+    const wallEnd = GRID_COLS - 2;
+    const totalCols = wallEnd - wallStart; // 26
     // Делим на 3 зоны, в каждой зоне один проход
     const zoneW = Math.floor(totalCols / 3); // 9
     const gaps = [];
@@ -774,7 +938,6 @@ function generateCorridorMaze(rng) {
   // Хозяин 36×36px перекрывает row=0 и row=1 одновременно (y=10..46 при row=0).
   // Если вертикальная стена начинается с row=1, хозяин застревает в row=0
   // между стеной и верхней границей игровой зоны.
-  const vWallCols = [7, 14, 21];
   for (const col of vWallCols) {
     // Первый сегмент всегда от row=0 — закрываем верхний карман
     let row = 0;
@@ -782,10 +945,13 @@ function generateCorridorMaze(rng) {
       const segH = randInt(rng, 2, 3);
       if (row + segH > GRID_ROWS - 1) break;
       addWall(col, row, 1, segH);
-      row += segH + randInt(rng, 1, 2); // проход 1–2 ячейки
+      row += segH + randInt(rng, 2, 3); // проход 2–3 ячейки
     }
   }
 
+  // Пересечения горизонтальных и вертикальных стен иногда дробят широкий проход
+  // в одиночную клетку. В подвале такие щели выглядят как проход, но играются плохо.
+  sealNarrowGaps();
 }
 
 // ===== ПОДВАЛ: DFS MAZE =====
@@ -925,15 +1091,9 @@ function _fillDfsStrips(offC, mazeRightEdge) {
 }
 
 // ===== ПРОВЕРКА ПРОХОДИМОСТИ ПОДВАЛА =====
-// После генерации лабиринта + размещения лотка проверяем, что A* находит путь
-// от спавна кота до лотка. Если нет — удаляем декоративные препятствия по одному.
-// Это гарантирует, что ящик/бочка не заблокирует единственный путь в DFS-лабиринте.
-function _ensureBasementReachable(spawnCol, spawnRow) {
-  const lbCell = pixelToCell(
-    litterBox.x + litterBox.width / 2,
-    litterBox.y + litterBox.height / 2
-  );
-
+// После генерации лабиринта + размещения лотка проверяем, что кот физически
+// может дойти до свободной клетки у входа в лоток.
+function _ensureBasementReachable(spawnCol, spawnRow, rng) {
   // Собираем декоративные препятствия (не стены лабиринта)
   const decorObs = obstacles.filter(o => o.type !== 'wall_h' && o.type !== 'wall_v');
 
@@ -941,8 +1101,8 @@ function _ensureBasementReachable(spawnCol, spawnRow) {
   // Используем увеличенный лимит итераций (2000) — вызывается только при генерации уровня,
   // не в рантайме, поэтому производительность не критична.
   for (let attempt = 0; attempt <= decorObs.length; attempt++) {
-    const path = aStarPath(spawnCol, spawnRow, lbCell.col, lbCell.row, undefined, undefined, 2000);
-    if (path) break; // путь найден — готово
+    const path = _findPathToLitterEntry(spawnCol, spawnRow, player.size, player.size);
+    if (path) return; // путь найден — готово
 
     if (decorObs.length === 0) break; // нечего удалять
     // Удаляем последний декоративный объект
@@ -951,21 +1111,13 @@ function _ensureBasementReachable(spawnCol, spawnRow) {
     if (idx !== -1) obstacles.splice(idx, 1);
     unmarkCells(toRemove.col, toRemove.row, toRemove.wCells, toRemove.hCells);
   }
+
+  _relocateLitterBoxToReachableEntry(rng, spawnCol, spawnRow);
 }
 
 function _ensureLevelReachable(spawnCol, spawnRow) {
-  const lbCell = pixelToCell(
-    litterBox.x + litterBox.width / 2,
-    litterBox.y + litterBox.height / 2
-  );
-
   for (let attempt = 0; attempt <= obstacles.length; attempt++) {
-    const path = aStarPath(
-      spawnCol, spawnRow,
-      lbCell.col, lbCell.row,
-      player.size, player.size,
-      2000
-    );
+    const path = _findPathToLitterEntry(spawnCol, spawnRow, player.size, player.size);
     if (path) break;
 
     const toRemove = obstacles.pop();
@@ -1112,10 +1264,10 @@ function generateLevel() {
   // Размещение лотка — после заполнения DFS-полос, чтобы лоток не попал туда
   placeLitterBox(rng, spawnCol, spawnRow);
 
-  // Гарантия проходимости подвала: если ящик/бочка заблокировали единственный
-  // путь к лотку — удаляем декоративные препятствия по одному до восстановления пути.
+  // Гарантия проходимости подвала: путь должен вести к свободной входной
+  // клетке у лотка, а не к занятой клетке в его центре.
   if (currentLocation.key === "basement") {
-    _ensureBasementReachable(spawnCol, spawnRow);
+    _ensureBasementReachable(spawnCol, spawnRow, rng);
   } else {
     _ensureLevelReachable(spawnCol, spawnRow);
   }

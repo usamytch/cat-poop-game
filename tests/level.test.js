@@ -90,6 +90,35 @@ function movingSweepRect(ob) {
   };
 }
 
+function pathToLitterEntry() {
+  const start = pixelToCell(player.x + player.size / 2, player.y + player.size / 2);
+  return _findPathToLitterEntry(start.col, start.row, player.size, player.size);
+}
+
+function expectReachableLitterEntry(label) {
+  const path = pathToLitterEntry();
+  expect(path, `${label}: path from spawn to a free litterBox entry cell`).not.toBeNull();
+  expect(path.length, `${label}: path should have at least 1 step`).toBeGreaterThan(0);
+}
+
+function expectBoundedFreeRunsAtLeast(getFree, length, minRun, label) {
+  let i = 0;
+  while (i < length) {
+    while (i < length && !getFree(i)) i++;
+    const start = i;
+    while (i < length && getFree(i)) i++;
+    const end = i;
+    const run = end - start;
+    if (run === 0) continue;
+
+    const boundedBefore = start > 0 && !getFree(start - 1);
+    const boundedAfter = end < length && !getFree(end);
+    if (boundedBefore && boundedAfter) {
+      expect(run, `${label}: bounded free run ${start}..${end - 1} is too narrow`).toBeGreaterThanOrEqual(minRun);
+    }
+  }
+}
+
 // ---------------------------------------------------------------------------
 describe('generateLevel()', () => {
   it('obstacles array is not empty after generation', () => {
@@ -834,10 +863,7 @@ describe('generateLevel()', () => {
           globalSeed = lvl * 1009;
           obstacles.length = 0; bonuses.length = 0; occupiedCells.clear();
           generateLevel();
-          const start = pixelToCell(player.x + player.size / 2, player.y + player.size / 2);
-          const end = pixelToCell(litterBox.x + litterBox.width / 2, litterBox.y + litterBox.height / 2);
-          const path = aStarPath(start.col, start.row, end.col, end.row, player.size, player.size, 2000);
-          expect(path, `${diff} level ${lvl}: path from spawn to litterBox`).not.toBeNull();
+          expectReachableLitterEntry(`${diff} level ${lvl}`);
         }
       }
     } finally {
@@ -969,14 +995,10 @@ describe('basement level', () => {
     }
   });
 
-  it('corridor maze: A* finds path from player spawn to litterBox', () => {
+  it('corridor maze: A* finds path from player spawn to a free litterBox entry cell', () => {
     const found = forceBasementLevel('corridor');
     expect(found).toBe(true);
-    const start = pixelToCell(player.x + GRID / 2, player.y + GRID / 2);
-    const end   = pixelToCell(litterBox.x + litterBox.width / 2, litterBox.y + litterBox.height / 2);
-    const path  = aStarPath(start.col, start.row, end.col, end.row);
-    expect(path, 'A* should find path from spawn to litterBox in corridor maze').not.toBeNull();
-    expect(path.length, 'path should have at least 1 step').toBeGreaterThan(0);
+    expectReachableLitterEntry('corridor maze');
   });
 
   it('dfs maze: obstacles array has wall_h or wall_v entries', () => {
@@ -1016,14 +1038,10 @@ describe('basement level', () => {
     }
   });
 
-  it('dfs maze: A* finds path from player spawn to litterBox', () => {
+  it('dfs maze: A* finds path from player spawn to a free litterBox entry cell', () => {
     const found = forceBasementLevel('dfs');
     expect(found).toBe(true);
-    const start = pixelToCell(player.x + GRID / 2, player.y + GRID / 2);
-    const end   = pixelToCell(litterBox.x + litterBox.width / 2, litterBox.y + litterBox.height / 2);
-    const path  = aStarPath(start.col, start.row, end.col, end.row);
-    expect(path, 'A* should find path from spawn to litterBox in dfs maze').not.toBeNull();
-    expect(path.length, 'path should have at least 1 step').toBeGreaterThan(0);
+    expectReachableLitterEntry('dfs maze');
   });
 
   it('dfs maze: litterBox does not overlap any obstacle', () => {
@@ -1064,30 +1082,63 @@ describe('basement level', () => {
     }
   });
 
-  it('corridor maze: side columns (0 and GRID_COLS-1) are completely free of obstacles', () => {
-    // Боковые полосы коридорного лабиринта должны быть полностью свободны —
-    // без единого кирпича. Горизонтальные стены не трогают col 0 и col GRID_COLS-1,
-    // декоративные препятствия тоже исключают эти колонки.
+  it('corridor maze: side lanes are at least 2 cells wide and completely free', () => {
     const found = forceBasementLevel('corridor');
     expect(found, 'corridor basement not found').toBe(true);
     for (let r = 0; r < GRID_ROWS; r++) {
       expect(isCellFree(0, r), `col 0 row ${r} should be completely free`).toBe(true);
+      expect(isCellFree(1, r), `col 1 row ${r} should be completely free`).toBe(true);
+      expect(isCellFree(GRID_COLS - 2, r), `col ${GRID_COLS - 2} row ${r} should be completely free`).toBe(true);
       expect(isCellFree(GRID_COLS - 1, r), `col ${GRID_COLS - 1} row ${r} should be completely free`).toBe(true);
     }
   });
 
-  it('basement: A* with cat-sized entity finds path to litterBox after reachability fix', () => {
+  it('corridor maze: bounded wall gaps are at least 2 cells wide', () => {
+    const found = forceBasementLevel('corridor');
+    expect(found, 'corridor basement not found').toBe(true);
+
+    for (const row of [3, 6, 9, 12]) {
+      expectBoundedFreeRunsAtLeast(
+        c => isCellFree(c, row),
+        GRID_COLS,
+        2,
+        `row ${row}`
+      );
+    }
+
+    for (const col of [7, 14, 21]) {
+      expectBoundedFreeRunsAtLeast(
+        r => isCellFree(col, r),
+        GRID_ROWS,
+        2,
+        `col ${col}`
+      );
+    }
+  });
+
+  it('basement: A* with cat-sized entity finds path to a free litterBox entry cell', () => {
     // Проверяем оба режима: _ensureBasementReachable() гарантирует проходимость
     for (const mode of ['corridor', 'dfs']) {
       const found = forceBasementLevel(mode);
       if (!found) continue;
-      const start = pixelToCell(player.x + player.size / 2, player.y + player.size / 2);
-      const end   = pixelToCell(litterBox.x + litterBox.width / 2, litterBox.y + litterBox.height / 2);
-      const path  = aStarPath(start.col, start.row, end.col, end.row, player.size, player.size);
-      expect(
-        path,
-        `${mode}: A* with cat size (${player.size}x${player.size}) should find path to litterBox`
-      ).not.toBeNull();
+      expectReachableLitterEntry(`${mode}: cat-sized path`);
+    }
+  });
+
+  it('basement: generated litterBox entry is reachable across forced seeds', () => {
+    for (const mode of ['corridor', 'dfs']) {
+      for (let s = 0; s < 30; s++) {
+        level = 1;
+        score = 0;
+        globalSeed = s * 4567;
+        obstacles.length = 0; bonuses.length = 0; occupiedCells.clear();
+        if (mode === 'corridor') cheatBasement = true;
+        else cheatDfs = true;
+        generateLevel();
+        expect(currentLocation.key).toBe('basement');
+        expect(basementMode).toBe(mode);
+        expectReachableLitterEntry(`${mode} seed ${s}`);
+      }
     }
   });
 });

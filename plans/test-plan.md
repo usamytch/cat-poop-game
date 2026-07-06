@@ -50,6 +50,7 @@ npx vitest run tests/integration/play-feel-regression.test.js
 - Бонусы `life` и `catnip` появляются только с нужных уровней, жизнь не чаще 1 раза за уровень.
 - На `5/5` гарантированы `pill` и контрольный бонус; `life` чаще при низких жизнях и реже при высоких.
 - Хозяин и кот 36x36, `GRID === 40`, оба проходят через 1-клеточные щели.
+- Коридорный подвал не оставляет одноклеточные ложные проходы; путь проверяется до свободной клетки у входа в лоток.
 - Grid-node движение хозяина сохраняет `moveProgress` монотонным.
 - `nextNode` не совпадает с `currentNode`; self-loop узлы пропускаются.
 - Repath hysteresis использует `lastRepathGoalCell`, `repathMinDist` и `plannedGoalStillClose`.
