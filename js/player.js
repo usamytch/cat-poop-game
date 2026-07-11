@@ -156,6 +156,7 @@ const player = {
         comboCount = 0; comboTimer = 0;
         spawnConfetti(litterBox.x+litterBox.width/2, litterBox.y+litterBox.height/2);
         generateLevel();
+        syncLocationMelody();
         owner.activate();
         sndWin();
         levelMessageTimer = 180;

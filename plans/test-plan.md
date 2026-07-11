@@ -19,7 +19,7 @@ npx vitest run tests/integration/play-feel-regression.test.js
 
 | Файл | Назначение |
 |---|---|
-| `tests/audio.test.js` | Web Audio моки, звуковые эффекты, мелодия |
+| `tests/audio.test.js` | Web Audio моки, звуковые эффекты, темы локаций, reverse panic |
 | `tests/math.test.js` | `clamp`, RNG, геометрия |
 | `tests/utils.test.js` | границы поля, rect helpers, столкновения, `escapeObstacles` |
 | `tests/config.test.js` | `DIFF`, `WORLD`, `BONUS_TYPES`, каталоги, `BASEMENT` |
@@ -44,6 +44,7 @@ npx vitest run tests/integration/play-feel-regression.test.js
 - `getLevelProgression()` делит уровни на 5-уровневые акты, даёт sawtooth-инвариант `L5 > L4`, `L6 < L5`, `L6 > L1`.
 - Обычные локации идут блоками по 5 уровней и повторяются вариантами `II`, `III`, ...
 - Паника начинается при `urge / maxUrge > 0.75`, авария при `urge >= maxUrge`.
+- Для каждой локации есть обычная тема и ускоренный panic-вариант с математически развёрнутым таймлайном нот.
 - Таблетка снижает срочность по фазам игры, не уводя значение ниже 0.
 - 3 попадания подряд вызывают combo, `owner.flee()` и последующую очистку следов после бегства.
 - `DIFF.easy.firstLvl === 3`, `DIFF.normal.firstLvl === 2`, `DIFF.chaos.firstLvl === 1`.

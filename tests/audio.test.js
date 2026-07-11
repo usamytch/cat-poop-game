@@ -10,6 +10,8 @@ beforeAll(() => {
 
 beforeEach(() => {
   resetGameState();
+  currentLocation = locationThemes[0];
+  if (_ac) _ac.currentTime = 0;
   // Сбрасываем состояние мелодий перед каждым тестом
   stopMelody();
   stopPanicMelody();
@@ -17,6 +19,44 @@ beforeEach(() => {
 
 // ---------------------------------------------------------------------------
 describe('melody data constants', () => {
+  it('has one original theme for every location', () => {
+    const locationKeys = locationThemes.map(theme => theme.key).sort();
+    expect(Object.keys(_LOCATION_MELODIES).sort()).toEqual(locationKeys);
+    expect(Object.keys(_LOCATION_PANIC_MELODIES).sort()).toEqual(locationKeys);
+  });
+
+  it('every location theme has valid notes and loop metadata', () => {
+    for (const theme of Object.values(_LOCATION_MELODIES)) {
+      expect(theme.title.length).toBeGreaterThan(0);
+      expect(theme.description.length).toBeGreaterThan(0);
+      expect(theme.bpm).toBeGreaterThan(0);
+      expect(theme.beats).toBeGreaterThan(0);
+      expect(theme.duration).toBeCloseTo(theme.beats * theme.eighth);
+      expect(theme.notes.length).toBeGreaterThan(0);
+
+      for (const note of theme.notes) {
+        expect(note).toHaveLength(5);
+        expect(note[0]).toBeGreaterThan(0);
+        expect(note[1]).toBeGreaterThanOrEqual(0);
+        expect(note[1] + note[2]).toBeLessThanOrEqual(theme.beats);
+        expect(['sine', 'square', 'sawtooth', 'triangle']).toContain(note[4]);
+      }
+    }
+  });
+
+  it('panic variants are exact faster timeline reversals of their location themes', () => {
+    for (const [key, normal] of Object.entries(_LOCATION_MELODIES)) {
+      const panic = _LOCATION_PANIC_MELODIES[key];
+      const expected = normal.notes.map(note => [
+        note[0], normal.beats - note[1] - note[2], note[2], note[3], note[4],
+      ]).sort((a, b) => a[1] - b[1] || a[0] - b[0]);
+
+      expect(panic.bpm).toBeCloseTo(normal.bpm * _PANIC_SPEED);
+      expect(panic.duration).toBeLessThan(normal.duration);
+      expect(panic.notes).toEqual(expected);
+    }
+  });
+
   it('_PANIC_BPM is faster than _BPM', () => {
     expect(_PANIC_BPM).toBeGreaterThan(_BPM);
   });
@@ -47,6 +87,48 @@ describe('melody data constants', () => {
 
   it('panic loop is shorter than normal loop (more tension)', () => {
     expect(_PANIC_MELODY_DUR).toBeLessThan(_MELODY_DUR);
+  });
+});
+
+// ---------------------------------------------------------------------------
+describe('location-aware soundtrack selection', () => {
+  it('startMelody selects the current location theme', () => {
+    currentLocation = locationThemes.find(theme => theme.key === 'bathroom');
+    startMelody();
+    expect(_melodyTheme.key).toBe('bathroom');
+  });
+
+  it('startPanicMelody selects the matching reversed theme', () => {
+    currentLocation = locationThemes.find(theme => theme.key === 'basement');
+    startPanicMelody();
+    expect(_panicTheme.key).toBe('basement');
+    expect(_panicTheme).toBe(_LOCATION_PANIC_MELODIES.basement);
+  });
+
+  it('syncLocationMelody switches themes when a new location starts', () => {
+    gameState = 'playing';
+    currentLocation = locationThemes.find(theme => theme.key === 'hall');
+    startMelody();
+    const hallStart = _melodyStartTime;
+
+    currentLocation = locationThemes.find(theme => theme.key === 'kitchen');
+    _ac.currentTime = hallStart + 1;
+    syncLocationMelody();
+
+    expect(_melodyTheme.key).toBe('kitchen');
+    expect(_melodyStartTime).toBe(hallStart + 1);
+  });
+
+  it('syncLocationMelody keeps playing within the same location act', () => {
+    gameState = 'playing';
+    currentLocation = locationThemes.find(theme => theme.key === 'country');
+    startMelody();
+    const startTime = _melodyStartTime;
+
+    _ac.currentTime = startTime + 1;
+    syncLocationMelody();
+
+    expect(_melodyStartTime).toBe(startTime);
   });
 });
 

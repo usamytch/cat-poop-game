@@ -1,8 +1,8 @@
 // ==========================================
 // AUDIO — Web Audio API, procedural sounds, melody scheduler
 // ==========================================
-// Note: melody note data (_BPM, _E, _S, _MELODY_NOTES, _MELODY_DUR)
-// is defined in js/melody-data.js (loaded before this file).
+// Location theme data and generated reverse panic variants are defined in
+// js/melody-data.js (loaded before this file).
 
 let _ac = null;
 let muted = false;
@@ -53,6 +53,7 @@ let _melodyScheduled = -1;    // последняя запланированна
 // OPT 11: setTimeout вместо rAF — планировщик мелодии нужен раз в 500мс, не 60fps
 let _melodyTimer = null;
 let _melodyNodes = [];        // все активные [oscillator, gain] пары
+let _melodyTheme = null;       // тема выбранной локации на момент старта
 // Мастер-шина обычной мелодии: обнуление gain мгновенно глушит все ноты,
 // даже те что запланированы в будущем (o.stop(futureTime) ненадёжен в Web Audio)
 let _melodyMaster = null;
@@ -69,11 +70,11 @@ function _getMelodyMaster() {
 function _scheduleMelodyIteration(iteration) {
   const ac = getAC();
   const master = _getMelodyMaster();
-  const iterStart = _melodyStartTime + iteration * _MELODY_DUR;
-  _MELODY_NOTES.forEach(function(note) {
+  const iterStart = _melodyStartTime + iteration * _melodyTheme.duration;
+  _melodyTheme.notes.forEach(function(note) {
     const freq = note[0], beat = note[1], durBeats = note[2], vol = note[3], type = note[4];
-    const t   = iterStart + beat * _E;
-    const dur = durBeats * _E;
+    const t   = iterStart + beat * _melodyTheme.eighth;
+    const dur = durBeats * _melodyTheme.eighth;
     if (t + dur < ac.currentTime) return; // уже прошло
     try {
       const o = ac.createOscillator(), g = ac.createGain();
@@ -95,7 +96,7 @@ function _melodyTick() {
   if (muted || _melodyStartTime === null) return;
   const ac = getAC();
   const elapsed = ac.currentTime - _melodyStartTime;
-  const currentIter = Math.floor(elapsed / _MELODY_DUR);
+  const currentIter = Math.floor(elapsed / _melodyTheme.duration);
   // Всегда держим запланированными текущую + следующую итерации
   const needed = currentIter + 1;
   if (needed > _melodyScheduled) {
@@ -110,6 +111,8 @@ function startMelody() {
   stopPanicMelody();
   if (muted) return;
   const ac = getAC();
+  const locationKey = typeof currentLocation !== "undefined" ? currentLocation.key : "hall";
+  _melodyTheme = getLocationMelody(locationKey, false);
   // Создаём свежую мастер-шину (старая была отключена в stopMelody)
   _melodyMaster = ac.createGain();
   _melodyMaster.gain.setValueAtTime(1, ac.currentTime);
@@ -142,6 +145,7 @@ function stopMelody() {
   _melodyNodes = [];
   _melodyStartTime = null;
   _melodyScheduled = -1;
+  _melodyTheme = null;
 }
 
 // --- Паника-мелодия ---
@@ -149,6 +153,7 @@ let _panicStartTime = null;
 let _panicScheduled = -1;
 let _panicTimer = null;
 let _panicNodes = [];
+let _panicTheme = null;
 // Мастер-шина паника-мелодии — аналогично обычной
 let _panicMaster = null;
 
@@ -164,11 +169,11 @@ function _getPanicMaster() {
 function _schedulePanicIteration(iteration) {
   const ac = getAC();
   const master = _getPanicMaster();
-  const iterStart = _panicStartTime + iteration * _PANIC_MELODY_DUR;
-  _PANIC_MELODY_NOTES.forEach(function(note) {
+  const iterStart = _panicStartTime + iteration * _panicTheme.duration;
+  _panicTheme.notes.forEach(function(note) {
     const freq = note[0], beat = note[1], durBeats = note[2], vol = note[3], type = note[4];
-    const t   = iterStart + beat * _PE;
-    const dur = durBeats * _PE;
+    const t   = iterStart + beat * _panicTheme.eighth;
+    const dur = durBeats * _panicTheme.eighth;
     if (t + dur < ac.currentTime) return; // уже прошло
     try {
       const o = ac.createOscillator(), g = ac.createGain();
@@ -189,7 +194,7 @@ function _panicTick() {
   if (muted || _panicStartTime === null) return;
   const ac = getAC();
   const elapsed = ac.currentTime - _panicStartTime;
-  const currentIter = Math.floor(elapsed / _PANIC_MELODY_DUR);
+  const currentIter = Math.floor(elapsed / _panicTheme.duration);
   const needed = currentIter + 1;
   if (needed > _panicScheduled) {
     _schedulePanicIteration(needed);
@@ -203,6 +208,8 @@ function startPanicMelody() {
   stopMelody();
   if (muted) return;
   const ac = getAC();
+  const locationKey = typeof currentLocation !== "undefined" ? currentLocation.key : "hall";
+  _panicTheme = getLocationMelody(locationKey, true);
   // Создаём свежую мастер-шину паники
   _panicMaster = ac.createGain();
   _panicMaster.gain.setValueAtTime(1, ac.currentTime);
@@ -232,6 +239,23 @@ function stopPanicMelody() {
   _panicNodes = [];
   _panicStartTime = null;
   _panicScheduled = -1;
+  _panicTheme = null;
+}
+
+// generateLevel() can change the location while gameplay continues. Restart
+// only when its musical key changed; five levels inside one act keep the loop.
+function syncLocationMelody() {
+  if (muted || typeof gameState === "undefined" || gameState !== "playing") return;
+  const locationKey = typeof currentLocation !== "undefined" ? currentLocation.key : "hall";
+  const activeTheme = _panicTheme || _melodyTheme;
+  if (activeTheme && activeTheme.key === locationKey) return;
+
+  if (_panicStartTime !== null) {
+    stopPanicMelody();
+    startPanicMelody();
+  } else if (_melodyStartTime !== null) {
+    startMelody();
+  }
 }
 
 function toggleMute() {

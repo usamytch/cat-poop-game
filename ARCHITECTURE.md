@@ -324,6 +324,21 @@ Fallback таймер (`PATH_RECALC=30`) и "путь исчерпан" (`nextNo
 Все звуки генерируются процедурно через осцилляторы — никаких внешних файлов:
 - Мяу при старте, пуканье при выстреле, попадание, тревога, победа, провал, комбо, подбор бонуса
 
+### Саундтреки локаций
+
+| Локация | Тема | Характер |
+|---|---|---|
+| Зал | «Уют у очага» | домашний фолк, открытые квинты |
+| Ванная | «Солёные брызги» | морской вальс, волнообразные арпеджио |
+| Кухня | «Поварской переполох» | ксилофонный свинг |
+| Двор | «Хвост трубой» | быстрая мультяшная погоня |
+| Дача | «Дачный патруль» | бодрое спасательное приключение |
+| Подвал | «Песок под камнем» | персидский стелс, фригийский лад |
+
+[`js/melody-data.js`](js/melody-data.js) хранит оригинальные нотные паттерны в каталоге `_LOCATION_MELODIES`. Для каждой темы при загрузке строится panic-вариант: таймлайн всех нот разворачивается формулой `panicBeat = beats - beat - duration`, а BPM умножается на `1.38`. Атаки нот остаются обычными Web Audio-атаками — разворачивается музыкальная последовательность, а не аудиоволна.
+
+[`js/audio.js`](js/audio.js) выбирает тему по `currentLocation.key`, планирует текущую и следующую петли через абсолютное время `AudioContext` и меняет саундтрек только при смене локации. Уровни внутри одного 5-уровневого акта не перезапускают музыку.
+
 ---
 
 ## ⚡ Производительность
@@ -373,8 +388,8 @@ cat-poop-game/
 ├── js/
 │   ├── config.js       # Только константы: WORLD, DIFF, GRID, BONUS_TYPES, каталоги
 │   ├── utils.js        # Утилиты: RNG, clamp, коллизии, drawSprite, rrect, setFont
-│   ├── melody-data.js  # Данные нот мелодии (_MELODY_NOTES, _BPM, _E, _S, _MELODY_DUR)
-│   ├── audio.js        # Web Audio API: tone(), snd*(), startMelody/stopMelody
+│   ├── melody-data.js  # Каталог тем локаций + генерация reverse panic-вариантов
+│   ├── audio.js        # Web Audio API: эффекты, планировщик и выбор темы локации
 │   ├── particles.js    # Частицы: конфетти, лужа, комбо-попапы, emoji-кэш
 │   ├── bonuses.js      # Бонусы: подбор, эффекты, таймеры
 │   ├── pathfinding.js  # MinHeap + aStarPath (A* алгоритм)
@@ -389,7 +404,7 @@ cat-poop-game/
 │   └── game.js         # Canvas init, состояние, ввод, игровой цикл
 ├── tests/
 │   ├── setup.js              # Моки + loadGame() + resetGameState() + hitOwner()
-│   ├── audio.test.js         # Web Audio моки, эффекты, мелодия
+│   ├── audio.test.js         # Web Audio моки, выбор тем, reverse panic, эффекты
 │   ├── math.test.js          # clamp, RNG, rectsOverlap, circleRect
 │   ├── utils.test.js         # getPlayBounds, playerRect, ownerRect, escapeObstacles, hitsObstacles
 │   ├── config.test.js        # DIFF, WORLD, BONUS_TYPES, obstacleCatalog

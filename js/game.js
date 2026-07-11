@@ -73,6 +73,7 @@ window.addEventListener("keydown", e => {
       cheatBasement = true;
       level = Math.max(level, 9);
       generateLevel();
+      syncLocationMelody();
       owner.activate();
       levelMessageTimer = 180;
     }
@@ -81,6 +82,7 @@ window.addEventListener("keydown", e => {
       cheatDfs = true;
       level = Math.max(level, 20);
       generateLevel();
+      syncLocationMelody();
       owner.activate();
       levelMessageTimer = 180;
     }

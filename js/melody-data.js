@@ -1,262 +1,173 @@
 // ==========================================
-// MELODY-DATA — Gremlins theme note data
+// MELODY DATA — original procedural themes by location
 // ==========================================
 //
-// МЕЛОДИЯ: ГРЕМЛИНЫ (Jerry Goldsmith)
-//
-// Бесшовная петля через Web Audio API scheduling:
-//   - все ноты планируются через абсолютный ac.currentTime
-//   - следующая итерация планируется заранее, пока текущая ещё играет
-//   - последняя нота (F5) = первая нота следующей итерации (F5) → шов незаметен
-//
-// 138 BPM, восьмая = 0.2174 сек, 64 восьмых = ~13.9 сек на петлю
-// Тональность: Bb минор
+// Each note is [frequency, beatOffset, durationInEighths, volume, oscillator].
+// Themes use short, original motifs rather than quoted film/game melodies.
+// Panic mode is generated from the active theme: the whole note timeline is
+// reversed and played 38% faster.
 
-const _BPM = 138;
-const _E   = 60 / _BPM / 2;  // восьмая
-const _S   = _E / 2;          // шестнадцатая
+const _PANIC_SPEED = 1.38;
 
-// [freq, beatOffset, durBeats, vol, type]  (beatOffset и durBeats в восьмых)
-const _MELODY_NOTES = [
-  // --- БАС: фанк-синкопы, ноты каждые 1–2 восьмых ---
-  // vol: акцент 0.12, слабая доля 0.08, синкопа 0.10
-  // dur: короткие staccato 0.7–1.2 восьмых для фанкового щипка
+function _midi(note) {
+  return 440 * Math.pow(2, (note - 69) / 12);
+}
 
-  // Секция A (биты 0–15): Bb-центр, синкопы на F и Eb
-  [117, 0,   0.8, 0.12, "sawtooth"],  // Bb1 — удар на 1
-  [117, 1,   0.7, 0.08, "sawtooth"],  // Bb1 — слабая
-  [88,  1.5, 0.8, 0.10, "sawtooth"],  // F1  — синкопа (между 1 и 2)
-  [117, 3,   0.8, 0.11, "sawtooth"],  // Bb1 — 2-я доля
-  [88,  4,   0.8, 0.12, "sawtooth"],  // F1  — удар на 3
-  [78,  5,   0.7, 0.08, "sawtooth"],  // Eb1 — слабая
-  [88,  5.5, 0.8, 0.10, "sawtooth"],  // F1  — синкопа
-  [117, 7,   0.8, 0.11, "sawtooth"],  // Bb1 — 4-я доля
-  [78,  8,   0.8, 0.12, "sawtooth"],  // Eb1 — удар на 5
-  [78,  9,   0.7, 0.08, "sawtooth"],  // Eb1 — слабая
-  [88,  9.5, 0.8, 0.10, "sawtooth"],  // F1  — синкопа
-  [117, 11,  0.8, 0.11, "sawtooth"],  // Bb1 — 6-я доля
-  [88,  12,  0.8, 0.12, "sawtooth"],  // F1  — удар на 7
-  [117, 13,  0.7, 0.08, "sawtooth"],  // Bb1 — слабая
-  [88,  13.5,0.8, 0.10, "sawtooth"],  // F1  — синкопа
-  [117, 15,  0.8, 0.11, "sawtooth"],  // Bb1 — 8-я доля
+function _addSequence(notes, pitches, start, step, duration, volume, type) {
+  pitches.forEach(function(pitch, index) {
+    if (pitch === null) return;
+    notes.push([_midi(pitch), start + index * step, duration, volume, type]);
+  });
+}
 
-  // Секция B (биты 16–31): F-центр, подъём к Bb
-  [88,  16,  0.8, 0.12, "sawtooth"],  // F1
-  [104, 17,  0.7, 0.08, "sawtooth"],  // Ab1
-  [88,  17.5,0.8, 0.10, "sawtooth"],  // F1  — синкопа
-  [104, 19,  0.8, 0.11, "sawtooth"],  // Ab1
-  [104, 20,  0.8, 0.12, "sawtooth"],  // Ab1 — удар
-  [117, 21,  0.7, 0.08, "sawtooth"],  // Bb1
-  [104, 21.5,0.8, 0.10, "sawtooth"],  // Ab1 — синкопа
-  [88,  23,  0.8, 0.11, "sawtooth"],  // F1
-  [117, 24,  0.8, 0.12, "sawtooth"],  // Bb1 — удар
-  [117, 25,  0.7, 0.08, "sawtooth"],  // Bb1
-  [88,  25.5,0.8, 0.10, "sawtooth"],  // F1  — синкопа вниз
-  [117, 27,  0.8, 0.11, "sawtooth"],  // Bb1
-  [88,  28,  0.8, 0.12, "sawtooth"],  // F1  — удар
-  [88,  29,  0.7, 0.08, "sawtooth"],  // F1
-  [117, 29.5,0.8, 0.10, "sawtooth"],  // Bb1 — синкопа вверх
-  [88,  31,  0.8, 0.11, "sawtooth"],  // F1
+function _addPattern(notes, pitches, start, step, duration, volume, type, repeats) {
+  for (let repeat = 0; repeat < repeats; repeat++) {
+    _addSequence(notes, pitches, start + repeat * pitches.length * step, step, duration, volume, type);
+  }
+}
 
-  // Секция A' (биты 32–47): Bb с напряжением через Db
-  [117, 32,  0.8, 0.12, "sawtooth"],  // Bb1
-  [117, 33,  0.7, 0.08, "sawtooth"],  // Bb1
-  [88,  33.5,0.8, 0.10, "sawtooth"],  // F1  — синкопа
-  [117, 35,  0.8, 0.11, "sawtooth"],  // Bb1
-  [88,  36,  0.8, 0.12, "sawtooth"],  // F1
-  [78,  37,  0.7, 0.08, "sawtooth"],  // Eb1
-  [88,  37.5,0.8, 0.10, "sawtooth"],  // F1  — синкопа
-  [78,  39,  0.8, 0.11, "sawtooth"],  // Eb1
-  [78,  40,  0.8, 0.12, "sawtooth"],  // Eb1 — удар
-  [69,  41,  0.7, 0.09, "sawtooth"],  // Db1 — напряжение
-  [78,  41.5,0.8, 0.10, "sawtooth"],  // Eb1 — синкопа
-  [69,  43,  0.8, 0.10, "sawtooth"],  // Db1
-  [69,  44,  0.8, 0.12, "sawtooth"],  // Db1 — удар
-  [78,  45,  0.7, 0.08, "sawtooth"],  // Eb1
-  [88,  45.5,0.8, 0.10, "sawtooth"],  // F1  — синкопа вверх
-  [117, 47,  0.8, 0.11, "sawtooth"],  // Bb1 — разрядка
+function _addChord(notes, pitches, beat, duration, volume, type) {
+  pitches.forEach(function(pitch) {
+    notes.push([_midi(pitch), beat, duration, volume, type]);
+  });
+}
 
-  // Секция C (биты 48–63): кульминация, плотный фанк
-  [117, 48,  0.8, 0.12, "sawtooth"],  // Bb1
-  [78,  49,  0.7, 0.09, "sawtooth"],  // Eb1
-  [117, 49.5,0.8, 0.11, "sawtooth"],  // Bb1 — синкопа
-  [78,  51,  0.8, 0.10, "sawtooth"],  // Eb1
-  [78,  52,  0.8, 0.12, "sawtooth"],  // Eb1 — удар
-  [88,  53,  0.7, 0.09, "sawtooth"],  // F1
-  [78,  53.5,0.8, 0.10, "sawtooth"],  // Eb1 — синкопа
-  [88,  55,  0.8, 0.11, "sawtooth"],  // F1
-  [88,  56,  0.8, 0.12, "sawtooth"],  // F1  — удар
-  [117, 57,  0.7, 0.09, "sawtooth"],  // Bb1
-  [88,  57.5,0.8, 0.10, "sawtooth"],  // F1  — синкопа
-  [117, 59,  0.8, 0.11, "sawtooth"],  // Bb1
-  [117, 60,  0.8, 0.12, "sawtooth"],  // Bb1 — финальный удар
-  [117, 61,  0.7, 0.08, "sawtooth"],  // Bb1
-  [88,  61.5,0.8, 0.10, "sawtooth"],  // F1  — синкопа
-  [117, 63,  0.8, 0.11, "sawtooth"],  // Bb1 → петля
+function _makeTheme(key, title, description, bpm, beats, build) {
+  const notes = [];
+  build(notes);
+  notes.sort(function(a, b) { return a[1] - b[1] || a[0] - b[0]; });
+  const eighth = 60 / bpm / 2;
+  return {
+    key: key,
+    title: title,
+    description: description,
+    bpm: bpm,
+    beats: beats,
+    eighth: eighth,
+    duration: beats * eighth,
+    notes: notes,
+  };
+}
 
-  // --- СЕКЦИЯ A (биты 0–15): нисходящий хук F5→F4 ---
-  [698, 0,   3.5, 0.20, "triangle"],  // F5
-  [622, 3.5, 1.5, 0.17, "triangle"],  // Eb5
-  [554, 5,   1.5, 0.17, "triangle"],  // Db5
-  [523, 6.5, 2.5, 0.18, "triangle"],  // C5
-  [466, 9,   1.5, 0.16, "triangle"],  // Bb4
-  [415, 10.5,1.5, 0.15, "triangle"],  // Ab4
-  [392, 12,  1.5, 0.15, "triangle"],  // G4
-  [349, 13.5,2.5, 0.17, "triangle"],  // F4
+const _LOCATION_MELODIES = {
+  // Warm hearth-folk: rocking 6/8, open fifths and a small whistle-like hook.
+  hall: _makeTheme("hall", "Уют у очага", "домашний фолк у камина", 96, 32, function(n) {
+    _addPattern(n, [48,55,60,55,52,55,60,55], 0, 1, 0.82, 0.038, "triangle", 4);
+    _addSequence(n, [36,null,null,null,41,null,null,null,43,null,null,null,38,null,null,null,
+                     36,null,null,null,41,null,null,null,43,null,38,null,36,null,null,null],
+                     0, 1, 2.6, 0.065, "sine");
+    _addSequence(n, [67,null,69,67,64,null,62,null,64,null,67,69,67,null,64,null,
+                     72,null,71,69,67,null,64,null,62,64,67,null,64,62,60,null],
+                     0, 1, 1.55, 0.095, "sine");
+    [0,8,16,24].forEach(function(beat, i) {
+      _addChord(n, i % 2 ? [53,57,60] : [48,52,55], beat, 3.4, 0.022, "triangle");
+    });
+  }),
 
-  // --- СЕКЦИЯ B (биты 16–31): подъём F4→F5 ---
-  [349, 16,  2.0, 0.15, "triangle"],  // F4
-  [392, 18,  1.5, 0.15, "triangle"],  // G4
-  [415, 19.5,1.5, 0.16, "triangle"],  // Ab4
-  [466, 21,  2.5, 0.17, "triangle"],  // Bb4
-  [523, 23.5,1.5, 0.17, "triangle"],  // C5
-  [554, 25,  1.5, 0.17, "triangle"],  // Db5
-  [622, 26.5,1.5, 0.18, "triangle"],  // Eb5
-  [698, 28,  4.0, 0.20, "triangle"],  // F5
+  // Sea waltz: rolling arpeggios rise and fall like water in a light 6/8 sway.
+  bathroom: _makeTheme("bathroom", "Солёные брызги", "морской вальс с волнами", 112, 36, function(n) {
+    _addPattern(n, [45,52,57,60,57,52,43,50,55,59,55,50], 0, 0.5, 0.43, 0.034, "sine", 3);
+    _addSequence(n, [33,null,null,null,null,null,31,null,null,null,null,null,
+                     29,null,null,null,null,null,33,null,null,null,null,null,
+                     31,null,null,null,null,null,28,null,null,null,null,null],
+                     0, 1, 3.8, 0.06, "triangle");
+    _addSequence(n, [69,null,72,74,null,72,69,null,67,69,72,null,
+                     76,null,74,72,null,69,67,null,69,71,72,null,
+                     74,null,76,74,null,72,69,67,69,null,64,null],
+                     0, 1, 1.7, 0.09, "sine");
+    _addSequence(n, [81,null,null,79,null,null,76,null,null,79,null,null],
+                     0, 3, 2.2, 0.028, "triangle");
+  }),
 
-  // --- СЕКЦИЯ A' (биты 32–47): хук с форшлагами ---
-  [698, 32,  2.5, 0.20, "triangle"],  // F5
-  [784, 34.5,0.5, 0.14, "triangle"],  // G5 — форшлаг
-  [698, 35,  1.0, 0.18, "triangle"],  // F5
-  [622, 36,  1.5, 0.17, "triangle"],  // Eb5
-  [554, 37.5,1.0, 0.16, "triangle"],  // Db5
-  [523, 38.5,0.5, 0.15, "triangle"],  // C5
-  [466, 39,  2.0, 0.17, "triangle"],  // Bb4
-  [415, 41,  1.0, 0.15, "triangle"],  // Ab4
-  [392, 42,  1.0, 0.14, "triangle"],  // G4
-  [349, 43,  1.5, 0.15, "triangle"],  // F4
-  [311, 44.5,1.5, 0.14, "triangle"],  // Eb4
-  [349, 46,  2.0, 0.16, "triangle"],  // F4
+  // Kitchen comedy: clipped bass, off-beat chords and a wooden mallet lead.
+  kitchen: _makeTheme("kitchen", "Поварской переполох", "кухонный ксилофонный свинг", 132, 32, function(n) {
+    _addPattern(n, [36,null,43,36,null,45,43,null], 0, 1, 0.62, 0.07, "square", 4);
+    _addSequence(n, [72,76,79,null,78,76,74,null,72,74,76,77,76,null,72,null,
+                     79,78,76,74,72,null,69,null,71,72,74,76,72,null,67,null],
+                     0, 1, 0.72, 0.085, "triangle");
+    [1.5,5.5,9.5,13.5,17.5,21.5,25.5,29.5].forEach(function(beat, i) {
+      _addChord(n, i % 2 ? [62,65,69] : [60,64,67], beat, 0.48, 0.026, "square");
+    });
+    _addSequence(n, [84,null,null,83,null,null,81,null,79,null,null,76,null,null,79,null],
+                     0, 2, 0.38, 0.027, "sine");
+  }),
 
-  // --- СЕКЦИЯ C (биты 48–63): кульминация G5, спуск к F5 → петля ---
-  [466, 48,  1.5, 0.17, "triangle"],  // Bb4
-  [554, 49.5,1.5, 0.18, "triangle"],  // Db5
-  [622, 51,  1.5, 0.19, "triangle"],  // Eb5
-  [698, 52.5,1.5, 0.20, "triangle"],  // F5
-  [784, 54,  3.0, 0.22, "triangle"],  // G5 — пик
-  [698, 57,  1.5, 0.19, "triangle"],  // F5
-  [622, 58.5,1.5, 0.17, "triangle"],  // Eb5
-  [554, 60,  1.0, 0.16, "triangle"],  // Db5
-  [523, 61,  1.0, 0.16, "triangle"],  // C5
-  [466, 62,  1.0, 0.17, "triangle"],  // Bb4
-  // Последняя нота F5 затухает — следующая петля начинается с F5: шов незаметен
-  [698, 63,  1.3, 0.18, "triangle"],  // F5 → петля
-];
+  // Slapstick chase: chromatic scurrying and emphatic cartoon punctuation.
+  street: _makeTheme("street", "Хвост трубой", "мультяшная погоня во дворе", 154, 32, function(n) {
+    _addPattern(n, [40,47,40,48,40,49,47,43], 0, 0.5, 0.34, 0.055, "sawtooth", 8);
+    _addSequence(n, [67,69,70,71,72,null,76,null,74,72,71,69,67,null,66,null,
+                     67,70,74,77,76,74,72,70,69,71,72,74,71,67,null,null],
+                     0, 1, 0.58, 0.082, "triangle");
+    _addSequence(n, [79,null,78,null,77,null,76,null,84,null,81,null,78,null,74,null],
+                     0, 2, 0.4, 0.032, "square");
+    [7.5,15.5,23.5,31].forEach(function(beat, i) {
+      _addChord(n, i === 3 ? [60,64,67,72] : [59,62,65], beat, 0.42, 0.045, "sawtooth");
+    });
+  }),
 
-// Длительность петли: ровно 64 восьмых
-const _MELODY_DUR = 64 * _E;
+  // Bright rescue adventure: major-key fanfare, propeller-like pulse, call/response.
+  country: _makeTheme("country", "Дачный патруль", "бодрое спасательное приключение", 144, 32, function(n) {
+    _addPattern(n, [43,50,55,50,43,50,57,50], 0, 0.5, 0.38, 0.042, "square", 8);
+    _addSequence(n, [31,null,31,null,36,null,38,null,31,null,34,null,36,null,38,null,
+                     31,null,31,null,36,null,38,null,40,null,38,null,36,null,31,null],
+                     0, 1, 0.68, 0.065, "sawtooth");
+    _addSequence(n, [67,71,74,null,79,null,74,null,72,71,69,null,67,null,62,null,
+                     67,69,71,72,74,76,78,null,79,78,76,74,71,null,67,null],
+                     0, 1, 0.72, 0.09, "triangle");
+    _addSequence(n, [79,null,83,null,81,null,78,null,79,null,86,null,83,null,79,null],
+                     0, 2, 0.62, 0.035, "sine");
+  }),
 
-// ==========================================
-// ПАНИКА-МЕЛОДИЯ — ускоренная зеркальная версия Gremlins
-// ==========================================
-//
-// База: та же тема Гремлинов, но:
-//   - 185 BPM (vs 138) — ~34% быстрее, ощущение паники
-//   - Бас-линия зеркальная: нисходящие синкопы вместо восходящих
-//   - Мелодия сохранена, но добавлен тремоло-слой (square, быстрые чередования)
-//     для ощущения тревоги и хаоса
-//   - Петля 32 восьмых (~5.2 сек) — короче, чтобы напряжение нарастало быстрее
-//
-// Тональность: Bb минор (та же), но с акцентом на уменьшённые интервалы
+  // Desert stealth: Phrygian colour, low drone and an angular plucked motif.
+  basement: _makeTheme("basement", "Песок под камнем", "персидский стелс в темноте", 104, 32, function(n) {
+    _addPattern(n, [38,null,39,38,45,null,43,39], 0, 1, 0.62, 0.065, "sawtooth", 4);
+    _addSequence(n, [50,51,54,55,57,55,54,51,50,null,46,48,50,null,51,null,
+                     62,63,66,67,69,67,66,63,62,58,60,62,63,60,58,null],
+                     0, 1, 0.74, 0.082, "triangle");
+    _addSequence(n, [26,null,null,null,26,null,null,null,27,null,null,null,26,null,null,null,
+                     26,null,null,null,22,null,null,null,24,null,null,null,26,null,null,null],
+                     0, 1, 3.2, 0.07, "sine");
+    _addSequence(n, [74,null,null,75,null,72,null,null,70,null,72,null,74,null,70,null],
+                     0, 2, 0.52, 0.027, "square");
+  }),
+};
 
-const _PANIC_BPM = 185;
-const _PE = 60 / _PANIC_BPM / 2;  // восьмая при 185 BPM ≈ 0.162 сек
+function _reverseTheme(theme) {
+  const bpm = theme.bpm * _PANIC_SPEED;
+  const eighth = 60 / bpm / 2;
+  const notes = theme.notes.map(function(note) {
+    return [note[0], theme.beats - note[1] - note[2], note[2], note[3], note[4]];
+  }).sort(function(a, b) { return a[1] - b[1] || a[0] - b[0]; });
 
-// [freq, beatOffset, durBeats, vol, type]
-const _PANIC_MELODY_NOTES = [
-  // --- БАС: зеркальные синкопы (нисходящие) ---
-  // Оригинал шёл Bb→F→Eb, паника идёт Eb→F→Bb (снизу вверх с акцентом на тревожные ноты)
-  // Секция A (биты 0–15): Eb-центр, нарастание к Bb
-  [78,  0,   0.6, 0.14, "sawtooth"],  // Eb1 — удар
-  [88,  0.5, 0.5, 0.10, "sawtooth"],  // F1  — синкопа
-  [78,  1,   0.6, 0.09, "sawtooth"],  // Eb1 — слабая
-  [69,  1.5, 0.6, 0.11, "sawtooth"],  // Db1 — тревога
-  [78,  2,   0.6, 0.13, "sawtooth"],  // Eb1 — удар
-  [88,  2.5, 0.5, 0.10, "sawtooth"],  // F1  — синкопа
-  [117, 3,   0.6, 0.12, "sawtooth"],  // Bb1 — акцент
-  [88,  3.5, 0.5, 0.09, "sawtooth"],  // F1  — синкопа вниз
-  [78,  4,   0.6, 0.14, "sawtooth"],  // Eb1 — удар
-  [69,  4.5, 0.5, 0.10, "sawtooth"],  // Db1 — тревога
-  [78,  5,   0.6, 0.09, "sawtooth"],  // Eb1 — слабая
-  [88,  5.5, 0.5, 0.11, "sawtooth"],  // F1  — синкопа
-  [117, 6,   0.6, 0.13, "sawtooth"],  // Bb1 — акцент
-  [88,  6.5, 0.5, 0.10, "sawtooth"],  // F1  — синкопа
-  [78,  7,   0.6, 0.12, "sawtooth"],  // Eb1
-  [69,  7.5, 0.5, 0.09, "sawtooth"],  // Db1 — тревога
+  return {
+    key: theme.key,
+    title: theme.title + " — паника",
+    description: "ускоренная обратная версия",
+    bpm: bpm,
+    beats: theme.beats,
+    eighth: eighth,
+    duration: theme.beats * eighth,
+    notes: notes,
+  };
+}
 
-  // Секция B (биты 16–31): нарастание, Bb-центр с хроматикой
-  [117, 8,   0.6, 0.14, "sawtooth"],  // Bb1 — удар
-  [124, 8.5, 0.5, 0.10, "sawtooth"],  // B1  — хроматика (напряжение)
-  [117, 9,   0.6, 0.09, "sawtooth"],  // Bb1 — слабая
-  [104, 9.5, 0.5, 0.11, "sawtooth"],  // Ab1 — синкопа
-  [88,  10,  0.6, 0.13, "sawtooth"],  // F1  — удар
-  [78,  10.5,0.5, 0.10, "sawtooth"],  // Eb1 — синкопа
-  [69,  11,  0.6, 0.12, "sawtooth"],  // Db1 — тревога
-  [78,  11.5,0.5, 0.09, "sawtooth"],  // Eb1 — синкопа вверх
-  [88,  12,  0.6, 0.14, "sawtooth"],  // F1  — удар
-  [104, 12.5,0.5, 0.10, "sawtooth"],  // Ab1 — синкопа
-  [117, 13,  0.6, 0.13, "sawtooth"],  // Bb1 — акцент
-  [124, 13.5,0.5, 0.11, "sawtooth"],  // B1  — хроматика
-  [117, 14,  0.6, 0.12, "sawtooth"],  // Bb1
-  [104, 14.5,0.5, 0.10, "sawtooth"],  // Ab1 — синкопа
-  [88,  15,  0.6, 0.13, "sawtooth"],  // F1
-  [78,  15.5,0.5, 0.09, "sawtooth"],  // Eb1 → петля
+const _LOCATION_PANIC_MELODIES = {};
+Object.keys(_LOCATION_MELODIES).forEach(function(key) {
+  _LOCATION_PANIC_MELODIES[key] = _reverseTheme(_LOCATION_MELODIES[key]);
+});
 
-  // --- МЕЛОДИЯ: оригинальный хук, ускоренный ---
-  // Секция A (биты 0–15): нисходящий хук F5→Bb4 (зеркально — короче)
-  [698, 0,   2.0, 0.22, "triangle"],  // F5  — удар
-  [622, 2,   1.0, 0.19, "triangle"],  // Eb5
-  [554, 3,   1.0, 0.18, "triangle"],  // Db5
-  [523, 4,   1.5, 0.19, "triangle"],  // C5
-  [466, 5.5, 1.0, 0.17, "triangle"],  // Bb4
-  [415, 6.5, 1.0, 0.16, "triangle"],  // Ab4
-  [466, 7.5, 0.5, 0.18, "triangle"],  // Bb4 — форшлаг вверх
+function getLocationMelody(locationKey, panic) {
+  const catalog = panic ? _LOCATION_PANIC_MELODIES : _LOCATION_MELODIES;
+  return catalog[locationKey] || catalog.hall;
+}
 
-  // Секция B (биты 8–15): подъём Bb4→F5 с напряжением
-  [466, 8,   1.5, 0.17, "triangle"],  // Bb4
-  [523, 9.5, 1.0, 0.18, "triangle"],  // C5
-  [554, 10.5,1.0, 0.19, "triangle"],  // Db5
-  [622, 11.5,1.0, 0.20, "triangle"],  // Eb5
-  [698, 12.5,2.0, 0.22, "triangle"],  // F5  — пик
-  [784, 14.5,1.0, 0.20, "triangle"],  // G5  — форшлаг вверх
-  [698, 15.5,0.5, 0.21, "triangle"],  // F5  → петля
-
-  // --- ТРЕМОЛО-СЛОЙ: быстрые чередования для паники ---
-  // square волна, чередование Bb4/F4 каждые полвосьмой — создаёт дрожание
-  [466, 0,   0.4, 0.07, "square"],   // Bb4
-  [349, 0.5, 0.4, 0.06, "square"],   // F4
-  [466, 1,   0.4, 0.07, "square"],   // Bb4
-  [349, 1.5, 0.4, 0.06, "square"],   // F4
-  [466, 2,   0.4, 0.07, "square"],   // Bb4
-  [311, 2.5, 0.4, 0.06, "square"],   // Eb4 — тревожная нота
-  [466, 3,   0.4, 0.07, "square"],   // Bb4
-  [349, 3.5, 0.4, 0.06, "square"],   // F4
-  [466, 4,   0.4, 0.07, "square"],   // Bb4
-  [311, 4.5, 0.4, 0.06, "square"],   // Eb4
-  [466, 5,   0.4, 0.07, "square"],   // Bb4
-  [277, 5.5, 0.4, 0.06, "square"],   // Db4 — максимальная тревога
-  [466, 6,   0.4, 0.07, "square"],   // Bb4
-  [349, 6.5, 0.4, 0.06, "square"],   // F4
-  [466, 7,   0.4, 0.07, "square"],   // Bb4
-  [311, 7.5, 0.4, 0.06, "square"],   // Eb4
-  // Вторая половина — тремоло нарастает (чуть громче)
-  [523, 8,   0.4, 0.08, "square"],   // C5  — выше
-  [392, 8.5, 0.4, 0.07, "square"],   // G4
-  [523, 9,   0.4, 0.08, "square"],   // C5
-  [392, 9.5, 0.4, 0.07, "square"],   // G4
-  [554, 10,  0.4, 0.08, "square"],   // Db5 — напряжение
-  [415, 10.5,0.4, 0.07, "square"],   // Ab4
-  [554, 11,  0.4, 0.08, "square"],   // Db5
-  [415, 11.5,0.4, 0.07, "square"],   // Ab4
-  [622, 12,  0.4, 0.09, "square"],   // Eb5 — пик тремоло
-  [466, 12.5,0.4, 0.07, "square"],   // Bb4
-  [622, 13,  0.4, 0.09, "square"],   // Eb5
-  [466, 13.5,0.4, 0.07, "square"],   // Bb4
-  [698, 14,  0.4, 0.09, "square"],   // F5  — финальный всплеск
-  [523, 14.5,0.4, 0.07, "square"],   // C5
-  [698, 15,  0.4, 0.09, "square"],   // F5
-  [523, 15.5,0.4, 0.07, "square"],   // C5  → петля
-];
-
-// Длительность паника-петли: 16 восьмых (короткая, напряжённая)
-const _PANIC_MELODY_DUR = 16 * _PE;
+// Backward-compatible aliases for older tests and console experiments.
+const _BPM = _LOCATION_MELODIES.hall.bpm;
+const _E = _LOCATION_MELODIES.hall.eighth;
+const _S = _E / 2;
+const _MELODY_NOTES = _LOCATION_MELODIES.hall.notes;
+const _MELODY_DUR = _LOCATION_MELODIES.hall.duration;
+const _PANIC_BPM = _LOCATION_PANIC_MELODIES.hall.bpm;
+const _PE = _LOCATION_PANIC_MELODIES.hall.eighth;
+const _PANIC_MELODY_NOTES = _LOCATION_PANIC_MELODIES.hall.notes;
+const _PANIC_MELODY_DUR = _LOCATION_PANIC_MELODIES.hall.duration;
