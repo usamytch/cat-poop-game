@@ -1692,6 +1692,8 @@ function _spawnReachableBonuses(progression, spawnCol, spawnRow, rng, path) {
       type: normalizedType(type),
       alive: true,
       pulse: rng() * Math.PI * 2,
+      detour: candidate.detour,
+      risky: candidate.detour >= RUN.riskyBonusDetour,
     });
     return true;
   }
@@ -1708,6 +1710,10 @@ function generateLevel() {
   const progression = getLevelProgression(level);
   currentLevelProgression = progression;
   _selectLevelLocation(progression);
+  if (typeof stats !== "undefined" && typeof gameState !== "undefined" && gameState === "playing" &&
+      typeof shouldRecordRunStats === "function" && shouldRecordRunStats()) {
+    stats.discoverLocation(currentLocation.key);
+  }
 
   const attempts = currentLocation.key === "basement"
     ? LEVEL_QUALITY.basementCandidateAttempts

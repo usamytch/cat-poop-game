@@ -150,6 +150,7 @@ export function resetGameState() {
   lives = 3;
   difficulty = 'normal';
   gameMode = 'normal';
+  runMode = 'campaign';
   gameState = 'start';
   overlayTimer = 0;
   lifeLostTimer = 0;
@@ -159,6 +160,7 @@ export function resetGameState() {
   levelMessageTimer = 0;
   simulationTimeMs = 0;
   resetSimulationClock();
+  resetRunProgress();
 
   // Игрок
   player.x = 100;
@@ -290,6 +292,7 @@ export function loadGame() {
     'js/player.js',
     'js/owner.js',
     'js/projectiles.js',
+    'js/run.js',
     'js/game.js',
   ];
 

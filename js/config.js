@@ -69,6 +69,52 @@ const ACT = {
   ],
 };
 
+// ===== ФОРМАТ ЗАБЕГА =====
+// Кампания заканчивается после первого полного круга из пяти актов. Endless
+// использует ту же актовую прогрессию, но продолжает варианты II, III, ...
+const RUN = {
+  campaignLevels: 25,
+  maxHabits: 4,
+  riskyBonusDetour: 2,
+  gradeThresholds: { S:85, A:70, B:55 },
+};
+
+// Межактовые привычки намеренно двусторонние: это смена стиля текущего
+// забега, а не постоянная мета-прокачка. Числа применяются через helpers в
+// run.js, чтобы игровые модули не знали о структуре каталога.
+const RUN_HABITS = [
+  {
+    key:"swift_paws", icon:"⚡", title:"ЛИХИЕ ЛАПЫ",
+    benefit:"Скорость кота +10%", cost:"Срочность растёт +10%",
+    effects:{ playerSpeedScale:1.10, urgeRateScale:1.10 },
+  },
+  {
+    key:"iron_gut", icon:"🛡️", title:"ЖЕЛЕЗНЫЙ ЖИВОТ",
+    benefit:"Срочность растёт −10%", cost:"Скорость кота −8%",
+    effects:{ urgeRateScale:0.90, playerSpeedScale:0.92 },
+  },
+  {
+    key:"long_combo", icon:"🎯", title:"ДЛИННАЯ СЕРИЯ",
+    benefit:"Окно COMBO +1 сек", cost:"Облегчение от попадания −25%",
+    effects:{ comboWindowTicks:60, hitReliefScale:0.75 },
+  },
+  {
+    key:"bonus_nose", icon:"🐟", title:"НЮХ НА ПРИПАСЫ",
+    benefit:"Временные бонусы +25%", cost:"Хозяин быстрее на 6%",
+    effects:{ bonusDurationScale:1.25, ownerSpeedScale:1.06 },
+  },
+  {
+    key:"panic_dash", icon:"😱", title:"ПАНИЧЕСКИЙ РЫВОК",
+    benefit:"В панике скорость +18%", cost:"На лотке стоять +0.5 сек",
+    effects:{ panicSpeedScale:1.18, poopTimeTicks:30 },
+  },
+  {
+    key:"rapid_fire", icon:"💨", title:"ЧАСТЫЙ ОГОНЬ",
+    benefit:"Перезарядка быстрее на 20%", cost:"Хозяин помнит шум +25%",
+    effects:{ shootCooldownScale:0.80, heardDurationScale:1.25 },
+  },
+];
+
 // ===== АВТОРСКИЕ ПРАВИЛА ЛОКАЦИЙ =====
 // Все временные значения заданы в simulation ticks (60 Гц). Дача использует
 // 120 BPM: один beat = 30 ticks, поэтому смены реальности всегда приходятся на

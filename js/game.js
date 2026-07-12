@@ -2,27 +2,6 @@
 // GAME — state, stats, input, loop
 // ==========================================
 
-// ===== СТАТИСТИКА =====
-const stats = {
-  highScore:      parseInt(localStorage.getItem("cpg_hs") || "0"),
-  bestLevel:      parseInt(localStorage.getItem("cpg_bl") || "1"),
-  totalCaught:    parseInt(localStorage.getItem("cpg_tc") || "0"),
-  totalAccidents: parseInt(localStorage.getItem("cpg_ta") || "0"),
-  totalPoops:     parseInt(localStorage.getItem("cpg_tp") || "0"),
-  save() {
-    localStorage.setItem("cpg_hs", this.highScore);
-    localStorage.setItem("cpg_bl", this.bestLevel);
-    localStorage.setItem("cpg_tc", this.totalCaught);
-    localStorage.setItem("cpg_ta", this.totalAccidents);
-    localStorage.setItem("cpg_tp", this.totalPoops);
-  },
-  update(s, l) {
-    if (s > this.highScore) this.highScore = s;
-    if (l > this.bestLevel) this.bestLevel = l;
-    this.save();
-  },
-};
-
 // ===== СОСТОЯНИЕ =====
 let gameState = "start";
 let score = 0;
@@ -133,6 +112,13 @@ window.addEventListener("keydown", e => {
       gameMode = order[(idx + (e.key === "ArrowDown" ? 1 : -1) + 3) % 3];
       difficulty = gameMode === "chaos" ? "chaos" : "normal";
     }
+    if ((e.key === "ArrowLeft" || e.key === "ArrowRight" || e.key === "e" || e.key === "E") &&
+        gameMode !== "tutorial" && runProfile.unlocks.endless) {
+      e.preventDefault();
+      runMode = runMode === "campaign" ? "endless" : "campaign";
+    }
+    if (e.key === "z" || e.key === "Z") cycleRunCosmetic("pawStyles");
+    if (e.key === "x" || e.key === "X") cycleRunCosmetic("hudFrames");
     if (e.key === "Enter" || e.key === " ") startGame();
     // QA: Shift+C — сразу открыть финальный CATSTOCK set-piece.
     if (e.key === "C") {
@@ -173,6 +159,13 @@ window.addEventListener("keydown", e => {
       debugJumpToLevel(next, getLevelProgression(next).locationTheme.key);
       return;
     }
+    // QA: Shift+A — завершить текущий акт и открыть реальный межактовый экран.
+    if (e.key === "A" && !isTutorialActive()) {
+      const peakLevel = Math.ceil(level / ACT.length) * ACT.length;
+      if (level !== peakLevel) debugJumpToLevel(peakLevel, getLevelProgression(peakLevel).locationTheme.key);
+      completeScoredLevel();
+      return;
+    }
     if (e.key === "C") { debugJumpToLevel(25, "country"); return; }
     // Чит-код: Shift+B — телепорт в подвал (corridor) без сброса счёта/жизней
     if (e.key === "B") {
@@ -199,6 +192,11 @@ window.addEventListener("keydown", e => {
     if (e.key === "Enter" || e.key === " ") resumeGame();
   } else if (gameState === "tutorialComplete") {
     if (e.key === "Enter" || e.key === " ") finishTutorialToMenu();
+  } else if (gameState === "actComplete") {
+    if (e.key === "1") chooseActHabit(0);
+    if (e.key === "2") chooseActHabit(1);
+    if (e.key === "3") chooseActHabit(2);
+    if ((e.key === "Enter" || e.key === " ") && currentHabitChoices.length === 0) chooseActHabit(0);
   } else if (gameState === "win" || gameState === "lose" || gameState === "caught" || gameState === "accident") {
     if (e.key === "r" || e.key === "R") {
       const replayRunSeed = globalSeed;
@@ -220,6 +218,8 @@ function startGame(seedOverride = null) {
     ? seedOverride & 0x7FFFFFFF
     : Date.now() & 0x7FFFFFFF;
   score = 0; level = 1; lives = 3;
+  if (runMode === "endless" && !runProfile.unlocks.endless) runMode = "campaign";
+  resetRunProgress();
   player.urge = 0; player.pooping = false; player.poopTimer = 0;
   poops.length = 0; overlayParticles.length = 0; comboPopups.length = 0; pawTrails.length = 0;
   comboCount = 0; comboTimer = 0;
@@ -238,6 +238,7 @@ function startGame(seedOverride = null) {
     tutorialState.active = false;
     difficulty = gameMode === "chaos" ? "chaos" : "normal";
     generateLevel();
+    runActMetrics.startTimeMs = simulationTimeMs;
     owner.activate();
   }
   sndMeow();

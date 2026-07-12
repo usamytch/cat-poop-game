@@ -45,9 +45,12 @@ function shootPoop() {
     r: POOP_RADIUS, alive: true,
     trail: [],
   });
-  if (shouldRecordRunStats()) stats.totalPoops++;
+  if (shouldRecordRunStats()) {
+    stats.totalPoops++;
+    recordRunShot();
+  }
   tutorialOnShotFired();
-  shootCooldown = 22;
+  shootCooldown = getRunShootCooldown(22);
   sndFart();
   // Сам выстрел больше не лечит: облегчение даёт только подтверждённое попадание.
   // Хозяин слышит точку выстрела, даже если мебель перекрыла снаряд.
@@ -65,7 +68,7 @@ function updatePoops() {
 
     // Вышла за границы
     if (p.x < b.left-20 || p.x > b.right+20 || p.y < b.top-20 || p.y > b.bottom+20) {
-      p.alive = false; comboCount = 0; continue;
+      p.alive = false; comboCount = 0; recordRunMiss(); continue;
     }
 
     // Попала в препятствие
@@ -73,6 +76,7 @@ function updatePoops() {
     if (hitsObstacles(pr)) {
       p.alive = false;
       comboCount = 0;
+      recordRunMiss();
       tutorialOnShotBlocked();
       continue;
     }
@@ -81,10 +85,15 @@ function updatePoops() {
     if (owner.active && circleRect({x:p.x, y:p.y, r:p.r}, ownerRect())) {
       p.alive = false;
       comboCount++;
-      comboTimer = 180;
+      comboTimer = getRunComboWindowTicks();
+      recordRunHit();
 
       // Попадание снижает срочность
-      player.urge = clamp(player.urge - DIFF[difficulty].hitUrgeReduce, 0, player.maxUrge);
+      player.urge = clamp(
+        player.urge - DIFF[difficulty].hitUrgeReduce * getRunHitReliefScale(),
+        0,
+        player.maxUrge
+      );
 
       // Добавляем какашку на лицо хозяина
       owner.poopHits++;

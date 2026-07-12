@@ -67,7 +67,10 @@ const player = {
     // Гарантия: кот не может быть внутри препятствия (напр. из-за движущегося)
     escapeObstacles(this);
 
-    const spd = this.speed * (speedBoostTimer > 0 ? 1.7 : 1.0);
+    const currentUrgeRatio = this.urge / this.maxUrge;
+    const spd = this.speed *
+      (speedBoostTimer > 0 ? 1.7 : 1.0) *
+      getRunPlayerSpeedScale(currentUrgeRatio);
     let dx = 0, dy = 0;
     if (keys["ArrowLeft"]  || keys["a"] || keys["A"]) { dx = -1; lastDir = {x:-1, y:0}; }
     if (keys["ArrowRight"] || keys["d"] || keys["D"]) { dx =  1; lastDir = {x: 1, y:0}; }
@@ -93,7 +96,7 @@ const player = {
     }
 
     // Срочность растёт по актовому effectiveLevel и ограничена мягким капом.
-    const urgeRate = diff.urgeRate * getUrgeScale(level);
+    const urgeRate = diff.urgeRate * getUrgeScale(level) * getRunUrgeRateScale();
     this.urge = clamp(this.urge + urgeRate/60, 0, this.maxUrge);
 
     // Паника
@@ -132,6 +135,7 @@ const player = {
       stopPanicMelody();
       stopMelody();
       lives--;
+      recordRunLifeLost();
       if (lives <= 0) {
         gameState = "accident";
         overlayTimer = 0;
@@ -150,7 +154,7 @@ const player = {
     const lr = {x:litterBox.x, y:litterBox.y, width:litterBox.width, height:litterBox.height};
     const onLitter = rectsOverlap(pr, lr) && tutorialCanUseLitter();
     if (onLitter) {
-      const poopTime = DIFF[difficulty].poopTime;
+      const poopTime = getRunPoopTime(DIFF[difficulty].poopTime);
       poopProgress++;
       isPooping = true;
       if (poopProgress >= poopTime) {
@@ -162,18 +166,8 @@ const player = {
           completeTutorialStage();
           return;
         }
-        score += Math.max(1, Math.floor((1 - this.urge/this.maxUrge)*10) + level);
-        stats.update(score, level);
-        level++;
-        this.urge = clamp(this.urge - 30, 0, this.maxUrge);
-        speedBoostTimer = 0; yarnFreezeTimer = 0;
-        comboCount = 0; comboTimer = 0;
-        spawnConfetti(litterBox.x+litterBox.width/2, litterBox.y+litterBox.height/2);
-        generateLevel();
-        syncLocationMelody();
-        owner.activate();
-        sndWin();
-        levelMessageTimer = 180;
+        completeScoredLevel();
+        return;
       }
     } else {
       // Ушёл с лотка — сбрасываем прогресс
@@ -187,6 +181,7 @@ const player = {
       const br = {x:b.x-20, y:b.y-20, width:40, height:40};
       if (rectsOverlap(pr, br)) {
         applyBonus(b.type);
+        recordRiskyBonusPickup(b);
         tutorialOnBonusPicked(b.type);
         b.alive = false;
         sndPickup();

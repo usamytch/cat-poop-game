@@ -119,7 +119,7 @@ function drawLitterBox() {
 
   // --- Прогресс-бар покакания ---
   if (isPooping && poopProgress > 0) {
-    const poopTime = DIFF[difficulty].poopTime;
+    const poopTime = getRunPoopTime(DIFF[difficulty].poopTime);
     const ratio = poopProgress / poopTime;
     const bw = lw + 10;
     const bx = lx - 5;
@@ -185,8 +185,11 @@ function drawUI() {
 
   ctx.fillStyle = panelColor;
   ctx.beginPath(); ctx.roundRect(dockX, dockY, dockW, dockH, panelR); ctx.fill();
-  ctx.strokeStyle = "rgba(255,255,255,0.12)";
-  ctx.lineWidth = 1;
+  const hudFrame = getSelectedHudFrame();
+  ctx.strokeStyle = hudFrame === "gold" ? "rgba(255,213,79,0.78)"
+    : hudFrame === "danger" ? "rgba(255,82,120,0.82)"
+    : "rgba(255,255,255,0.12)";
+  ctx.lineWidth = hudFrame === "classic" ? 1 : 2;
   ctx.beginPath(); ctx.roundRect(dockX+0.5, dockY+0.5, dockW-1, dockH-1, panelR); ctx.stroke();
   ctx.fillStyle = p.accent || "rgba(255,255,255,0.25)";
   ctx.globalAlpha = 0.42;
@@ -222,7 +225,8 @@ function drawUI() {
   ctx.globalAlpha = locationAlpha;
   const locationText = tutorial
     ? "🎓 "+(tutorialState.stage+1)+"/3 · "+TUTORIAL_STAGES[tutorialState.stage].title
-    : (currentLocation.icon || "📍")+" "+currentLocation.name+" · "+actLabel+" · Уровень "+level;
+    : (currentLocation.icon || "📍")+" "+currentLocation.name+" · "+actLabel+" · Уровень "+level+
+      (runMode === "campaign" ? "/"+RUN.campaignLevels : " ∞");
   ctx.fillText(locationText, infoX, topY);
   ctx.globalAlpha = 1;
 
@@ -251,7 +255,9 @@ function drawUI() {
     ? (IS_MOBILE ? "🎓" : "🎓 ОБУЧЕНИЕ")
     : IS_MOBILE
       ? (difficulty === "chaos" ? "😈" : "😼")
-      : progression.modifier ? DIFF[difficulty].label+" · "+progression.modifier.label : DIFF[difficulty].label;
+      : progression.modifier
+        ? DIFF[difficulty].label+" · "+progression.modifier.label
+        : DIFF[difficulty].label+" · "+(runMode === "campaign" ? "Кампания" : "Endless");
   ctx.fillStyle = "rgba(255,255,255,0.68)";
   setFont("bold 13px Arial");
   ctx.textAlign = "right";
@@ -352,7 +358,6 @@ function drawLocationRuleBanner() {
 
 // ===== СТАРТОВЫЙ ЭКРАН =====
 function drawStartScreen() {
-  // OPT 13: WORLD.width/height вместо canvas.width/height
   ctx.fillStyle = "#1a1a2e"; ctx.fillRect(0,0,WORLD.width,WORLD.height);
 
   ctx.fillStyle = "rgba(255,255,255,0.6)";
@@ -363,48 +368,82 @@ function drawStartScreen() {
 
   ctx.save();
   ctx.textAlign = "center";
-  setFont("bold 72px Arial");
+  setFont("bold 54px Arial");
   ctx.fillStyle = "#ffd54f";
   ctx.shadowColor = "#ff9800"; ctx.shadowBlur = 30;
-  ctx.fillText("🐱 CAT POOP GAME", WORLD.width/2, 130);
+  ctx.fillText("🐱 CAT POOP GAME", WORLD.width/2, 82);
   ctx.shadowBlur = 0;
 
-  setFont("bold 26px Arial"); ctx.fillStyle = "#fff";
-  ctx.fillText("Доведи кота до лотка — пока не поздно!", WORLD.width/2, 178);
+  setFont("bold 21px Arial"); ctx.fillStyle = "#fff";
+  ctx.fillText("Доведи кота до лотка — пока не поздно!", WORLD.width/2, 120);
 
-  if (stats.highScore > 0) {
-    setFont("bold 22px Arial"); ctx.fillStyle = "#ffd54f";
-    ctx.fillText("🏆 Рекорд: "+stats.highScore+"  |  Лучший уровень: "+stats.bestLevel, WORLD.width/2, 218);
+  if (gameMode !== "tutorial") {
+    const record = getRunRecord(runMode, difficulty);
+    setFont("bold 17px Arial"); ctx.fillStyle = "#ffd54f";
+    const formatLabel = runMode === "campaign" ? "КАМПАНИЯ" : "ENDLESS";
+    ctx.fillText("🏆 "+formatLabel+" · "+DIFF[difficulty].label+" · Рекорд "+record.highScore+
+      " · Лучший уровень "+record.bestLevel+(record.wins ? " · Побед "+record.wins : ""), WORLD.width/2, 154);
   }
 
-  setFont("16px Arial"); ctx.fillStyle = "#b0bec5";
-  ctx.fillText("Поймано хозяином: "+stats.totalCaught+"  |  Аварий: "+stats.totalAccidents+"  |  Какашек выпущено: "+stats.totalPoops, WORLD.width/2, 248);
+  setFont("14px Arial"); ctx.fillStyle = "#b0bec5";
+  ctx.fillText("Поймано: "+stats.totalCaught+"  ·  Аварий: "+stats.totalAccidents+
+    "  ·  Выстрелов: "+stats.totalPoops+"  ·  Журнал: "+runProfile.unlocks.locations.length+"/6"+
+    "  ·  Достижения: "+runProfile.unlocks.achievements.length+"/"+ACHIEVEMENTS.length, WORLD.width/2, 184);
 
-  setFont("bold 24px Arial"); ctx.fillStyle = "#fff";
-  ctx.fillText("Выбери режим:", WORLD.width/2, 300);
+  setFont("bold 19px Arial"); ctx.fillStyle = "#fff";
+  ctx.fillText("РЕЖИМ", WORLD.width/2, 224);
 
   const diffs = [
-    {key:"tutorial", label:"🎓 Обучение", desc:"3 постановочных экрана · без рекордов · можно повторять"},
-    {key:"normal", label:"😼 Нормал",   desc:"Стандартный режим · хозяин со 2 уровня · облегчение на ходу"},
-    {key:"chaos",  label:"😈 Хаос",     desc:"Быстрая срочность · хозяин с 1 уровня · меткое облегчение"},
+    {key:"tutorial", label:"🎓 Обучение", desc:"3 постановочных экрана"},
+    {key:"normal", label:"😼 Нормал", desc:"Хозяин со 2 уровня"},
+    {key:"chaos", label:"😈 Хаос", desc:"Быстрее и агрессивнее"},
   ];
   diffs.forEach((d, i) => {
     const sel = gameMode === d.key;
-    const bx = WORLD.width/2-220, by = 330+i*80, bw = 440, bh = 62;
+    const bx = 135+i*320, by = 250, bw = 290, bh = 82;
     ctx.fillStyle = sel ? "rgba(255,213,79,0.22)" : "rgba(255,255,255,0.07)";
     ctx.beginPath(); ctx.roundRect(bx,by,bw,bh,16); ctx.fill();
     if (sel) { ctx.strokeStyle="#ffd54f"; ctx.lineWidth=3; ctx.beginPath(); ctx.roundRect(bx,by,bw,bh,16); ctx.stroke(); }
-    setFont("bold 22px Arial"); ctx.fillStyle = sel ? "#ffd54f" : "#fff";
-    ctx.fillText(d.label, WORLD.width/2, by+26);
+    setFont("bold 21px Arial"); ctx.fillStyle = sel ? "#ffd54f" : "#fff";
+    ctx.fillText(d.label, bx+bw/2, by+32);
     setFont("14px Arial"); ctx.fillStyle = "#b0bec5";
-    ctx.fillText(d.desc, WORLD.width/2, by+48);
+    ctx.fillText(d.desc, bx+bw/2, by+59);
   });
+
+  setFont("bold 19px Arial"); ctx.fillStyle = gameMode === "tutorial" ? "rgba(255,255,255,0.35)" : "#fff";
+  ctx.fillText("ФОРМАТ ЗАБЕГА", WORLD.width/2, 374);
+  const formats = [
+    { key:"campaign", label:"🏁 КАМПАНИЯ", desc:"25 уровней · настоящий финал" },
+    { key:"endless", label:"♾️ ENDLESS", desc:"После первой победы" },
+  ];
+  formats.forEach((format, i) => {
+    const locked = format.key === "endless" && !runProfile.unlocks.endless;
+    const selected = gameMode !== "tutorial" && runMode === format.key;
+    const bx = 295+i*320, by = 400, bw = 290, bh = 76;
+    ctx.globalAlpha = gameMode === "tutorial" ? 0.34 : locked ? 0.50 : 1;
+    ctx.fillStyle = selected ? "rgba(255,213,79,0.22)" : "rgba(255,255,255,0.07)";
+    ctx.beginPath(); ctx.roundRect(bx,by,bw,bh,16); ctx.fill();
+    if (selected) { ctx.strokeStyle="#ffd54f"; ctx.lineWidth=3; ctx.beginPath(); ctx.roundRect(bx,by,bw,bh,16); ctx.stroke(); }
+    setFont("bold 19px Arial"); ctx.fillStyle = selected ? "#ffd54f" : "#fff";
+    ctx.fillText(locked ? "🔒 ENDLESS" : format.label, bx+bw/2, by+29);
+    setFont("13px Arial"); ctx.fillStyle = "#b0bec5";
+    ctx.fillText(format.desc, bx+bw/2, by+54);
+    ctx.globalAlpha = 1;
+  });
+
+  const pawStyle = PAW_STYLE_LABELS[getSelectedPawStyle()];
+  const hudFrame = HUD_FRAME_LABELS[getSelectedHudFrame()];
+  setFont("14px Arial"); ctx.fillStyle = "rgba(255,255,255,0.62)";
+  ctx.fillText(IS_MOBILE
+    ? "Косметика: тап слева — след «"+pawStyle+"»  ·  справа — рамка «"+hudFrame+"»"
+    : "Косметика: Z — след «"+pawStyle+"»  ·  X — рамка «"+hudFrame+"»",
+    WORLD.width/2, 510);
 
   // На мобиле кнопку "ИГРАТЬ" и подсказку с клавишами рисует drawTouchControls()
   if (!IS_MOBILE) {
     const t = _now*0.003;
     const sc = 1 + Math.sin(t)*0.04;
-    ctx.save(); ctx.translate(WORLD.width/2, 590); ctx.scale(sc, sc);
+    ctx.save(); ctx.translate(WORLD.width/2, 575); ctx.scale(sc, sc);
     ctx.fillStyle = "#ffd54f";
     ctx.beginPath(); ctx.roundRect(-140,-28,280,56,28); ctx.fill();
     setFont("bold 26px Arial"); ctx.fillStyle = "#1a1a2e";
@@ -412,10 +451,143 @@ function drawStartScreen() {
     ctx.restore();
 
     setFont("15px Arial"); ctx.fillStyle = "rgba(255,255,255,0.45)";
-    ctx.fillText("WASD / Стрелки — движение  |  Пробел — стрелять  |  M — " + (muted ? "🔇 выкл" : "🔊 вкл"), WORLD.width/2, 650);
+    ctx.fillText("1/2/3 — режим  ·  ←/→ или E — формат  ·  M — " + (muted ? "🔇 выкл" : "🔊 вкл"), WORLD.width/2, 642);
   }
 
   ctx.restore();
+}
+
+function _drawActCompleteContent() {
+  const report = currentActReport;
+  if (!report) return;
+  const cx = WORLD.width / 2;
+
+  setFont("bold 42px Arial");
+  ctx.fillStyle = "#ffd54f";
+  ctx.shadowColor = "#ff9800";
+  ctx.shadowBlur = 20;
+  ctx.fillText("АКТ "+report.actNumber+" ПРОЙДЕН · РАНГ "+report.rank, cx, 70);
+  ctx.shadowBlur = 0;
+
+  const metrics = [
+    ["⏱ ВРЕМЯ", report.seconds+" сек"],
+    ["💩 СРОЧНОСТЬ", report.avgUrge+"% в среднем"],
+    ["🎯 ТОЧНОСТЬ", report.accuracy+"% · "+report.hits+"/"+report.shots],
+    ["💔 ЖИЗНИ", "Потеряно "+report.livesLost],
+    ["🎁 РИСК", "Бонусов "+report.riskyBonuses],
+  ];
+  const metricW = 180, metricH = 74, metricGap = 16;
+  const metricStart = (WORLD.width - (metrics.length*metricW + (metrics.length-1)*metricGap))/2;
+  metrics.forEach((metric, i) => {
+    const x = metricStart + i*(metricW+metricGap);
+    ctx.fillStyle = "rgba(255,255,255,0.09)";
+    ctx.beginPath(); ctx.roundRect(x, 98, metricW, metricH, 14); ctx.fill();
+    ctx.strokeStyle = "rgba(255,255,255,0.16)"; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.roundRect(x+0.5, 98.5, metricW-1, metricH-1, 14); ctx.stroke();
+    setFont("bold 13px Arial"); ctx.fillStyle = "rgba(255,255,255,0.62)";
+    ctx.fillText(metric[0], x+metricW/2, 124);
+    setFont("bold 16px Arial"); ctx.fillStyle = "#fff";
+    ctx.fillText(metric[1], x+metricW/2, 151);
+  });
+
+  if (currentHabitChoices.length === 0) {
+    setFont("bold 28px Arial"); ctx.fillStyle = "#fff";
+    ctx.fillText("Все четыре привычки уже выбраны", cx, 260);
+    setFont("20px Arial"); ctx.fillStyle = "#b0bec5";
+    ctx.fillText("Дальше решает только мастерство", cx, 304);
+    ctx.fillStyle = "#ffd54f";
+    ctx.beginPath(); ctx.roundRect(cx-190, 350, 380, 64, 32); ctx.fill();
+    setFont("bold 22px Arial"); ctx.fillStyle = "#1a1a2e";
+    ctx.fillText(IS_MOBILE ? "▶ ПРОДОЛЖИТЬ" : "▶ ПРОДОЛЖИТЬ · Enter", cx, 390);
+    return;
+  }
+
+  setFont("bold 23px Arial"); ctx.fillStyle = "#fff";
+  ctx.fillText("ВЫБЕРИ ОДНУ КОШАЧЬЮ ПРИВЫЧКУ", cx, 218);
+  setFont("14px Arial"); ctx.fillStyle = "rgba(255,255,255,0.58)";
+  ctx.fillText("Она останется до конца текущего забега", cx, 244);
+
+  const cardW = 300, cardH = 224, cardGap = 24;
+  const startX = (WORLD.width - (cardW*3 + cardGap*2))/2;
+  currentHabitChoices.forEach((habit, i) => {
+    const x = startX + i*(cardW+cardGap), y = 270;
+    ctx.fillStyle = "rgba(255,255,255,0.10)";
+    ctx.beginPath(); ctx.roundRect(x,y,cardW,cardH,18); ctx.fill();
+    ctx.strokeStyle = "rgba(255,213,79,0.42)"; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.roundRect(x+1,y+1,cardW-2,cardH-2,18); ctx.stroke();
+    setFont("32px Arial"); ctx.fillStyle = "#fff";
+    ctx.fillText(habit.icon, x+cardW/2, y+48);
+    setFont("bold 18px Arial"); ctx.fillStyle = "#ffd54f";
+    ctx.fillText(habit.title, x+cardW/2, y+82);
+    setFont("bold 15px Arial"); ctx.fillStyle = "#8be9a8";
+    ctx.fillText("+ "+habit.benefit, x+cardW/2, y+119);
+    setFont("15px Arial"); ctx.fillStyle = "#ff9e9e";
+    ctx.fillText("− "+habit.cost, x+cardW/2, y+151);
+    ctx.fillStyle = "rgba(255,213,79,0.18)";
+    ctx.beginPath(); ctx.roundRect(x+68,y+173,cardW-136,36,18); ctx.fill();
+    setFont("bold 15px Arial"); ctx.fillStyle = "#ffd54f";
+    ctx.fillText(IS_MOBILE ? "ВЫБРАТЬ" : (i+1)+" — ВЫБРАТЬ", x+cardW/2, y+197);
+  });
+
+  const chosen = getSelectedHabits().map(habit => habit.icon+" "+habit.title).join("  ·  ");
+  setFont("14px Arial"); ctx.fillStyle = "rgba(255,255,255,0.56)";
+  ctx.fillText(chosen ? "Уже в характере: "+chosen : "Пока привычек нет", cx, 535);
+}
+
+function _formatRunTime(ms) {
+  const total = Math.max(0, Math.round(ms / 1000));
+  const minutes = Math.floor(total / 60);
+  const seconds = String(total % 60).padStart(2, "0");
+  return minutes+":"+seconds;
+}
+
+function _drawVictoryContent() {
+  const cx = WORLD.width/2;
+  const finalReport = currentActReport;
+  setFont("bold 58px Arial"); ctx.fillStyle = "#ffd54f";
+  ctx.shadowColor = "#ff9800"; ctx.shadowBlur = 28;
+  ctx.fillText("🎉 ЗАБЕГ ЗАВЕРШЁН!", cx, 105);
+  ctx.shadowBlur = 0;
+  setFont("bold 23px Arial"); ctx.fillStyle = "#fff";
+  ctx.fillText("Кот пережил пять актов и покорил Дачу", cx, 145);
+
+  setFont("bold 24px Arial"); ctx.fillStyle = "#ffd54f";
+  ctx.fillText("СЧЁТ "+score+"   ·   ВРЕМЯ "+_formatRunTime(simulationTimeMs)+
+    "   ·   ФИНАЛЬНЫЙ РАНГ "+(finalReport ? finalReport.rank : "—"), cx, 200);
+  const ranks = runActReports.map(report => report.rank).join("  ·  ");
+  setFont("17px Arial"); ctx.fillStyle = "#b0bec5";
+  ctx.fillText("Ранги актов: "+ranks, cx, 238);
+
+  const habits = getSelectedHabits().map(habit => habit.icon+" "+habit.title).join("  ·  ");
+  setFont("15px Arial"); ctx.fillStyle = "rgba(255,255,255,0.72)";
+  ctx.fillText(habits ? "Характер забега: "+habits : "Забег пройден без привычек", cx, 278);
+
+  ctx.fillStyle = "rgba(255,213,79,0.12)";
+  ctx.beginPath(); ctx.roundRect(cx-330, 314, 660, 100, 18); ctx.fill();
+  ctx.strokeStyle = "rgba(255,213,79,0.48)"; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.roundRect(cx-329, 315, 658, 98, 18); ctx.stroke();
+  setFont("bold 22px Arial"); ctx.fillStyle = "#ffd54f";
+  ctx.fillText("🔓 ОТКРЫТ ENDLESS", cx, 349);
+  setFont("16px Arial"); ctx.fillStyle = "#fff";
+  ctx.fillText("Новые следы лап и рамка HUD уже выбраны", cx, 382);
+
+  setFont("14px monospace"); ctx.fillStyle = "rgba(255,255,255,0.52)";
+  ctx.fillText("Seed: "+globalSeed, cx, 444);
+  if (!IS_MOBILE) {
+    setFont("14px Arial");
+    ctx.fillText("R — повторить этот забег", cx, 476);
+  }
+  if (score >= getRunRecord("campaign", difficulty).highScore && score > 0) {
+    setFont("bold 20px Arial"); ctx.fillStyle = "#ffd54f";
+    ctx.fillText("🏆 ЛУЧШИЙ РЕЗУЛЬТАТ ЭТОГО ФОРМАТА", cx, IS_MOBILE ? 486 : 516);
+  }
+
+  if (!IS_MOBILE) {
+    ctx.fillStyle = "#ffd54f";
+    ctx.beginPath(); ctx.roundRect(cx-160, 540, 320, 50, 25); ctx.fill();
+    setFont("bold 22px Arial"); ctx.fillStyle = "#1a1a2e";
+    ctx.fillText("↩ В МЕНЮ · Enter", cx, 573);
+  }
 }
 
 // ===== ОВЕРЛЕЙ КОНЦА =====
@@ -433,6 +605,12 @@ function drawOverlay() {
 
   ctx.save(); ctx.textAlign = "center";
   const cx = WORLD.width/2, cy = WORLD.height/2;
+
+  if (gameState === "actComplete") {
+    _drawActCompleteContent();
+    ctx.restore();
+    return;
+  }
 
   if (gameState === "paused") {
     setFont("bold 72px Arial");
@@ -499,6 +677,12 @@ function drawOverlay() {
     return;
   }
 
+  if (gameState === "win") {
+    _drawVictoryContent();
+    ctx.restore();
+    return;
+  }
+
   if (gameState === "tutorialComplete") {
     setFont("bold 58px Arial"); ctx.fillStyle = "#ffd54f";
     ctx.shadowColor = "#ff9800"; ctx.shadowBlur = 30;
@@ -508,15 +692,6 @@ function drawOverlay() {
     ctx.fillText("Теперь правила будут честными, но пощады не будет.", cx, cy-15);
     setFont("20px Arial"); ctx.fillStyle = "#b0bec5";
     ctx.fillText("Основным режимом выбран 😼 Нормал", cx, cy+25);
-  } else if (gameState === "win") {
-    setFont("bold 72px Arial"); ctx.fillStyle = "#ffd54f";
-    ctx.shadowColor = "#ff9800"; ctx.shadowBlur = 30;
-    ctx.fillText("🎉 ПОБЕДА!", cx, cy-60);
-    ctx.shadowBlur = 0;
-    setFont("bold 28px Arial"); ctx.fillStyle = "#fff";
-    ctx.fillText("Уровень "+level+" пройден!", cx, cy-10);
-    setFont("22px Arial"); ctx.fillStyle = "#b0bec5";
-    ctx.fillText("Счёт: "+score, cx, cy+30);
   } else if (gameState === "accident") {
     setFont("bold 64px Arial"); ctx.fillStyle = "#ef5350";
     ctx.shadowColor = "#b71c1c"; ctx.shadowBlur = 24;
@@ -538,17 +713,17 @@ function drawOverlay() {
   }
 
   if (gameState !== "tutorialComplete") {
+    setFont("bold 17px Arial"); ctx.fillStyle = "#fff";
+    const failureRecord = score >= stats.highScore && score > 0;
+    ctx.fillText(runProgressLabel()+(failureRecord ? " · 🏆 Новый рекорд" : ""), cx, cy+66);
+    setFont("16px Arial"); ctx.fillStyle = "#ffccbc";
+    ctx.fillText(getRunFailureTip(), cx, cy+98);
     setFont("14px monospace"); ctx.fillStyle = "rgba(255,255,255,0.48)";
-    ctx.fillText("Seed: "+globalSeed, cx, cy+55);
+    ctx.fillText("Seed: "+globalSeed, cx, cy+132);
     if (!IS_MOBILE) {
       setFont("14px Arial");
-      ctx.fillText("R — повторить этот забег", cx, cy+75);
+      ctx.fillText("R — повторить этот забег", cx, cy+164);
     }
-  }
-
-  if (gameState !== "tutorialComplete" && score >= stats.highScore && score > 0) {
-    setFont("bold 22px Arial"); ctx.fillStyle = "#ffd54f";
-    ctx.fillText("🏆 НОВЫЙ РЕКОРД!", cx, cy+100);
   }
 
   // На мобиле кнопку "В меню" рисует drawTouchControls()
@@ -559,7 +734,7 @@ function drawOverlay() {
     const buttonLabel = tutorialComplete ? "▶  ПРОДОЛЖИТЬ" : "↩  В меню  (Enter)";
     const t = _now*0.003;
     const sc = 1 + Math.sin(t)*0.04;
-    ctx.save(); ctx.translate(cx, cy+155); ctx.scale(sc, sc);
+    ctx.save(); ctx.translate(cx, tutorialComplete ? cy+95 : cy+218); ctx.scale(sc, sc);
     ctx.fillStyle = "#ffd54f";
     ctx.beginPath(); ctx.roundRect(-buttonW/2,-buttonH/2,buttonW,buttonH,buttonH/2); ctx.fill();
     setFont(tutorialComplete ? "bold 24px Arial" : "bold 22px Arial");

@@ -255,3 +255,25 @@ describe('BASEMENT', () => {
     expect(BASEMENT.wallEmbedCount.min).toBeGreaterThanOrEqual(1);
   });
 });
+
+// ---------------------------------------------------------------------------
+describe('RUN and RUN_HABITS', () => {
+  it('defines a five-act, 25-level campaign', () => {
+    expect(RUN.campaignLevels).toBe(25);
+    expect(RUN.campaignLevels / ACT.length).toBe(5);
+  });
+
+  it('keeps every habit explicitly two-sided', () => {
+    expect(RUN_HABITS.length).toBeGreaterThanOrEqual(6);
+    for (const habit of RUN_HABITS) {
+      expect(habit.benefit.length).toBeGreaterThan(0);
+      expect(habit.cost.length).toBeGreaterThan(0);
+      expect(Object.keys(habit.effects).length).toBeGreaterThanOrEqual(2);
+    }
+  });
+
+  it('does not define a daily mode or daily seed', () => {
+    expect(RUN).not.toHaveProperty('daily');
+    expect(RUN).not.toHaveProperty('dailySeed');
+  });
+});

@@ -22,7 +22,9 @@ beforeEach(() => {
   resetGameState();
   gameMode = 'normal';
   difficulty = 'normal';
+  runMode = 'campaign';
   gameState = 'playing';
+  resetRunProgress();
   currentLocation = locationThemes[0];
   currentLevelProgression = getLevelProgression(1);
   globalThis._now = 0;
@@ -39,9 +41,9 @@ describe('unified bottom HUD', () => {
     const labels = drawnLabels();
 
     expect(labels).toContain('×3');
-    expect(labels).toContain('🛋️ Зал · 1/5 · Уровень 1');
+    expect(labels).toContain('🛋️ Зал · 1/5 · Уровень 1/25');
     expect(labels).toContain('СЧЁТ  0');
-    expect(labels).toContain('😼 Нормал');
+    expect(labels).toContain('😼 Нормал · Кампания');
     expect(labels).toContain('💩 ХОЧЕТСЯ');
     expect(labels).toContain('0%');
   });
@@ -60,7 +62,7 @@ describe('unified bottom HUD', () => {
       currentLocation = theme;
       ctxMock.fillText.mockClear();
       drawUI();
-      expect(drawnLabels()).toContain(`${theme.icon} ${theme.name} · 1/5 · Уровень 1`);
+      expect(drawnLabels()).toContain(`${theme.icon} ${theme.name} · 1/5 · Уровень 1/25`);
     }
   });
 
@@ -98,5 +100,45 @@ describe('unified bottom HUD', () => {
     expect(labels).toContain('🎓 ОБУЧЕНИЕ');
     expect(labels).not.toContain('×3');
     expect(labels.some(label => label.startsWith('СЧЁТ'))).toBe(false);
+  });
+});
+
+describe('run overlays', () => {
+  it('renders all five act metrics and three habit choices', () => {
+    gameState = 'actComplete';
+    currentActReport = {
+      actNumber: 1, seconds: 142, avgUrge: 38, accuracy: 75,
+      hits: 6, shots: 8, livesLost: 1, riskyBonuses: 2, rank: 'A',
+    };
+    currentHabitChoices = RUN_HABITS.slice(0, 3);
+
+    drawOverlay();
+    const labels = drawnLabels();
+
+    expect(labels).toContain('АКТ 1 ПРОЙДЕН · РАНГ A');
+    expect(labels).toContain('142 сек');
+    expect(labels).toContain('38% в среднем');
+    expect(labels).toContain('75% · 6/8');
+    expect(labels).toContain('Потеряно 1');
+    expect(labels).toContain('Бонусов 2');
+    expect(labels).toContain('1 — ВЫБРАТЬ');
+    expect(labels).toContain('2 — ВЫБРАТЬ');
+    expect(labels).toContain('3 — ВЫБРАТЬ');
+  });
+
+  it('renders a finite campaign victory summary', () => {
+    gameState = 'win';
+    level = 25;
+    score = 321;
+    simulationTimeMs = 245000;
+    currentActReport = { rank: 'S' };
+    runActReports = [{ rank:'A' }, { rank:'S' }, { rank:'B' }, { rank:'A' }, { rank:'S' }];
+
+    drawOverlay();
+    const labels = drawnLabels();
+
+    expect(labels).toContain('🎉 ЗАБЕГ ЗАВЕРШЁН!');
+    expect(labels).toContain('🔓 ОТКРЫТ ENDLESS');
+    expect(labels).toContain('Ранги актов: A  ·  S  ·  B  ·  A  ·  S');
   });
 });

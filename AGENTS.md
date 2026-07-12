@@ -48,6 +48,7 @@ read_file("README.md")
 | [`js/player.js`](js/player.js) | Объект player: движение, срочность, лоток, паника |
 | [`js/owner.js`](js/owner.js) | Объект owner: AI, A*-навигация, бегство, человечность |
 | [`js/projectiles.js`](js/projectiles.js) | Какашки: выстрел, движение, попадание, комбо |
+| [`js/run.js`](js/run.js) | Кампания/Endless, отчёты актов, привычки, профиль и рекорды |
 | [`js/renderer-bg.js`](js/renderer-bg.js) | Offscreen canvas: фон, декор, статичные препятствия |
 | [`js/renderer-hud.js`](js/renderer-hud.js) | HUD, стартовый экран, оверлеи, лоток |
 | [`js/renderer.js`](js/renderer.js) | draw() — главный оркестратор рендеринга (~40 строк) |

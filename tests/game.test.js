@@ -14,6 +14,7 @@ function fullReset() {
   lives = 3;
   difficulty = 'normal';
   gameMode = 'normal';
+  runMode = 'campaign';
   gameState = 'start';
   tutorialState.active = false;
   tutorialState.completed = false;
@@ -51,6 +52,7 @@ function fullReset() {
   levelMessageTimer = 0;
   simulationTimeMs = 0;
   resetSimulationClock();
+  resetRunProgress();
 }
 
 beforeEach(fullReset);

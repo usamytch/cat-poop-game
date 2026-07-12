@@ -9,10 +9,10 @@ let catnipTimer = 0;  // хозяин уходит в угол и игнорир
 
 function applyBonus(type) {
   if (type === "fish") {
-    speedBoostTimer = 300;
+    speedBoostTimer = Math.round(300 * getRunBonusDurationScale());
     comboPopups.push({x:player.x+player.size/2, y:player.y-20, text:"🐟 Ускорение!", timer:80, color:"#4fc3f7"});
   } else if (type === "yarn") {
-    yarnFreezeTimer = 300;
+    yarnFreezeTimer = Math.round(300 * getRunBonusDurationScale());
     comboPopups.push({x:player.x+player.size/2, y:player.y-20, text:"🧶 Стоп хозяин!", timer:80, color:"#ce93d8"});
   } else if (type === "pill") {
     // На поздних уровнях таблетка снижает срочность сильнее:
@@ -27,7 +27,7 @@ function applyBonus(type) {
     comboPopups.push({x:player.x+player.size/2, y:player.y-20, text:"❤️ +1 жизнь!", timer:80, color:"#ef9a9a"});
   } else if (type === "catnip") {
     // Котовник: хозяин уходит в дальний угол на 10 секунд и игнорирует кота
-    catnipTimer = 600;
+    catnipTimer = Math.round(600 * getRunBonusDurationScale());
     comboPopups.push({x:player.x+player.size/2, y:player.y-20, text:"🌿 Хозяин ушёл!", timer:80, color:"#80cbc4"});
   }
 }

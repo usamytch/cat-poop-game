@@ -33,6 +33,7 @@ npx vitest run tests/integration/play-feel-regression.test.js
 | `tests/location-rules.test.js` | ковры, скольжение, еда, трава, обе фазы и performance contract Дачи |
 | `tests/grid.test.js` | сетка, занятость клеток, `aStarPath` |
 | `tests/game.test.js` | состояние игры, старт, respawn, ввод |
+| `tests/run.test.js` | победа на уровне 25, Endless, отчёты актов, привычки, профиль v2 и раздельные рекорды |
 | `tests/touch.test.js` | мобильное управление |
 | `tests/tutorial.test.js` | фиксированные этапы обучения, checkpoint, panic и изоляция статистики |
 | `tests/hud.test.js` | единая нижняя панель, label `ХОЧЕТСЯ`, effects chips и отсутствие рекорда/mute |
@@ -46,6 +47,10 @@ npx vitest run tests/integration/play-feel-regression.test.js
 - Срочность растёт по формуле `urgeRate / 60 * getUrgeScale(level)`, где `getUrgeScale()` использует актовый `effectiveLevel` и мягкий кап.
 - `getLevelProgression()` делит уровни на 5-уровневые акты, даёт sawtooth-инвариант `L5 > L4`, `L6 < L5`, `L6 > L1`.
 - Обычные локации идут блоками по 5 уровней и повторяются вариантами `II`, `III`, ...
+- В Campaign успешный уровень 25 даёт `win` и не создаёт уровень 26; в разблокированном Endless уровень 25 ведёт к 26-му.
+- После актов 1–4 появляется отчёт по пяти показателям и три детерминированных от seed предложения; за забег выбирается максимум четыре двусторонние привычки.
+- Рекорды `campaign/endless × normal/chaos` не смешиваются; профиль `cpg_profile_v2` не содержит постоянных балансных усилений.
+- Daily Seed и Daily-режим отсутствуют: новый забег случаен, `R` повторяет только явно показанный seed завершившегося забега.
 - Каждая обычная локация имеет одно правило; Дача перестраивает offscreen-фон только на музыкальной границе и не материализует мебель поверх персонажа.
 - Подвал появляется с вероятностью 8% на уровнях 9–19 и одним взаимоисключающим броском 10% DFS + 8% corridor на 20+.
 - Паника начинается при `urge / maxUrge > 0.75`, авария при `urge >= maxUrge`.
@@ -80,4 +85,5 @@ npx vitest run tests/integration/play-feel-regression.test.js
 - Любая новая механика бонуса требует unit-теста бонуса, pickup-теста игрока и хотя бы одного интеграционного сценария.
 - Любая правка обучения требует `tests/tutorial.test.js`, релевантные `game/player/owner/touch`-тесты и сценарный smoke-test во встроенном браузере.
 - Любая правка HUD требует `tests/hud.test.js` и browser screenshots обычного, tutorial, panic и touch-состояний.
+- Любая правка формата забега требует `tests/run.test.js`, проверки победы L25, перехода Endless L25→L26, межактового выбора на desktop/touch и итоговых экранов победы/поражения.
 - Для touch screenshot на desktop используется `?touch=1`: проверить старт, playing, panic, safe corridor HUD, карточку правила и карточку `5/5` в landscape.

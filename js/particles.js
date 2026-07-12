@@ -143,7 +143,8 @@ let _pawSpawnCounter = 0;
 function spawnPawTrail(x, y) {
   _pawSpawnCounter++;
   if (_pawSpawnCounter % 7 !== 0) return;
-  pawTrails.push({ x, y, alpha: 0.45, fade: 0.007, size: 14 });
+  const style = typeof getSelectedPawStyle === "function" ? getSelectedPawStyle() : "classic";
+  pawTrails.push({ x, y, alpha: 0.45, fade: 0.007, size: 14, style });
 }
 
 function updatePawTrails() {
@@ -162,8 +163,16 @@ function drawPawTrails() {
     if (t.alpha <= 0) continue;
     ctx.save();
     ctx.globalAlpha = t.alpha;
+    if (t.style === "spark") {
+      ctx.shadowColor = "#ffd54f";
+      ctx.shadowBlur = 8;
+    } else if (t.style === "shadow") {
+      ctx.globalAlpha = t.alpha * 0.72;
+      ctx.shadowColor = "#9c27b0";
+      ctx.shadowBlur = 10;
+    }
     // OPT 6: emoji-кэш — drawImage вместо fillText
-    const ec = getEmojiCanvas("🐾", t.size);
+    const ec = getEmojiCanvas(t.style === "spark" ? "✨" : "🐾", t.size);
     ctx.drawImage(ec, t.x - ec.width / 2, t.y - ec.height / 2);
     ctx.restore();
   }

@@ -39,7 +39,7 @@ if (IS_MOBILE) {
   // Кнопка "Выстрел 💩" — правый нижний угол
   const BTN_SHOOT = { cx: 1100, cy: 590, r: 60, label: "💩", touchId: null };
   // Кнопка "Старт / Продолжить / Меню" — центр экрана вне активной игры
-  const BTN_ACTION = { cx: 600, cy: 635, r: 55, label: "▶", touchId: null };
+  const BTN_ACTION = { cx: 600, cy: 560, r: 50, label: "▶", touchId: null };
   // Кнопка мьюта — верхний правый угол, всегда видна
   const BTN_MUTE = { cx: 1155, cy: 45, r: 38 };
   const BTN_PAUSE = { cx: 1070, cy: 45, r: 32 };
@@ -60,6 +60,10 @@ if (IS_MOBILE) {
   function inCircle(px, py, cx, cy, r) {
     const dx = px - cx, dy = py - cy;
     return dx*dx + dy*dy <= r*r;
+  }
+
+  function actionCenterY() {
+    return gameState === "tutorialComplete" ? 445 : BTN_ACTION.cy;
   }
 
   // ===== ОБНОВЛЕНИЕ keys{} ПО ПОЛОЖЕНИЮ РУЧКИ =====
@@ -122,7 +126,7 @@ if (IS_MOBILE) {
           const diffs = ["tutorial", "normal", "chaos"];
           let diffSelected = false;
           diffs.forEach((key, i) => {
-            const bx = canvas.width/2 - 220, by = 330 + i*80, bw = 440, bh = 62;
+            const bx = 135 + i*320, by = 250, bw = 290, bh = 82;
             if (x >= bx && x <= bx+bw && y >= by && y <= by+bh) {
               gameMode = key;
               difficulty = key === "chaos" ? "chaos" : "normal";
@@ -130,6 +134,34 @@ if (IS_MOBILE) {
             }
           });
           if (diffSelected) continue;
+
+          if (gameMode !== "tutorial" && y >= 400 && y <= 476) {
+            if (x >= 295 && x <= 585) { runMode = "campaign"; continue; }
+            if (x >= 615 && x <= 905 && runProfile.unlocks.endless) { runMode = "endless"; continue; }
+          }
+
+          if (y >= 488 && y <= 522) {
+            if (x < canvas.width/2) cycleRunCosmetic("pawStyles");
+            else cycleRunCosmetic("hudFrames");
+            continue;
+          }
+        }
+
+        if (gameState === "actComplete") {
+          if (currentHabitChoices.length === 0 && x >= 410 && x <= 790 && y >= 350 && y <= 414) {
+            chooseActHabit(0);
+            continue;
+          }
+          const cardW = 300, cardGap = 24;
+          const startX = (canvas.width - (cardW*3 + cardGap*2))/2;
+          for (let i = 0; i < currentHabitChoices.length; i++) {
+            const bx = startX + i*(cardW+cardGap);
+            if (x >= bx && x <= bx+cardW && y >= 270 && y <= 494) {
+              chooseActHabit(i);
+              break;
+            }
+          }
+          continue;
         }
 
         if (gameState === "paused" && isTutorialActive() &&
@@ -139,7 +171,7 @@ if (IS_MOBILE) {
         }
 
         // Кнопка "ИГРАТЬ" / "В меню" — точный радиус без лишнего запаса
-        if (inCircle(x, y, BTN_ACTION.cx, BTN_ACTION.cy, BTN_ACTION.r)) {
+        if (inCircle(x, y, BTN_ACTION.cx, actionCenterY(), BTN_ACTION.r)) {
           if (gameState === "start") {
             startGame();
           } else if (gameState === "paused") {
@@ -148,6 +180,8 @@ if (IS_MOBILE) {
             respawnPlayer();
           } else if (gameState === "tutorialComplete") {
             finishTutorialToMenu();
+          } else if (gameState === "actComplete") {
+            chooseActHabit(0);
           } else {
             gameState = "start";
           }
@@ -282,16 +316,20 @@ if (IS_MOBILE) {
         ctx.textAlign = "center";
         ctx.fillText("↩ В МЕНЮ", BTN_EXIT_TUTORIAL.cx, BTN_EXIT_TUTORIAL.cy + 7);
       }
+      if (gameState === "actComplete") {
+        ctx.restore();
+        return;
+      }
       // --- Кнопка действия (старт / в меню) ---
       const label = gameState === "start" ? "▶ ИГРАТЬ" :
         gameState === "paused" ? "▶ ПРОДОЛЖИТЬ" :
         gameState === "tutorialComplete" ? "▶ ДАЛЬШЕ" : "↩ МЕНЮ";
       const t = Date.now() * 0.003;
       const sc = 1 + Math.sin(t) * 0.04;
-      ctx.translate(BTN_ACTION.cx, BTN_ACTION.cy);
+      ctx.translate(BTN_ACTION.cx, actionCenterY());
       ctx.scale(sc, sc);
       ctx.beginPath();
-      ctx.roundRect(-130, -36, 260, 72, 36);
+      ctx.roundRect(-130, -30, 260, 60, 30);
       ctx.fillStyle = "#ffd54f";
       ctx.fill();
       ctx.font = "bold 28px Arial";

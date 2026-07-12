@@ -122,7 +122,7 @@ describe('touch.js — карточки сложности на стартово
   });
 
   it('тап по карточке "Обучение" выбирает tutorial на Normal-физике', () => {
-    touchStart(handlers['touchstart'], [makeTouch(600, 361)]);
+    touchStart(handlers['touchstart'], [makeTouch(280, 291)]);
     expect(getGameVar('gameMode')).toBe('tutorial');
     expect(getGameVar('difficulty')).toBe('normal');
     expect(globalThis.startGameCalled_touch).toBe(false);
@@ -130,25 +130,23 @@ describe('touch.js — карточки сложности на стартово
 
   it('тап по карточке "Нормал" (normal, i=1) меняет difficulty на normal', () => {
     setGameVar('gameMode', 'tutorial');
-    // normal: bx=380, by=410, bw=440, bh=62 → центр (600, 441)
-    touchStart(handlers['touchstart'], [makeTouch(600, 441)]);
+    // normal: bx=455, by=250, bw=290, bh=82 → центр (600, 291)
+    touchStart(handlers['touchstart'], [makeTouch(600, 291)]);
     expect(getGameVar('difficulty')).toBe('normal');
     expect(getGameVar('gameMode')).toBe('normal');
     expect(globalThis.startGameCalled_touch).toBe(false);
   });
 
   it('тап по карточке "Хаос" (chaos, i=2) меняет difficulty на chaos — регрессия BTN_ACTION overlap', () => {
-    // chaos: bx=380, by=490, bw=440, bh=62 → центр (600, 521)
-    // Расстояние до BTN_ACTION (600,590) = 69px < старый радиус 85px → раньше запускало игру!
-    touchStart(handlers['touchstart'], [makeTouch(600, 521)]);
+    // chaos: bx=775, by=250, bw=290, bh=82 → центр (920, 291)
+    touchStart(handlers['touchstart'], [makeTouch(920, 291)]);
     expect(getGameVar('difficulty')).toBe('chaos');
     expect(getGameVar('gameMode')).toBe('chaos');
     expect(globalThis.startGameCalled_touch).toBe(false);
   });
 
-  it('тап по нижнему краю карточки "Хаос" (y=551) не запускает игру', () => {
-    // y=551 — нижний край карточки Хаос (by=490, bh=62 → by+bh=552)
-    touchStart(handlers['touchstart'], [makeTouch(600, 551)]);
+  it('тап по нижнему краю карточки "Хаос" не запускает игру', () => {
+    touchStart(handlers['touchstart'], [makeTouch(920, 331)]);
     expect(getGameVar('difficulty')).toBe('chaos');
     expect(globalThis.startGameCalled_touch).toBe(false);
   });
@@ -160,6 +158,22 @@ describe('touch.js — карточки сложности на стартово
     touchStart(handlers['touchstart'], [makeTouch(600, 280)]);
     expect(getGameVar('difficulty')).toBe('normal');
     expect(getGameVar('gameMode')).toBe('normal');
+  });
+
+  it('закрытый Endless нельзя выбрать тапом', () => {
+    setGameVar('gameMode', 'normal');
+    setGameVar('runMode', 'campaign');
+    runProfile.unlocks.endless = false;
+    touchStart(handlers['touchstart'], [makeTouch(760, 438)]);
+    expect(getGameVar('runMode')).toBe('campaign');
+  });
+
+  it('открытый Endless выбирается отдельной карточкой', () => {
+    setGameVar('gameMode', 'normal');
+    setGameVar('runMode', 'campaign');
+    runProfile.unlocks.endless = true;
+    touchStart(handlers['touchstart'], [makeTouch(760, 438)]);
+    expect(getGameVar('runMode')).toBe('endless');
   });
 });
 
@@ -182,38 +196,38 @@ describe('touch.js — кнопка BTN_ACTION (ИГРАТЬ / В меню)', ()
 
   it('тап по BTN_ACTION в gameState=start вызывает startGame()', () => {
     setGameVar('gameState', 'start');
-    // BTN_ACTION: cx=600, cy=590, r=55 → тап прямо в центр
-    touchStart(handlers['touchstart'], [makeTouch(600, 590)]);
+    // BTN_ACTION: cx=600, cy=560, r=50 → тап прямо в центр
+    touchStart(handlers['touchstart'], [makeTouch(600, 560)]);
     expect(globalThis.startGameCalled_btn).toBe(true);
   });
 
   it('тап по BTN_ACTION в gameState=win переводит в start', () => {
     setGameVar('gameState', 'win');
-    touchStart(handlers['touchstart'], [makeTouch(600, 590)]);
+    touchStart(handlers['touchstart'], [makeTouch(600, 560)]);
     expect(getGameVar('gameState')).toBe('start');
   });
 
   it('тап по BTN_ACTION в gameState=caught переводит в start', () => {
     setGameVar('gameState', 'caught');
-    touchStart(handlers['touchstart'], [makeTouch(600, 590)]);
+    touchStart(handlers['touchstart'], [makeTouch(600, 560)]);
     expect(getGameVar('gameState')).toBe('start');
   });
 
   it('тап по BTN_ACTION в gameState=lifeLost вызывает respawnPlayer()', () => {
     setGameVar('gameState', 'lifeLost');
-    touchStart(handlers['touchstart'], [makeTouch(600, 590)]);
+    touchStart(handlers['touchstart'], [makeTouch(600, 560)]);
     expect(globalThis.respawnCalled_btn).toBe(true);
   });
 
   it('тап по BTN_ACTION в gameState=paused вызывает resumeGame()', () => {
     setGameVar('gameState', 'paused');
-    touchStart(handlers['touchstart'], [makeTouch(600, 590)]);
+    touchStart(handlers['touchstart'], [makeTouch(600, 560)]);
     expect(globalThis.resumeCalled_btn).toBe(true);
   });
 
   it('тап по BTN_ACTION после обучения подтверждает финал', () => {
     setGameVar('gameState', 'tutorialComplete');
-    touchStart(handlers['touchstart'], [makeTouch(600, 635)]);
+    touchStart(handlers['touchstart'], [makeTouch(600, 445)]);
     expect(globalThis.finishTutorialCalled_btn).toBe(true);
   });
 

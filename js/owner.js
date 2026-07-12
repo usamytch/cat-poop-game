@@ -63,7 +63,10 @@ const owner = {
     if (level < diff.firstLvl) { this.active = false; return; }
     this.active = true;
     const effectiveLevel = getEffectiveLevel(level);
-    this.speed = Math.min((diff.baseSpd + (effectiveLevel-1)*diff.spdPerLvl) * getOwnerSpeedScale(level), diff.maxSpd);
+    this.speed = Math.min(
+      (diff.baseSpd + (effectiveLevel-1)*diff.spdPerLvl) * getOwnerSpeedScale(level),
+      diff.maxSpd
+    ) * getRunOwnerSpeedScale();
 
     // ===== Безопасный ячеечный спавн в подвале =====
     // В подвале пиксельные углы могут попасть в заблокированные колонки (DFS: cols 28-29).
@@ -322,7 +325,7 @@ const owner = {
     const diff = DIFF[difficulty];
 
     if (nextState === "heard") {
-      this.heardTimer = diff.heardDuration;
+      this.heardTimer = Math.round(diff.heardDuration * getRunHeardDurationScale());
       sndOwnerHeard();
     } else if (nextState === "chase") {
       this.memoryTimer = diff.chaseMemory;
@@ -865,6 +868,7 @@ const owner = {
       stats.update(score, level);
       stopMelody();
       lives--;
+      recordRunLifeLost();
       if (lives <= 0) {
         gameState = "caught";
         overlayTimer = 0;
