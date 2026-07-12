@@ -238,6 +238,19 @@ describe('touch.js — кнопка BTN_ACTION (ИГРАТЬ / В меню)', ()
   });
 });
 
+describe('touch.js — главное меню без косметических настроек', () => {
+  it('тап по старой зоне косметики больше ничего не переключает', () => {
+    resetGameState();
+    setGameVar('gameState', 'start');
+    runProfile.cosmetics.pawStyles = ['classic', 'spark'];
+    runProfile.settings.pawStyle = 'classic';
+    const handlers = loadTouchJS();
+
+    touchStart(handlers['touchstart'], [makeTouch(440, 505)]);
+    expect(runProfile.settings.pawStyle).toBe('classic');
+  });
+});
+
 describe('touch.js — джойстик обновляет keys{}', () => {
   let handlers;
 

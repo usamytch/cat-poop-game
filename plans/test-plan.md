@@ -20,6 +20,7 @@ npx vitest run tests/integration/play-feel-regression.test.js
 | Файл | Назначение |
 |---|---|
 | `tests/audio.test.js` | Web Audio моки, звуковые эффекты, темы локаций, reverse panic |
+| `tests/feedback.test.js` | Pressure/critical/imminent, гистерезис, 3-tick hit-stop и visual/collision размеры |
 | `tests/math.test.js` | `clamp`, RNG, геометрия |
 | `tests/utils.test.js` | границы поля, rect helpers, столкновения, `escapeObstacles` |
 | `tests/config.test.js` | `DIFF`, `WORLD`, `BONUS_TYPES`, каталоги, `BASEMENT` |
@@ -53,8 +54,9 @@ npx vitest run tests/integration/play-feel-regression.test.js
 - Daily Seed и Daily-режим отсутствуют: новый забег случаен, `R` повторяет только явно показанный seed завершившегося забега.
 - Каждая обычная локация имеет одно правило; Дача перестраивает offscreen-фон только на музыкальной границе и не материализует мебель поверх персонажа.
 - Подвал появляется с вероятностью 8% на уровнях 9–19 и одним взаимоисключающим броском 10% DFS + 8% corridor на 20+.
-- Паника начинается при `urge / maxUrge > 0.75`, авария при `urge >= maxUrge`.
-- Для каждой локации есть обычная тема и ускоренный panic-вариант с математически развёрнутым таймлайном нот.
+- Паника начинается при `urge / maxUrge > 0.75`, переходит в critical на 85% и imminent на 95%; авария остаётся при `urge >= maxUrge`.
+- Для каждой локации есть обычная тема, pressure ×1.10 с исходным порядком нот и reverse panic ×1.38; переход сохраняет музыкальную долю.
+- Визуальные лица `44×44` не меняют collision-box кота и хозяина `36×36`; третий combo-hit останавливает симуляцию ровно на 3 ticks.
 - Таблетка снижает срочность по фазам игры, не уводя значение ниже 0.
 - 3 попадания подряд вызывают combo, `owner.flee()` и последующую очистку следов после бегства.
 - `DIFF` содержит только честные профили `normal` и `chaos`; обучение использует Normal-физику через отдельный `gameMode`.

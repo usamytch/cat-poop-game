@@ -7,7 +7,8 @@
 // Panic mode is generated from the active theme: the whole note timeline is
 // reversed and played 38% faster.
 
-const _PANIC_SPEED = 1.38;
+const _PRESSURE_SPEED = AUDIO_MIX.pressureSpeed;
+const _PANIC_SPEED = AUDIO_MIX.panicSpeed;
 
 function _midi(note) {
   return 440 * Math.pow(2, (note - 69) / 12);
@@ -167,13 +168,38 @@ function _reverseTheme(theme) {
   };
 }
 
+function _makePressureTheme(theme) {
+  const bpm = theme.bpm * _PRESSURE_SPEED;
+  const eighth = 60 / bpm / 2;
+  return {
+    key: theme.key,
+    title: theme.title + " — прижало",
+    description: "слегка ускоренная исходная версия",
+    bpm: bpm,
+    beats: theme.beats,
+    eighth: eighth,
+    duration: theme.beats * eighth,
+    notes: theme.notes.map(function(note) { return note.slice(); }),
+  };
+}
+
+const _LOCATION_PRESSURE_MELODIES = {};
+Object.keys(_LOCATION_MELODIES).forEach(function(key) {
+  _LOCATION_PRESSURE_MELODIES[key] = _makePressureTheme(_LOCATION_MELODIES[key]);
+});
+
 const _LOCATION_PANIC_MELODIES = {};
 Object.keys(_LOCATION_MELODIES).forEach(function(key) {
   _LOCATION_PANIC_MELODIES[key] = _reverseTheme(_LOCATION_MELODIES[key]);
 });
 
-function getLocationMelody(locationKey, panic) {
-  const catalog = panic ? _LOCATION_PANIC_MELODIES : _LOCATION_MELODIES;
+function getLocationMelody(locationKey, mode) {
+  // Boolean mode remains compatible with older console experiments/tests.
+  if (mode === true) mode = "panic";
+  if (mode === false || mode === undefined) mode = "calm";
+  const catalog = mode === "panic"
+    ? _LOCATION_PANIC_MELODIES
+    : mode === "pressure" ? _LOCATION_PRESSURE_MELODIES : _LOCATION_MELODIES;
   return catalog[locationKey] || catalog.hall;
 }
 

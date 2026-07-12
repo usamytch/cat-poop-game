@@ -29,6 +29,7 @@ beforeEach(() => {
   currentLevelProgression = getLevelProgression(1);
   globalThis._now = 0;
   ctxMock.fillText.mockClear();
+  ctxMock.setLineDash.mockClear();
 });
 
 function drawnLabels() {
@@ -140,5 +141,37 @@ describe('run overlays', () => {
     expect(labels).toContain('🎉 ЗАБЕГ ЗАВЕРШЁН!');
     expect(labels).toContain('🔓 ОТКРЫТ ENDLESS');
     expect(labels).toContain('Ранги актов: A  ·  S  ·  B  ·  A  ·  S');
+  });
+});
+
+describe('start screen', () => {
+  it('uses selection borders without blue dashed focus rings', () => {
+    gameState = 'start';
+    startMenuFocus = 'mode';
+    drawStartScreen();
+
+    expect(ctxMock.setLineDash).not.toHaveBeenCalled();
+    expect(drawnLabels()).toContain('←  РЕЖИМ  →');
+  });
+
+  it('keeps tutorial selected while showing that Play has keyboard focus', () => {
+    gameState = 'start';
+    gameMode = 'tutorial';
+    startMenuFocus = 'play';
+    drawStartScreen();
+    const labels = drawnLabels();
+
+    expect(labels).toContain('🎓 Обучение');
+    expect(labels).toContain('▶  ИГРАТЬ  ↵');
+    expect(labels).not.toContain('←  РЕЖИМ  →');
+  });
+
+  it('does not show cosmetic selectors on the main screen', () => {
+    gameState = 'start';
+    drawStartScreen();
+    const labels = drawnLabels().join(' | ');
+
+    expect(labels).not.toContain('След:');
+    expect(labels).not.toContain('Рамка:');
   });
 });

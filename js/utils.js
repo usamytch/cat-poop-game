@@ -110,7 +110,7 @@ function segmentRectHitT(x1, y1, x2, y2, rect, padding) {
 }
 
 // Ближайшее препятствие на отрезке. Один и тот же helper используют зрение
-// хозяина и preview выстрела, поэтому визуальная подсказка совпадает с логикой.
+// хозяина и расчёт реального полёта снаряда.
 function firstObstacleOnSegment(x1, y1, x2, y2, padding, ignId) {
   let nearest = null;
   let nearestT = Infinity;
@@ -168,6 +168,27 @@ function drawSprite(img, x, y, w, h, fb) {
   } else {
     fb();
   }
+}
+
+// Presentation-only transform. cx/cy are visual coordinates; collision helpers
+// continue to use the entity's original 36×36 rectangle.
+function drawCollageSprite(img, cx, cy, size, options, fallback) {
+  options = options || {};
+  const scaleX = options.scaleX || 1;
+  const scaleY = options.scaleY || 1;
+  const rotation = options.rotation || 0;
+  const half = size / 2;
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.rotate(rotation);
+  ctx.scale(scaleX, scaleY);
+  if (img.complete && img.naturalWidth > 0) {
+    ctx.drawImage(img, -half, -half, size, size);
+  } else if (fallback) {
+    fallback(-half, -half, size);
+  }
+  if (options.overlay) options.overlay(size);
+  ctx.restore();
 }
 
 function rrect(x, y, w, h, r, fill) {

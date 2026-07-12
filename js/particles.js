@@ -74,6 +74,21 @@ function spawnPuddle(cx, cy) {
   }
 }
 
+function spawnHitBurst(cx,cy,stage) {
+  const count=stage>=3 ? 16 : 7+stage*2;
+  const palette=stage>=3 ? ["✨","💥","⭐"] : ["✨","💩"];
+  for (let i=0;i<count;i++) {
+    const angle=Math.PI*2*i/count+Math.random()*0.22;
+    const spd=(stage>=3 ? 3.6 : 2.2)+Math.random()*2.2;
+    overlayParticles.push({
+      x:cx,y:cy,dx:Math.cos(angle)*spd,dy:Math.sin(angle)*spd,
+      gravity:0.04,emoji:palette[i%palette.length],alpha:1,fade:stage>=3?0.045:0.065,
+      size:stage>=3?14+Math.random()*8:10+Math.random()*5,
+      rot:angle,rotSpd:(Math.random()-0.5)*0.25,type:"hit",
+    });
+  }
+}
+
 function updateOverlayParticles() {
   for (const p of overlayParticles) {
     p.x += p.dx; p.y += p.dy;

@@ -16,6 +16,8 @@ function fullReset() {
   gameMode = 'normal';
   runMode = 'campaign';
   gameState = 'start';
+  startMenuFocus = 'mode';
+  startMenuHover = '';
   tutorialState.active = false;
   tutorialState.completed = false;
   lifeLostTimer = 0;
@@ -364,6 +366,11 @@ describe('pause state', () => {
 
 // ---------------------------------------------------------------------------
 describe('keyboard input handling', () => {
+  function keydown(key) {
+    const handler = window.addEventListener.mock.calls.find(call => call[0] === 'keydown')[1];
+    handler({ key, preventDefault() {} });
+  }
+
   function fireKey(key) {
     // Simulate keydown by calling the handler directly
     // We need to find the registered handler — since window.addEventListener is mocked,
@@ -390,6 +397,45 @@ describe('keyboard input handling', () => {
     keys['1'] = false;
   });
 
+  it('uses left/right inside a row and up/down between menu rows', () => {
+    runProfile.unlocks.endless = true;
+    gameMode = 'normal';
+    startMenuFocus = 'mode';
+
+    keydown('ArrowRight');
+    expect(gameMode).toBe('chaos');
+    expect(difficulty).toBe('chaos');
+
+    keydown('ArrowDown');
+    expect(startMenuFocus).toBe('format');
+    keydown('ArrowRight');
+    expect(runMode).toBe('endless');
+
+    keydown('ArrowDown');
+    expect(startMenuFocus).toBe('play');
+  });
+
+  it('Enter confirms the focused row before starting the game', () => {
+    startMenuFocus = 'mode';
+    keydown('Enter');
+    expect(startMenuFocus).toBe('format');
+    expect(gameState).toBe('start');
+
+    keydown('Enter');
+    expect(startMenuFocus).toBe('play');
+    keydown('Enter');
+    expect(gameState).toBe('playing');
+  });
+
+  it('skips the disabled format row for tutorial', () => {
+    gameMode = 'tutorial';
+    startMenuFocus = 'mode';
+    keydown('ArrowDown');
+    expect(startMenuFocus).toBe('play');
+    keydown('ArrowUp');
+    expect(startMenuFocus).toBe('mode');
+  });
+
   it('shootCooldown prevents shooting when > 0', () => {
     gameState = 'playing';
     shootCooldown = 5;
@@ -403,5 +449,35 @@ describe('keyboard input handling', () => {
     owner.active = false;
     shootPoop();
     expect(poops.length).toBe(1);
+  });
+});
+
+describe('mouse input on the start screen', () => {
+  function click(x, y) {
+    const handler = canvas.addEventListener.mock.calls.find(call => call[0] === 'click')[1];
+    handler({ clientX:x, clientY:y });
+  }
+
+  it('selects mode and run format by clicking their cards', () => {
+    runProfile.unlocks.endless = true;
+    click(920, 291);
+    expect(gameMode).toBe('chaos');
+    expect(startMenuFocus).toBe('mode');
+
+    click(760, 438);
+    expect(runMode).toBe('endless');
+    expect(startMenuFocus).toBe('format');
+  });
+
+  it('starts from the visible play button', () => {
+    click(600, 544);
+    expect(gameState).toBe('playing');
+  });
+
+  it('does not expose cosmetic controls in the old menu area', () => {
+    runProfile.cosmetics.pawStyles = ['classic', 'spark'];
+    runProfile.settings.pawStyle = 'classic';
+    click(440, 505);
+    expect(runProfile.settings.pawStyle).toBe('classic');
   });
 });

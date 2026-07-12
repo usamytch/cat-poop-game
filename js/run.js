@@ -405,7 +405,7 @@ function getRunFailureTip() {
     ? runTotalMetrics.urgeFinishTotal / runTotalMetrics.levelsCompleted : player.urge;
   if (lifeLostReason === "accident") return "Ищи таблетки и не откладывай путь к лотку.";
   if (runTotalMetrics.livesLost >= 2) return "Попробуй раньше разрывать видимость и беречь жизни.";
-  if (shots >= 5 && accuracy < 0.45) return "Стреляй при зелёной линии — промахи не дают облегчения.";
+  if (shots >= 5 && accuracy < 0.45) return "Стреляй только по чистой линии — промахи не дают облегчения.";
   if (avgUrge > 70) return "Ищи таблетки и не откладывай путь к лотку.";
   if (runTotalMetrics.riskyBonuses === 0) return "Боковые бонусы могут окупить опасный маршрут.";
   return "Сохрани сильную привычку и смени маршрут в следующем забеге.";
@@ -422,6 +422,7 @@ function completeScoredLevel() {
   stats.update(score, completedLevel);
 
   player.urge = clamp(player.urge - 30, 0, player.maxUrge);
+  updateUrgencyFeedback(player.urge / player.maxUrge);
   _resetTransientRunEffects();
   spawnConfetti(litterBox.x + litterBox.width / 2, litterBox.y + litterBox.height / 2);
   sndWin();

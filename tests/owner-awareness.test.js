@@ -106,6 +106,45 @@ describe('awareness transitions', () => {
   });
 });
 
+describe('initial Chaos awareness', () => {
+  it('starts chasing immediately when the spawn has clear line of sight', () => {
+    difficulty = 'chaos';
+    level = 1;
+    obstacles.length = 0;
+
+    owner.activate();
+
+    expect(owner.active).toBe(true);
+    expect(owner.awarenessState).toBe('chase');
+    expect(owner.lastKnownTarget).not.toBeNull();
+  });
+
+  it('investigates the cat spawn when furniture blocks initial sight', () => {
+    difficulty = 'chaos';
+    level = 1;
+    obstacles.push({ id:'wall', x:430, y:10, width:80, height:600 });
+
+    owner.activate();
+
+    expect(owner.active).toBe(true);
+    expect(owner.awarenessState).toBe('heard');
+    expect(owner.heardTarget.x).toBeCloseTo(player.x);
+    expect(owner.heardTarget.y).toBeCloseTo(player.y);
+    expect(owner.heardTimer).toBe(DIFF.chaos.heardDuration);
+  });
+
+  it('keeps the existing quiet guard start in Normal behind furniture', () => {
+    difficulty = 'normal';
+    level = 2;
+    obstacles.push({ id:'wall', x:430, y:10, width:80, height:600 });
+
+    owner.activate();
+
+    expect(owner.awarenessState).toBe('guard');
+    expect(owner.heardTarget).toBeNull();
+  });
+});
+
 describe('combo flee window', () => {
   it('is longer when the litter is farther away', () => {
     player.x = 850;

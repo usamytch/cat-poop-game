@@ -140,11 +140,6 @@ if (IS_MOBILE) {
             if (x >= 615 && x <= 905 && runProfile.unlocks.endless) { runMode = "endless"; continue; }
           }
 
-          if (y >= 488 && y <= 522) {
-            if (x < canvas.width/2) cycleRunCosmetic("pawStyles");
-            else cycleRunCosmetic("hudFrames");
-            continue;
-          }
         }
 
         if (gameState === "actComplete") {

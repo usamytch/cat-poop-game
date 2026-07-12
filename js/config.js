@@ -17,6 +17,28 @@ canvas.height = 700;
 
 const WORLD = { width: 1200, height: 700, floorHeight: 90, topPadding: 10, sidePadding: 0 };
 
+// Presentation-only feedback. Physics continues to use player.size and
+// owner.width/height (36×36); the larger collage faces never enter collision,
+// grid, LOS or A* calculations.
+const FEEDBACK = {
+  playerVisualSize: 44,
+  ownerVisualSize: 44,
+  panicEnter: [0.75, 0.85, 0.95],
+  panicExit: [0.73, 0.83, 0.93],
+  comboHitStopTicks: 3,
+  impactTicks: 12,
+  threatPingTicks: 34,
+};
+
+const AUDIO_MIX = {
+  music: 0.78,
+  sfx: 0.92,
+  tension: 0.82,
+  crossfadeSeconds: 0.18,
+  pressureSpeed: 1.10,
+  panicSpeed: 1.38,
+};
+
 // ===== СЕТКА УРОВНЯ =====
 // Play area: x=[0..1200], y=[10..610]  →  1200 × 600 px
 // GRID=40 → 30 cols × 15 rows = 450 cells
@@ -191,7 +213,7 @@ const locationThemes = [
     rule:LOCATION_RULES.hall,
     palette:{wall:"#e8d8c3",floor:"#b98f68",trim:"#8f6548",accent:"#d9bfa3",shadow:"rgba(70,40,20,0.18)",ui:"rgba(40,24,16,0.72)"},
     decorations:["window","painting","lamp"],
-    obstacleTypes:["wardrobe","dresser","armchair","plant"],
+    obstacleTypes:["wardrobe","dresser","armchair","flowerPot"],
     decorTypes:["rug","mat"],
   },
   {
@@ -245,7 +267,7 @@ const obstacleCatalog = {
   wardrobe:     {label:"Шкаф",           wCells:[2,4], hCells:[2,4], color:"#7b4f2f", detail:"#c89b6d", zone:"wall"},
   dresser:      {label:"Комод",          wCells:[2,4], hCells:[2,2], color:"#8b5e3c", detail:"#d8b07f", zone:"wall"},
   armchair:     {label:"Кресло",         wCells:[2,2], hCells:[2,2], color:"#8e5ea2", detail:"#caa7d8", zone:"corner"},
-  plant:        {label:"Фикус",          wCells:[2,2], hCells:[2,4], color:"#4f8a3f", detail:"#8b5a2b", zone:"wall"},
+  flowerPot:    {label:"Горшок с цветами",wCells:[2,2], hCells:[2,4], color:"#5d9b55", detail:"#b86f45", zone:"wall"},
   sink:         {label:"Раковина",       wCells:[2,2], hCells:[2,2], color:"#dfe8ee", detail:"#8aa4b3", zone:"wall"},
   toilet:       {label:"Унитаз",         wCells:[2,2], hCells:[2,2], color:"#f7fbff", detail:"#9bb7c7", zone:"wall"},
   laundry:      {label:"Корзина",        wCells:[2,2], hCells:[2,2], color:"#d8c3a5", detail:"#9c7b5a", zone:"corner"},

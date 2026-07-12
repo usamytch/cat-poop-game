@@ -102,10 +102,41 @@ function _cornerDotsTo(bctx, x, y, w, h, fill) {
 }
 
 // ===== РИСОВАНИЕ ДЕКОРА (фоновые элементы, без коллизий) =====
+function _drawWallEmbedSocketTo(bctx,d,foreground) {
+  const x=d.x,y=d.y,w=d.width,h=d.height,v=d.embedVariant || 0;
+  if (!foreground) {
+    bctx.globalAlpha=0.72;
+    bctx.fillStyle="rgba(8,6,5,0.72)";
+    bctx.beginPath();
+    bctx.moveTo(x+3+v,y+9); bctx.lineTo(x+9,y+3); bctx.lineTo(x+w-7,y+5+v);
+    bctx.lineTo(x+w-3,y+h-10); bctx.lineTo(x+w-10-v,y+h-3);
+    bctx.lineTo(x+5,y+h-7); bctx.closePath(); bctx.fill();
+    bctx.strokeStyle="rgba(118,94,68,0.62)"; bctx.lineWidth=2;
+    bctx.stroke();
+    return;
+  }
+  // Mortar overlaps the object at a few corners, so it looks genuinely trapped
+  // in masonry rather than pasted on top of a brick texture.
+  bctx.globalAlpha=0.82;
+  bctx.fillStyle="#4a3e30";
+  [[6,8,7],[w-6,7+v,6],[8,h-6,6],[w-7,h-8,7]].forEach(function(chip,i) {
+    if ((i+v)%3===0) return;
+    bctx.beginPath(); bctx.arc(x+chip[0],y+chip[1],chip[2],0,Math.PI*2); bctx.fill();
+  });
+  bctx.strokeStyle="rgba(18,14,11,0.72)"; bctx.lineWidth=1.2;
+  bctx.beginPath();
+  bctx.moveTo(x+4,y+12+v); bctx.lineTo(x-2,y+17+v); bctx.lineTo(x+3,y+23+v);
+  bctx.moveTo(x+w-4,y+h-13); bctx.lineTo(x+w+3,y+h-18); bctx.stroke();
+}
+
 function _drawDecorItemTo(bctx, d) {
   const {x, y, width: w, height: h, drawStyle} = d;
   const p = currentLocation.palette;
   bctx.save();
+  if (d.wallEmbed) {
+    bctx.translate(x+w/2,y+h/2); bctx.rotate(d.rotation || 0); bctx.translate(-x-w/2,-y-h/2);
+    _drawWallEmbedSocketTo(bctx,d,false);
+  }
   bctx.globalAlpha = 0.38;
   switch (drawStyle) {
     case "rug": {
@@ -224,6 +255,9 @@ function _drawDecorItemTo(bctx, d) {
       bctx.beginPath();
       bctx.moveTo(x + 5, y + h / 2 - 4); bctx.lineTo(x + 5, y + h / 2 + 4); bctx.lineTo(x + 2, y + h / 2);
       bctx.closePath(); bctx.stroke();
+      bctx.fillStyle="#d9d0bd";
+      bctx.beginPath(); bctx.arc(x+5,y+h/2-1,1.5,0,Math.PI*2); bctx.fill();
+      bctx.beginPath(); bctx.moveTo(x+w-5,y+h/2); bctx.lineTo(x+w-1,y+h/2-6); bctx.lineTo(x+w-1,y+h/2+6); bctx.closePath(); bctx.stroke();
       break;
     }
     case "ragMouse": {
@@ -237,6 +271,10 @@ function _drawDecorItemTo(bctx, d) {
       // Хвостик (дуга)
       bctx.strokeStyle = "#9a8878"; bctx.lineWidth = 1.2;
       bctx.beginPath(); bctx.arc(x + w - 6, y + h * 0.76, 6, Math.PI * 1.2, Math.PI * 0.2); bctx.stroke();
+      // Button eye and a crooked repair stitch sell the rag-doll material.
+      bctx.fillStyle="#241b17"; bctx.beginPath(); bctx.arc(x+w*0.43,y+h*0.48,2.2,0,Math.PI*2); bctx.fill();
+      bctx.strokeStyle="#d4b487"; bctx.lineWidth=1;
+      for (let i=0;i<3;i++) _softLineTo(bctx,x+14+i*4,y+h*0.67-3,x+16+i*4,y+h*0.67+3,"#d4b487",1);
       break;
     }
     case "teddyBear": {
@@ -252,6 +290,11 @@ function _drawDecorItemTo(bctx, d) {
       // Мордочка (тёмный нос)
       bctx.fillStyle = "#5a3020";
       bctx.beginPath(); bctx.arc(x + w / 2, y + h * 0.46, 3, 0, Math.PI * 2); bctx.fill();
+      bctx.fillStyle="#241b17";
+      bctx.beginPath(); bctx.arc(x+w/2-4,y+h*0.39,1.6,0,Math.PI*2); bctx.fill();
+      bctx.beginPath(); bctx.arc(x+w/2+4,y+h*0.39,1.6,0,Math.PI*2); bctx.fill();
+      bctx.strokeStyle="#d3a879"; bctx.lineWidth=1;
+      bctx.beginPath(); bctx.moveTo(x+w/2-5,y+h*0.70); bctx.lineTo(x+w/2,y+h*0.76); bctx.lineTo(x+w/2+5,y+h*0.69); bctx.stroke();
       break;
     }
     case "toyCar": {
@@ -265,6 +308,8 @@ function _drawDecorItemTo(bctx, d) {
       bctx.fillStyle = "#4a3a28";
       bctx.beginPath(); bctx.arc(x + 9, y + h * 0.73, 5, 0, Math.PI * 2); bctx.fill();
       bctx.beginPath(); bctx.arc(x + w - 9, y + h * 0.73, 5, 0, Math.PI * 2); bctx.fill();
+      bctx.fillStyle="#7fb3c8"; bctx.beginPath(); bctx.roundRect(x+10,y+h*0.37,w-22,6,2); bctx.fill();
+      bctx.fillStyle="#ffd166"; bctx.beginPath(); bctx.arc(x+w-5,y+h*0.56,2.5,0,Math.PI*2); bctx.fill();
       break;
     }
     case "toyPlane": {
@@ -289,6 +334,10 @@ function _drawDecorItemTo(bctx, d) {
       bctx.lineTo(x + w - 6, y + h / 2 - 10);
       bctx.lineTo(x + w - 13, y + h / 2 - 3);
       bctx.closePath(); bctx.fill();
+      // Bent propeller and an off-register star preserve the toy/collage feel.
+      bctx.strokeStyle="#9fc4ff"; bctx.lineWidth=1.5;
+      bctx.beginPath(); bctx.moveTo(x+3,y+h/2-7); bctx.lineTo(x+3,y+h/2+7); bctx.stroke();
+      bctx.fillStyle="#ffd166"; bctx.beginPath(); bctx.arc(x+w*0.62,y+h/2,2.5,0,Math.PI*2); bctx.fill();
       break;
     }
     case "juiceCan": {
@@ -303,11 +352,16 @@ function _drawDecorItemTo(bctx, d) {
       // Блик (светлая полоска)
       bctx.fillStyle = "rgba(255,200,100,0.35)";
       bctx.fillRect(x + 11, y + h * 0.30, 4, h * 0.48);
+      bctx.fillStyle="#f1c45d"; bctx.beginPath(); bctx.roundRect(x+13,y+h*0.45,w-26,8,2); bctx.fill();
+      bctx.fillStyle="#5b3510"; bctx.font="bold 6px Arial"; bctx.textAlign="center"; bctx.fillText("СОК?",x+w/2,y+h*0.45+6);
+      bctx.strokeStyle="#c9a77a"; bctx.lineWidth=1.5;
+      bctx.beginPath(); bctx.moveTo(x+w/2+2,y+h*0.27); bctx.lineTo(x+w/2+7,y+h*0.15); bctx.stroke();
       break;
     }
     default:
       break;
   }
+  if (d.wallEmbed) _drawWallEmbedSocketTo(bctx,d,true);
   // Интерактивные зоны получают читаемый, но дешёвый знак прямо в offscreen.
   if (d.ruleKind === "hallRug") {
     bctx.globalAlpha = 0.58;
@@ -380,7 +434,7 @@ function _drawObstacleTo(bctx, ob) {
     return;
   }
   // Ground shadow — ellipse for organic shapes, rect for furniture
-  if (type === "plant" || type === "tree" || type === "bush") {
+  if (type === "flowerPot" || type === "tree" || type === "bush") {
     bctx.fillStyle = currentLocation.palette.shadow;
     bctx.beginPath(); bctx.ellipse(w/2, h-4, w*0.42, 7, 0, 0, Math.PI*2); bctx.fill();
   } else {
@@ -400,6 +454,15 @@ function _drawObstacleTo(bctx, ob) {
       _rrectTo(bctx, w*3/4-3, h/2-7, 6, 14, 3, meta.detail === "#c89b6d" ? "#5a3010" : "#4a7a90");
       // Top-edge sheen — narrow rounded strip, not a floating rect
       _rrectTo(bctx, 12, 10, Math.min(w*0.28, 36), 6, 3, "rgba(255,255,255,0.22)");
+      if (type === "fridge") {
+        bctx.fillStyle="#f06f62"; bctx.beginPath(); bctx.arc(w*0.28,h*0.28,5,0,Math.PI*2); bctx.fill();
+        bctx.fillStyle="#ffd166"; bctx.beginPath(); bctx.roundRect(w*0.58,h*0.18,14,18,2); bctx.fill();
+        _softLineTo(bctx,w*0.60,h*0.23,w*0.70,h*0.23,"#8d6b3f",1);
+      } else if (type === "wardrobe") {
+        bctx.save(); bctx.translate(w*0.68,h*0.22); bctx.rotate(-0.12);
+        bctx.fillStyle="#ead9b8"; bctx.fillRect(-12,-7,24,14);
+        bctx.strokeStyle="#6d4930"; bctx.lineWidth=1; bctx.strokeRect(-12,-7,24,14); bctx.restore();
+      }
       break;
     case "dresser": case "counter":
       _rrectTo(bctx,0,0,w,h,12,meta.color);
@@ -422,8 +485,37 @@ function _drawObstacleTo(bctx, ob) {
       if (type === "rockingChair") { bctx.strokeStyle=meta.detail; bctx.lineWidth=4; bctx.beginPath(); bctx.arc(w/2,h-2,w/2-8,Math.PI*0.1,Math.PI*0.9); bctx.stroke(); }
       // Top-edge sheen on backrest
       _rrectTo(bctx, 8, 6, Math.min(w*0.28, 36), 6, 3, "rgba(255,255,255,0.22)");
+      bctx.fillStyle="rgba(60,30,75,0.30)";
+      [-1,0,1].forEach(function(i) { bctx.beginPath(); bctx.arc(w/2+i*12,27,3,0,Math.PI*2); bctx.fill(); });
       break;
-    case "plant": case "tree": case "bush":
+    case "flowerPot":
+      // Indoor flowers for the Hall: a deliberately hand-drawn bouquet rather
+      // than the outdoor-looking tree silhouette previously used here.
+      bctx.strokeStyle = "#477a42";
+      bctx.lineWidth = 4;
+      const flowerHeads = [
+        [w*0.28, h*0.30, "#ff8fa3"],
+        [w*0.50, h*0.20, "#ffd166"],
+        [w*0.70, h*0.34, "#b69cff"],
+        [w*0.42, h*0.43, "#ff9f68"],
+      ];
+      for (const [fx, fy, flowerColor] of flowerHeads) {
+        bctx.beginPath(); bctx.moveTo(w/2, h-30); bctx.lineTo(fx, fy+6); bctx.stroke();
+        bctx.fillStyle = meta.color;
+        bctx.beginPath(); bctx.ellipse((w/2+fx)/2-4, (h-30+fy)/2, 9, 4, -0.6, 0, Math.PI*2); bctx.fill();
+        bctx.fillStyle = flowerColor;
+        for (let petal=0; petal<5; petal++) {
+          const a = petal*Math.PI*2/5;
+          bctx.beginPath(); bctx.arc(fx+Math.cos(a)*7, fy+Math.sin(a)*7, 5, 0, Math.PI*2); bctx.fill();
+        }
+        bctx.fillStyle = "#6b4b2a";
+        bctx.beginPath(); bctx.arc(fx, fy, 4, 0, Math.PI*2); bctx.fill();
+      }
+      _rrectTo(bctx, w/2-22, h-34, 44, 34, 8, meta.detail);
+      _rrectTo(bctx, w/2-25, h-38, 50, 9, 4, "#d18a5d");
+      _softLineTo(bctx, w/2-14, h-27, w/2+13, h-5, "rgba(255,255,255,0.20)", 3);
+      break;
+    case "tree": case "bush":
       // Trunk (not for bush — it has no trunk)
       if (type !== "bush") {
         _rrectTo(bctx,w/2-10,h*0.45,20,h*0.55,5,meta.detail);
@@ -435,12 +527,9 @@ function _drawObstacleTo(bctx, ob) {
       bctx.beginPath(); bctx.arc(w*0.68, h*0.42, w*0.22, 0, Math.PI*2); bctx.fill();
       bctx.fillStyle = "rgba(255,255,255,0.18)";
       bctx.beginPath(); bctx.arc(w*0.42, h*0.28, Math.max(4, w*0.06), 0, Math.PI*2); bctx.fill();
-      if (type === "plant") {
-        // Pot body
-        _rrectTo(bctx, w/2-18, h-20, 36, 20, 6, meta.detail);
-        // Pot rim — slightly wider lighter strip at top of pot
-        _rrectTo(bctx, w/2-20, h-22, 40, 6, 3, "rgba(255,255,255,0.25)");
-      }
+      bctx.fillStyle=type==="bush" ? "#e86f68" : "#f2c14e";
+      bctx.beginPath(); bctx.arc(w*0.72,h*0.31,4,0,Math.PI*2); bctx.fill();
+      bctx.beginPath(); bctx.arc(w*0.26,h*0.46,3,0,Math.PI*2); bctx.fill();
       // No highlight for organic shapes
       break;
     case "sink":
@@ -453,6 +542,8 @@ function _drawObstacleTo(bctx, ob) {
       // Drain ring
       bctx.strokeStyle = "rgba(0,0,0,0.18)"; bctx.lineWidth = 2;
       bctx.beginPath(); bctx.arc(w/2, h*0.65, 9, 0, Math.PI*2); bctx.stroke();
+      _rrectTo(bctx,w*0.64,5,18,10,5,"#f7c6d0");
+      bctx.fillStyle="#fff"; bctx.beginPath(); bctx.arc(w*0.72,9,3,0,Math.PI*2); bctx.fill();
       break;
     case "toilet":
       _rrectTo(bctx,12,0,w-24,28,10,meta.detail);
@@ -464,6 +555,9 @@ function _drawObstacleTo(bctx, ob) {
       bctx.fillStyle = "rgba(0,0,0,0.22)";
       bctx.beginPath(); bctx.arc(w/2-10, 26, 3, 0, Math.PI*2); bctx.fill();
       bctx.beginPath(); bctx.arc(w/2+10, 26, 3, 0, Math.PI*2); bctx.fill();
+      bctx.save(); bctx.translate(w*0.76,h*0.70); bctx.rotate(0.18);
+      bctx.fillStyle="#9bd7e5"; bctx.fillRect(-7,-5,14,10);
+      bctx.fillStyle="#fff"; bctx.fillRect(-5,-3,10,2); bctx.restore();
       break;
     case "laundry": case "barrel":
       _rrectTo(bctx,8,0,w-16,h,18,meta.color);
@@ -504,6 +598,12 @@ function _drawObstacleTo(bctx, ob) {
           const sx = Math.floor(w * s / 3);
           bctx.beginPath(); bctx.moveTo(sx, 2); bctx.lineTo(sx, 18); bctx.stroke();
         }
+      }
+      if (type === "table") {
+        bctx.fillStyle="#f2d38b";
+        bctx.beginPath(); bctx.moveTo(w*0.62,0); bctx.lineTo(w*0.82,0); bctx.lineTo(w*0.78,24); bctx.lineTo(w*0.66,18); bctx.closePath(); bctx.fill();
+        bctx.strokeStyle="#c06d52"; bctx.lineWidth=1;
+        _softLineTo(bctx,w*0.66,4,w*0.79,15,"#c06d52",1);
       }
       if (type === "woodpile") { for (let j=0; j<4; j++) { bctx.fillStyle=meta.detail; bctx.beginPath(); bctx.arc(24+j*((w-48)/3),h-18,12,0,Math.PI*2); bctx.fill(); } }
       // Narrow sheen on tabletop edge only

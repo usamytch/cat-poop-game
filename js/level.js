@@ -1459,6 +1459,8 @@ function _placeWallEmbeds(rng) {
       x: pos.x, y: pos.y, width: GRID, height: GRID,
       drawStyle: type,
       wallEmbed: true,
+      rotation: randRange(rng, -0.16, 0.16),
+      embedVariant: randInt(rng, 0, 3),
     });
   }
 }

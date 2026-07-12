@@ -98,6 +98,7 @@ function updatePoops() {
       // Добавляем какашку на лицо хозяина
       owner.poopHits++;
       owner.onPoopHit(comboCount);
+      spawnHitBurst(owner.x+owner.width/2,owner.y+owner.height/2,comboCount);
       const faceW = owner.width * 0.7;
       const faceH = owner.height * 0.28;
       owner.facePoops.push({
@@ -108,6 +109,7 @@ function updatePoops() {
       });
 
       if (comboCount >= 3) {
+        triggerComboHitStop();
         comboPopups.push({x:owner.x+owner.width/2, y:owner.y-20, text:"COMBO! x"+comboCount, timer:90, color:"#ff9800"});
         sndCombo();
         owner.flee();
@@ -129,45 +131,6 @@ function updatePoops() {
   }
   // Сброс комбо по таймеру
   if (comboTimer > 0) { comboTimer--; if (comboTimer === 0) comboCount = 0; }
-}
-
-function drawShotPreview() {
-  if (gameState !== "playing" || !owner.active || shootCooldown > 0 || yarnFreezeTimer > 0) return;
-  const preview = getShotPreview();
-  const color = preview.clear ? "#54e6a4" : "#ffad42";
-  const rayLen = 54;
-  const endX = preview.cx + preview.dx * rayLen;
-  const endY = preview.cy + preview.dy * rayLen;
-
-  ctx.save();
-  ctx.strokeStyle = color;
-  ctx.lineWidth = 2.5;
-  ctx.globalAlpha = 0.9;
-  ctx.beginPath();
-  ctx.moveTo(preview.cx + preview.dx * 22, preview.cy + preview.dy * 22);
-  ctx.lineTo(endX, endY);
-  ctx.stroke();
-
-  ctx.globalAlpha = 0.7;
-  ctx.beginPath();
-  ctx.arc(preview.cx, preview.cy, player.size * 0.68, -0.55, 0.55);
-  ctx.stroke();
-
-  if (!preview.clear && preview.hit) {
-    const pulse = 7 + Math.sin(_now / 140) * 1.5;
-    ctx.globalAlpha = 0.85;
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.arc(preview.hit.x, preview.hit.y, pulse, 0, Math.PI * 2);
-    ctx.stroke();
-    ctx.beginPath();
-    ctx.moveTo(preview.hit.x - 4, preview.hit.y - 4);
-    ctx.lineTo(preview.hit.x + 4, preview.hit.y + 4);
-    ctx.moveTo(preview.hit.x + 4, preview.hit.y - 4);
-    ctx.lineTo(preview.hit.x - 4, preview.hit.y + 4);
-    ctx.stroke();
-  }
-  ctx.restore();
 }
 
 function drawPoops() {

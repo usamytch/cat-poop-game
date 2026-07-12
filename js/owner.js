@@ -57,6 +57,7 @@ const owner = {
   heardTimer: 0,
   hitReactTimer: 0,
   hitReactStage: 0,
+  anticipateTimer: 0,
 
   activate() {
     const diff = DIFF[difficulty];
@@ -188,8 +189,33 @@ const owner = {
     this.memoryTimer = 0;
     this.searchTimer = 0;
     this.heardTimer = 0;
+    this.anticipateTimer = 0;
     this.hitReactTimer = 0;
     this.hitReactStage = 0;
+
+    // Chaos не должен начинаться с неподвижного guard за мебелью. Если хозяин
+    // видит кота — он сразу преследует; иначе проверяет только стартовую точку,
+    // после чего возвращается к обычной памяти/search без всеведения.
+    this._primeChaosAwareness();
+  },
+
+  _primeChaosAwareness() {
+    if (difficulty !== "chaos") return;
+    if (this._canSeePlayer()) {
+      this._rememberPlayer();
+      this._setAwarenessState("chase");
+      return;
+    }
+
+    const target = {
+      x: player.x + player.size / 2 - this.width / 2,
+      y: player.y + player.size / 2 - this.height / 2,
+    };
+    this.heardTarget = target;
+    this.lastKnownTarget = { x: target.x, y: target.y };
+    this.ruleSenseIcon = "👂";
+    this.ruleSenseTimer = 60;
+    this._setAwarenessState("heard");
   },
 
   // Запускает режим бегства — хозяин убегает в дальний угол от кота
@@ -329,7 +355,11 @@ const owner = {
       sndOwnerHeard();
     } else if (nextState === "chase") {
       this.memoryTimer = diff.chaseMemory;
-      if (previous !== "chase") sndOwnerAlert();
+      if (previous !== "chase") {
+        this.anticipateTimer = 10;
+        triggerThreatPing();
+        sndOwnerAlert();
+      }
     } else if (nextState === "search") {
       this.searchTimer = diff.searchDuration;
     } else if (nextState === "guard") {
@@ -483,13 +513,42 @@ const owner = {
     const isMoving = this.nodeQueue.length > 0 || this.nextNode !== null;
     const wobbleX = isMoving ? Math.sin(_now / 220) * 1.5 : 0;
     const wobbleY = isMoving ? Math.cos(_now / 310) * 1.0 : 0;
-
-    drawSprite(masterImage, this.x + wobbleX, this.y + wobbleY, this.width, this.height, () => {
-      ctx.fillStyle = "#e07b39"; ctx.beginPath();
-      ctx.arc(this.x+this.width/2, this.y+this.height/2, this.width/2, 0, Math.PI*2); ctx.fill();
-      ctx.fillStyle = "#fff"; ctx.font = "bold 22px Arial"; ctx.textAlign = "center";
-      ctx.fillText("👨", this.x+this.width/2, this.y+this.height/2+8);
-      ctx.textAlign = "left";
+    const visualSize = FEEDBACK.ownerVisualSize;
+    const visualHalf=visualSize/2+3;
+    const centerX=clamp(this.x+this.width/2+wobbleX,visualHalf,WORLD.width-visualHalf);
+    const centerY=clamp(this.y+this.height/2+wobbleY,getPlayBounds().top+visualHalf,getPlayBounds().bottom-visualHalf);
+    const anticipation = clamp(this.anticipateTimer/10,0,1);
+    const impact = this.hitReactStage >= 3 ? getFeedbackImpactRatio() : 0;
+    let scaleX = 1 + anticipation*0.14 + impact*0.17;
+    let scaleY = 1 - anticipation*0.12 - impact*0.14;
+    let rotation = -this.facingX*anticipation*0.07 + Math.sin(_now*0.025)*impact*0.045;
+    if (this.hitReactTimer > 0 && this.hitReactStage < 3) {
+      const hitAlpha = clamp(this.hitReactTimer/24,0,1);
+      scaleX += hitAlpha*(0.04+this.hitReactStage*0.025);
+      scaleY -= hitAlpha*(0.03+this.hitReactStage*0.018);
+      rotation += (this.hitReactStage===2 ? -1 : 1)*hitAlpha*0.035;
+    }
+    const ping = getThreatPingRatio();
+    if (ping > 0) {
+      ctx.save();
+      ctx.globalAlpha = Math.sin(ping*Math.PI)*0.78;
+      ctx.strokeStyle = "#ff4b35"; ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.arc(centerX,centerY,visualSize*(0.62+(1-ping)*0.65),0,Math.PI*2); ctx.stroke();
+      ctx.restore();
+    }
+    drawCollageSprite(masterImage,centerX,centerY,visualSize,{
+      scaleX,scaleY,rotation,
+      overlay:(size) => {
+        if (this.facePoops.length===0) return;
+        for (const sp of this.facePoops) {
+          ctx.save(); ctx.translate(sp.rx,-size*0.16+sp.ry); ctx.rotate(sp.rot); ctx.scale(sp.scale,sp.scale);
+          drawEmoji("💩",0,0,14); ctx.restore();
+        }
+      },
+    },function(x,y,size) {
+      ctx.fillStyle="#e07b39"; ctx.fillRect(x,y,size,size);
+      ctx.fillStyle="#fff"; ctx.font="bold 22px Arial"; ctx.textAlign="center";
+      ctx.fillText("👨",0,8); ctx.textAlign="left";
     });
     if (this.hitReactTimer > 0) {
       const maxTimer = this.hitReactStage >= 3 ? 42 : 24;
@@ -503,25 +562,10 @@ const owner = {
       ctx.arc(
         this.x + this.width / 2,
         this.y + this.height / 2,
-        this.width * (0.62 + (1 - alpha) * 0.28),
+        visualSize * (0.62 + (1 - alpha) * 0.28),
         0, Math.PI * 2
       );
       ctx.stroke();
-      ctx.restore();
-    }
-    // Рисуем какашки на лице хозяина
-    if (this.facePoops.length > 0) {
-      const cx = this.x + this.width / 2;
-      const cy = this.y + this.height * 0.32;
-      ctx.save();
-      for (const sp of this.facePoops) {
-        ctx.save();
-        ctx.translate(cx + sp.rx, cy + sp.ry);
-        ctx.rotate(sp.rot);
-        ctx.scale(sp.scale, sp.scale);
-        drawEmoji("💩", 0, 0, 14);
-        ctx.restore();
-      }
       ctx.restore();
     }
     ctx.globalAlpha = 1;
@@ -750,6 +794,7 @@ const owner = {
 
   update() {
     if (!this.active) return;
+    if (this.anticipateTimer > 0) this.anticipateTimer--;
     if (this.shotReactTimer > 0) this.shotReactTimer--;
     if (this.ruleSenseTimer > 0) {
       this.ruleSenseTimer--;

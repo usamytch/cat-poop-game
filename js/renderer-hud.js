@@ -5,12 +5,12 @@
 // ===== ЛОТОК =====
 function drawLitterBox() {
   const urgeRatio = player.urge / player.maxUrge;
-  const isPanic = urgeRatio > 0.75;
+  const isPanic = urgencyFeedbackStage > 0;
   const isBasement = currentLocation.key === "basement";
 
   // Пульсация при панике
   let pulse = 0;
-  if (isPanic) pulse = Math.sin(_now * 0.015) * 4;
+  if (isPanic) pulse = Math.sin(_now * 0.015) * (2 + urgencyFeedbackStage * 1.4);
   const lx = litterBox.x - pulse / 2;
   const ly = litterBox.y - pulse / 2;
   const lw = litterBox.width + pulse;
@@ -26,6 +26,14 @@ function drawLitterBox() {
   const labelColor = isBasement ? "rgba(160,140,100,0.65)" : "#4a2800";
 
   ctx.save();
+
+  if (urgencyFeedbackStage >= 2) {
+    const halo=ctx.createRadialGradient(lx+lw/2,ly+lh/2,8,lx+lw/2,ly+lh/2,lw*0.9);
+    const haloAlpha=0.14+urgencyFeedbackStage*0.055+Math.sin(_now*0.012)*0.04;
+    halo.addColorStop(0,`rgba(255,210,60,${haloAlpha.toFixed(3)})`);
+    halo.addColorStop(1,"rgba(255,70,30,0)");
+    ctx.fillStyle=halo; ctx.fillRect(lx-lw*0.5,ly-lh*0.7,lw*2,lh*2.4);
+  }
 
   // --- Тень под лотком ---
   ctx.shadowColor = isBasement ? "rgba(0,0,0,0.70)" : "rgba(0,0,0,0.45)";
@@ -72,6 +80,22 @@ function drawLitterBox() {
   ctx.fillStyle = sandShine;
   ctx.beginPath(); ctx.roundRect(lx + 12, ly + 20, lw - 24, 7, 4); ctx.fill();
 
+  if (isPooping && poopProgress > 0) {
+    const poopTime=getRunPoopTime(DIFF[difficulty].poopTime);
+    const ratio=clamp(poopProgress/poopTime,0,1);
+    ctx.save();
+    ctx.globalAlpha=0.32+ratio*0.38;
+    ctx.strokeStyle=isBasement ? "#8e7a52" : "#9a6b35";
+    ctx.lineWidth=2;
+    for (let i=0;i<3;i++) {
+      const wave=((_now*0.025+i*13)%30)/30;
+      ctx.beginPath();
+      ctx.ellipse(lx+lw/2,ly+lh*0.58,10+wave*lw*0.27,4+wave*7,0,Math.PI*0.08,Math.PI*0.92);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
   // --- Плесень (только в подвале) ---
   if (isBasement) {
     const moldSpots = [
@@ -110,10 +134,10 @@ function drawLitterBox() {
   ctx.fillStyle = labelColor;
   setFont("bold 12px Arial");
   ctx.textAlign = "center";
-  const litterLabel = isTutorialActive() && tutorialState.stage === 1 && !tutorialState.comboDone
+  const litterLabel = isPooping ? "" : isTutorialActive() && tutorialState.stage === 1 && !tutorialState.comboDone
     ? "🔒 Сначала COMBO"
     : "🐾 Лоток";
-  ctx.fillText(litterLabel, litterBox.x + litterBox.width / 2, litterBox.y + litterBox.height + 20);
+  if (litterLabel) ctx.fillText(litterLabel,litterBox.x+litterBox.width/2,litterBox.y+litterBox.height+20);
 
   ctx.restore();
 
@@ -123,7 +147,7 @@ function drawLitterBox() {
     const ratio = poopProgress / poopTime;
     const bw = lw + 10;
     const bx = lx - 5;
-    const by = litterBox.y + litterBox.height + 26;
+    const by = litterBox.y + litterBox.height - 14;
     const bh = 10;
 
     // Фон бара
@@ -132,16 +156,21 @@ function drawLitterBox() {
 
     // Заполнение с пульсацией
     const pulse2 = 0.7 + Math.sin(_now * 0.02) * 0.3;
-    ctx.fillStyle = `rgba(139,69,19,${pulse2})`;
+    ctx.fillStyle = ratio > 0.86
+      ? `rgba(255,128,42,${pulse2})`
+      : `rgba(139,69,19,${pulse2})`;
     ctx.beginPath(); ctx.roundRect(bx, by, bw * ratio, bh, 5); ctx.fill();
 
     // Блик на баре
-    ctx.fillStyle = "rgba(255,200,100,0.25)";
-    ctx.beginPath(); ctx.roundRect(bx + 2, by + 1, bw * ratio - 4, 4, 3); ctx.fill();
+    const shineWidth=Math.max(0,bw*ratio-4);
+    if (shineWidth>0) {
+      ctx.fillStyle="rgba(255,200,100,0.25)";
+      ctx.beginPath(); ctx.roundRect(bx+2,by+1,shineWidth,4,3); ctx.fill();
+    }
 
     setFont("16px Arial");
     ctx.textAlign = "center";
-    ctx.fillText("💩", litterBox.x + litterBox.width / 2, by - 2);
+    ctx.fillText(ratio>0.84 ? "💩 ПОЧТИ!" : "💩",litterBox.x+litterBox.width/2,by-3);
   }
 
   ctx.textAlign = "left";
@@ -357,6 +386,15 @@ function drawLocationRuleBanner() {
 }
 
 // ===== СТАРТОВЫЙ ЭКРАН =====
+function _drawStartMenuHover(x, y, w, h, targetId) {
+  if (startMenuHover !== targetId) return;
+  ctx.save();
+  ctx.strokeStyle = "rgba(255,255,255,0.72)";
+  ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.roundRect(x+2,y+2,w-4,h-4,14); ctx.stroke();
+  ctx.restore();
+}
+
 function drawStartScreen() {
   ctx.fillStyle = "#1a1a2e"; ctx.fillRect(0,0,WORLD.width,WORLD.height);
 
@@ -390,8 +428,8 @@ function drawStartScreen() {
     "  ·  Выстрелов: "+stats.totalPoops+"  ·  Журнал: "+runProfile.unlocks.locations.length+"/6"+
     "  ·  Достижения: "+runProfile.unlocks.achievements.length+"/"+ACHIEVEMENTS.length, WORLD.width/2, 184);
 
-  setFont("bold 19px Arial"); ctx.fillStyle = "#fff";
-  ctx.fillText("РЕЖИМ", WORLD.width/2, 224);
+  setFont("bold 19px Arial"); ctx.fillStyle = startMenuFocus === "mode" ? "#ffd54f" : "#fff";
+  ctx.fillText(startMenuFocus === "mode" ? "←  РЕЖИМ  →" : "РЕЖИМ", WORLD.width/2, 224);
 
   const diffs = [
     {key:"tutorial", label:"🎓 Обучение", desc:"3 постановочных экрана"},
@@ -404,14 +442,16 @@ function drawStartScreen() {
     ctx.fillStyle = sel ? "rgba(255,213,79,0.22)" : "rgba(255,255,255,0.07)";
     ctx.beginPath(); ctx.roundRect(bx,by,bw,bh,16); ctx.fill();
     if (sel) { ctx.strokeStyle="#ffd54f"; ctx.lineWidth=3; ctx.beginPath(); ctx.roundRect(bx,by,bw,bh,16); ctx.stroke(); }
+    _drawStartMenuHover(bx, by, bw, bh, "mode:"+d.key);
     setFont("bold 21px Arial"); ctx.fillStyle = sel ? "#ffd54f" : "#fff";
     ctx.fillText(d.label, bx+bw/2, by+32);
     setFont("14px Arial"); ctx.fillStyle = "#b0bec5";
     ctx.fillText(d.desc, bx+bw/2, by+59);
   });
 
-  setFont("bold 19px Arial"); ctx.fillStyle = gameMode === "tutorial" ? "rgba(255,255,255,0.35)" : "#fff";
-  ctx.fillText("ФОРМАТ ЗАБЕГА", WORLD.width/2, 374);
+  setFont("bold 19px Arial");
+  ctx.fillStyle = gameMode === "tutorial" ? "rgba(255,255,255,0.35)" : startMenuFocus === "format" ? "#ffd54f" : "#fff";
+  ctx.fillText(startMenuFocus === "format" ? "←  ФОРМАТ ЗАБЕГА  →" : "ФОРМАТ ЗАБЕГА", WORLD.width/2, 374);
   const formats = [
     { key:"campaign", label:"🏁 КАМПАНИЯ", desc:"25 уровней · настоящий финал" },
     { key:"endless", label:"♾️ ENDLESS", desc:"После первой победы" },
@@ -424,6 +464,7 @@ function drawStartScreen() {
     ctx.fillStyle = selected ? "rgba(255,213,79,0.22)" : "rgba(255,255,255,0.07)";
     ctx.beginPath(); ctx.roundRect(bx,by,bw,bh,16); ctx.fill();
     if (selected) { ctx.strokeStyle="#ffd54f"; ctx.lineWidth=3; ctx.beginPath(); ctx.roundRect(bx,by,bw,bh,16); ctx.stroke(); }
+    _drawStartMenuHover(bx, by, bw, bh, "format:"+format.key);
     setFont("bold 19px Arial"); ctx.fillStyle = selected ? "#ffd54f" : "#fff";
     ctx.fillText(locked ? "🔒 ENDLESS" : format.label, bx+bw/2, by+29);
     setFont("13px Arial"); ctx.fillStyle = "#b0bec5";
@@ -431,27 +472,29 @@ function drawStartScreen() {
     ctx.globalAlpha = 1;
   });
 
-  const pawStyle = PAW_STYLE_LABELS[getSelectedPawStyle()];
-  const hudFrame = HUD_FRAME_LABELS[getSelectedHudFrame()];
-  setFont("14px Arial"); ctx.fillStyle = "rgba(255,255,255,0.62)";
-  ctx.fillText(IS_MOBILE
-    ? "Косметика: тап слева — след «"+pawStyle+"»  ·  справа — рамка «"+hudFrame+"»"
-    : "Косметика: Z — след «"+pawStyle+"»  ·  X — рамка «"+hudFrame+"»",
-    WORLD.width/2, 510);
-
   // На мобиле кнопку "ИГРАТЬ" и подсказку с клавишами рисует drawTouchControls()
   if (!IS_MOBILE) {
     const t = _now*0.003;
     const sc = 1 + Math.sin(t)*0.04;
-    ctx.save(); ctx.translate(WORLD.width/2, 575); ctx.scale(sc, sc);
+    const play = START_MENU_LAYOUT.play;
+    ctx.save(); ctx.translate(play.x+play.w/2, play.y+play.h/2); ctx.scale(sc, sc);
     ctx.fillStyle = "#ffd54f";
     ctx.beginPath(); ctx.roundRect(-140,-28,280,56,28); ctx.fill();
+    if (startMenuFocus === "play") {
+      ctx.strokeStyle = "rgba(255,255,255,0.92)";
+      ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.roundRect(-136,-24,272,48,24); ctx.stroke();
+    }
     setFont("bold 26px Arial"); ctx.fillStyle = "#1a1a2e";
-    ctx.fillText("▶  ИГРАТЬ  (Enter)", 0, 10);
+    ctx.fillText(startMenuFocus === "play" ? "▶  ИГРАТЬ  ↵" : "▶  ИГРАТЬ", 0, 10);
     ctx.restore();
+    _drawStartMenuHover(START_MENU_LAYOUT.play.x,START_MENU_LAYOUT.play.y,
+      START_MENU_LAYOUT.play.w,START_MENU_LAYOUT.play.h,"play");
 
     setFont("15px Arial"); ctx.fillStyle = "rgba(255,255,255,0.45)";
-    ctx.fillText("1/2/3 — режим  ·  ←/→ или E — формат  ·  M — " + (muted ? "🔇 выкл" : "🔊 вкл"), WORLD.width/2, 642);
+    ctx.fillText("↑/↓ — строка  ·  ←/→ — выбор  ·  Enter — дальше / играть  ·  мышь — выбрать", WORLD.width/2, 625);
+    setFont("13px Arial"); ctx.fillStyle = "rgba(255,255,255,0.34)";
+    ctx.fillText("1/2/3 — быстрый режим  ·  M — "+(muted ? "🔇 выкл" : "🔊 вкл"), WORLD.width/2, 655);
   }
 
   ctx.restore();

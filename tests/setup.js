@@ -65,7 +65,9 @@ const ctxMock = {
 const canvasMock = {
   width: 1200,
   height: 700,
+  style: {},
   getContext: vi.fn(() => ctxMock),
+  getBoundingClientRect: vi.fn(() => ({ left: 0, top: 0, width: 1200, height: 700 })),
   addEventListener: vi.fn(),
 };
 
@@ -152,6 +154,8 @@ export function resetGameState() {
   gameMode = 'normal';
   runMode = 'campaign';
   gameState = 'start';
+  startMenuFocus = 'mode';
+  startMenuHover = '';
   overlayTimer = 0;
   lifeLostTimer = 0;
   lifeLostReason = '';
@@ -169,6 +173,9 @@ export function resetGameState() {
   player.speed = 3.9;
   player.pooping = false;
   player.poopTimer = 0;
+  player.visualMotion = 0;
+  player.visualDirX = 1;
+  player.visualDirY = 0;
 
   // Хозяин
   owner.x = 800;
@@ -192,6 +199,7 @@ export function resetGameState() {
   owner.heardTimer = 0;
   owner.hitReactTimer = 0;
   owner.hitReactStage = 0;
+  owner.anticipateTimer = 0;
   owner.path = [];
   owner.pathTimer = 0;
   owner.currentNode = null;
@@ -224,6 +232,8 @@ export function resetGameState() {
   puddleAlpha = 0;
   poopProgress = 0;
   isPooping = false;
+  litterCueStep = -1;
+  resetFeedbackState();
   _pawSpawnCounter = 0;
 
   // Обучение
@@ -283,6 +293,7 @@ export function loadGame() {
     'js/performance.js',
     'js/melody-data.js',
     'js/audio.js',
+    'js/feedback.js',
     'js/particles.js',
     'js/bonuses.js',
     'js/pathfinding.js',

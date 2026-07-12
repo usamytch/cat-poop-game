@@ -33,6 +33,7 @@ describe('melody data constants', () => {
   it('has one original theme for every location', () => {
     const locationKeys = locationThemes.map(theme => theme.key).sort();
     expect(Object.keys(_LOCATION_MELODIES).sort()).toEqual(locationKeys);
+    expect(Object.keys(_LOCATION_PRESSURE_MELODIES).sort()).toEqual(locationKeys);
     expect(Object.keys(_LOCATION_PANIC_MELODIES).sort()).toEqual(locationKeys);
   });
 
@@ -68,6 +69,15 @@ describe('melody data constants', () => {
       expect(panic.bpm).toBeCloseTo(normal.bpm * _PANIC_SPEED);
       expect(panic.duration).toBeLessThan(normal.duration);
       expect(panic.notes).toEqual(expected);
+    }
+  });
+
+  it('pressure variants keep note order and run 10% faster', () => {
+    for (const [key, normal] of Object.entries(_LOCATION_MELODIES)) {
+      const pressure=_LOCATION_PRESSURE_MELODIES[key];
+      expect(pressure.notes).toEqual(normal.notes);
+      expect(pressure.bpm).toBeCloseTo(normal.bpm*_PRESSURE_SPEED);
+      expect(pressure.duration).toBeLessThan(normal.duration);
     }
   });
 
@@ -161,12 +171,13 @@ describe('audio pause / resume', () => {
     startMelody();
     const startTime = _melodyStartTime;
     const master = _melodyMaster;
+    const audioMaster = _audioMaster;
 
     pauseAudio();
 
     expect(_audioPaused).toBe(true);
     expect(_melodyTimer).toBeNull();
-    expect(master.gain.linearRampToValueAtTime).toHaveBeenCalledWith(0.001, 0.04);
+    expect(audioMaster.gain.linearRampToValueAtTime).toHaveBeenCalledWith(0.001, 0.04);
 
     vi.advanceTimersByTime(50);
     expect(_ac.state).toBe('suspended');
@@ -300,17 +311,20 @@ describe('panic melody triggered by player urge threshold', () => {
     expect(_panicStartTime).toBeNull();
   });
 
-  it('panic melody starts when urge crosses 75%', () => {
+  it('pressure melody starts when urge crosses 75%', () => {
     player.urge = 76; // выше порога
     player.update();
-    expect(_panicStartTime).not.toBeNull();
-    expect(_melodyStartTime).toBeNull(); // обычная остановлена
+    expect(_pressureStartTime).not.toBeNull();
+    expect(_panicStartTime).toBeNull();
+    expect(urgencyFeedbackStage).toBe(1);
   });
 
-  it('panic melody does not restart on every frame (idempotent)', () => {
-    player.urge = 80;
+  it('reverse panic starts at the critical 85% tier and stays idempotent', () => {
+    player.urge = 88;
     player.update();
     const firstPanicStart = _panicStartTime;
+    expect(firstPanicStart).not.toBeNull();
+    expect(urgencyFeedbackStage).toBe(2);
     player.update(); // второй кадр
     player.update(); // третий кадр
     expect(_panicStartTime).toBe(firstPanicStart); // не изменился
@@ -318,7 +332,7 @@ describe('panic melody triggered by player urge threshold', () => {
 
   it('normal melody resumes when urge drops below 75% (e.g. after pill)', () => {
     // Сначала входим в панику
-    player.urge = 80;
+    player.urge = 88;
     player.update();
     expect(_panicStartTime).not.toBeNull();
 
@@ -332,7 +346,7 @@ describe('panic melody triggered by player urge threshold', () => {
   });
 
   it('panic melody stops on accident (urge >= 100)', () => {
-    player.urge = 80;
+    player.urge = 88;
     player.update(); // входим в панику
     expect(_panicStartTime).not.toBeNull();
 
@@ -350,7 +364,9 @@ describe('panic melody triggered by player urge threshold', () => {
 describe('toggleMute restores correct melody', () => {
   it('unmuting in panic state restores panic melody', () => {
     gameState = 'playing';
-    player.urge = 80; // паника
+    player.urge = 90; // critical/reverse panic
+    urgencyFeedbackStage = 2;
+    _musicPressureStage = 2;
     muted = true;
     stopMelody();
     stopPanicMelody();
@@ -376,13 +392,37 @@ describe('toggleMute restores correct melody', () => {
     stopMelody();
   });
 
-  it('muting stops both melodies', () => {
+  it('muting preserves the active melody clock behind the master gain', () => {
     gameState = 'playing';
     startMelody();
+    const startTime=_melodyStartTime;
     muted = false;
     toggleMute(); // mute
     expect(muted).toBe(true);
-    expect(_melodyStartTime).toBeNull();
+    expect(_melodyStartTime).toBe(startTime);
     expect(_panicStartTime).toBeNull();
+    expect(_musicChannel).not.toBeNull();
+  });
+});
+
+describe('phase-aware scheduler and cleanup', () => {
+  it('preserves musical beat position when entering pressure', () => {
+    gameState='playing';
+    startMelody();
+    _ac.currentTime=1.25;
+    const oldBeat=((_ac.currentTime-_melodyStartTime)/_melodyTheme.eighth)%_melodyTheme.beats;
+    setMusicPressureStage(1);
+    const newBeat=((_ac.currentTime-_pressureStartTime)/_pressureTheme.eighth)%_pressureTheme.beats;
+    expect(newBeat).toBeCloseTo(oldBeat,5);
+  });
+
+  it('removes and disconnects a finished note node', () => {
+    startMelody();
+    const pair=_melodyNodes[0];
+    const count=_melodyNodes.length;
+    pair[0].onended();
+    expect(_melodyNodes.length).toBe(count-1);
+    expect(pair[0].disconnect).toHaveBeenCalled();
+    expect(pair[1].disconnect).toHaveBeenCalled();
   });
 });

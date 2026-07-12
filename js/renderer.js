@@ -108,31 +108,35 @@ function _drawSteeringDebug() {
 // ===== ПАНИКА — постпроцессинг-эффекты =====
 // Все эффекты рисуются поверх готового кадра — не трогают логику.
 // Blur пропущен: ctx.filter на Canvas 2D убивает 60fps.
-function drawPanicEffects() {
+function drawPanicBackdropEffects() {
   const urgeRatio = player.urge / player.maxUrge;
-  if (urgeRatio <= 0.75) return;
+  if (urgencyFeedbackStage <= 0) return;
 
-  const intensity = (urgeRatio - 0.75) / 0.25; // 0..1
-  const W = WORLD.width, H = WORLD.height;
+  const intensity = clamp((urgeRatio - 0.75) / 0.25,0,1);
+  const W = WORLD.width, H = getPlayBounds().bottom;
 
-  // --- 1. Виньетка — тёмные края, нарастают с паникой ---
-  const vigAlpha = 0.35 + intensity * 0.35; // 0.35..0.70
+  // Background-only vignette: priority entities are drawn afterwards and stay
+  // readable even at 99% urge.
+  const vigAlpha = 0.12 + intensity * 0.30;
   const grad = ctx.createRadialGradient(W/2, H/2, H * 0.25, W/2, H/2, H * 0.85);
   grad.addColorStop(0, "rgba(0,0,0,0)");
   grad.addColorStop(1, `rgba(0,0,0,${vigAlpha.toFixed(2)})`);
   ctx.fillStyle = grad;
   ctx.fillRect(0, 0, W, H);
 
-  // --- 2. Красная вспышка — периодические импульсы ---
+  // Red impulse lives on the perimeter, never as a full-screen veil.
   if (panicFlashAlpha > 0) {
-    ctx.fillStyle = `rgba(220,0,0,${panicFlashAlpha.toFixed(3)})`;
-    ctx.fillRect(0, 0, W, H);
+    const edge=Math.round(8+urgencyFeedbackStage*5);
+    const alpha=(panicFlashAlpha*0.72).toFixed(3);
+    ctx.fillStyle=`rgba(220,0,0,${alpha})`;
+    ctx.fillRect(0,0,W,edge); ctx.fillRect(0,H-edge,W,edge);
+    ctx.fillRect(0,0,edge,H); ctx.fillRect(W-edge,0,edge,H);
   }
 
   // --- 3. Хроматическая аберрация по краям (вместо blur) ---
   // Красная полоса смещена вправо, синяя — влево; только по периметру
-  const aberW = Math.round(18 + intensity * 22); // 18..40px
-  const aberAlpha = (0.08 + intensity * 0.12).toFixed(3); // 0.08..0.20
+  const aberW = Math.round(10 + intensity * 22);
+  const aberAlpha = (0.035 + intensity * 0.11).toFixed(3);
   ctx.save();
   ctx.globalCompositeOperation = "screen";
   // Левый край — синий
@@ -166,24 +170,26 @@ function draw() {
     ? simulationTimeMs
     : Date.now();
 
-  // --- Wave distortion при панике: синусоидальный skew всего экрана ---
-  // Применяется через ctx.setTransform ДО clearRect, чтобы охватить весь кадр включая HUD.
-  const _urgeRatio = player.urge / player.maxUrge;
-  const _inPanic = gameState === "playing" && _urgeRatio > 0.75;
-  if (_inPanic) {
-    const _waveIntensity = (_urgeRatio - 0.75) / 0.25; // 0..1
-    const _skew = Math.sin(_now * 0.004) * 0.012 * _waveIntensity; // макс ±0.012 rad
-    ctx.setTransform(1, _skew, 0, 1, 0, 0);
-  } else {
-    ctx.setTransform(1, 0, 0, 1, 0, 0);
-  }
-
+  ctx.setTransform(1,0,0,1,0,0);
   ctx.clearRect(0,0,WORLD.width,WORLD.height);
+
+  const _urgeRatio = player.urge / player.maxUrge;
+  const _inPanic = gameState === "playing" && urgencyFeedbackStage > 0;
 
   if (gameState === "start") {
     drawStartScreen();
     if (IS_MOBILE) drawTouchControls();
     return;
+  }
+
+  // World-only distortion. HUD and overlays keep stable geometry.
+  ctx.save();
+  if (_inPanic) {
+    const _waveIntensity=clamp((_urgeRatio-0.75)/0.25,0,1);
+    const _skew=Math.sin(_now*0.004)*0.010*_waveIntensity;
+    const _breath=urgencyFeedbackStage>=3 ? 1-Math.sin(_now*0.010)*0.007*_waveIntensity : 1;
+    const playH=getPlayBounds().bottom;
+    ctx.setTransform(1,_skew,0,_breath,0,(1-_breath)*playH/2);
   }
 
   // OPT 4: Рисуем статичный слой одним drawImage
@@ -198,17 +204,17 @@ function draw() {
     }
   }
 
-  drawLitterBox();
-
   // Рисуем только движущиеся препятствия поверх статичного слоя
   for (const ob of obstacles) {
     if (ob.moving) drawObstacle(ob);
   }
 
   drawLocationRuleDynamic();
+  if (_inPanic) drawPanicBackdropEffects();
+
+  drawLitterBox();
 
   drawBonuses();
-  drawShotPreview();
   drawPoops();
   owner.draw();
   drawPawTrails();
@@ -216,6 +222,8 @@ function draw() {
   drawLocationRuleForeground();
   drawOverlayParticles();
   drawComboPopups();
+  ctx.restore();
+
   drawUI();
   drawLocationRuleBanner();
   drawTutorialGuidance();
@@ -223,12 +231,8 @@ function draw() {
   if (gameState !== "playing" && gameState !== "start") drawOverlay();
   if (IS_MOBILE) drawTouchControls();
 
-  // Паника-постпроцессинг — самый последний слой поверх всего
-  if (gameState === "playing") drawPanicEffects();
-
   // Debug: steering overlay (Shift+G) — поверх всего, только в playing
   if (gameState === "playing") _drawSteeringDebug();
 
-  // Сбрасываем transform в конце кадра
   ctx.setTransform(1, 0, 0, 1, 0, 0);
 }

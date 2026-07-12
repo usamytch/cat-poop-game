@@ -43,6 +43,8 @@ function debugJumpToLevel(targetLevel, forcedLocationKey) {
   player.urge = 0;
   poopProgress = 0;
   isPooping = false;
+  litterCueStep = -1;
+  resetFeedbackState();
   generateLevel();
   syncLocationMelody();
   owner.activate();
@@ -74,6 +76,122 @@ function resumeGame() {
   return true;
 }
 
+// ===== НАВИГАЦИЯ СТАРТОВОГО ЭКРАНА =====
+// Геометрия едина для renderer и мыши; touch использует те же координаты.
+// Карточки на Canvas ведут себя как обычная двухмерная форма.
+const START_MENU_LAYOUT = {
+  modes: ["tutorial", "normal", "chaos"].map((key, i) => ({
+    type:"mode", key, x:135+i*320, y:250, w:290, h:82,
+  })),
+  formats: ["campaign", "endless"].map((key, i) => ({
+    type:"format", key, x:295+i*320, y:400, w:290, h:76,
+  })),
+  play: { type:"play", x:460, y:516, w:280, h:56 },
+};
+
+let startMenuFocus = "mode"; // "mode" | "format" | "play"
+let startMenuHover = "";
+
+function _setStartMenuMode(mode) {
+  gameMode = mode;
+  difficulty = mode === "chaos" ? "chaos" : "normal";
+  if (gameMode === "tutorial" && startMenuFocus === "format") startMenuFocus = "mode";
+}
+
+function _startMenuRows() {
+  return gameMode === "tutorial" ? ["mode", "play"] : ["mode", "format", "play"];
+}
+
+function _moveStartMenuFocus(delta) {
+  const rows = _startMenuRows();
+  const index = Math.max(0, rows.indexOf(startMenuFocus));
+  startMenuFocus = rows[clamp(index + delta, 0, rows.length - 1)];
+}
+
+function _changeStartMenuChoice(delta) {
+  if (startMenuFocus === "mode") {
+    const order = ["tutorial", "normal", "chaos"];
+    const index = Math.max(0, order.indexOf(gameMode));
+    _setStartMenuMode(order[(index + delta + order.length) % order.length]);
+    return;
+  }
+  if (startMenuFocus === "format" && gameMode !== "tutorial") {
+    if (delta < 0) runMode = "campaign";
+    else if (runProfile.unlocks.endless) runMode = "endless";
+  }
+}
+
+function _activateStartMenuFocus() {
+  if (startMenuFocus === "play") {
+    startGame();
+    return;
+  }
+  const rows = _startMenuRows();
+  const index = rows.indexOf(startMenuFocus);
+  startMenuFocus = rows[Math.min(index + 1, rows.length - 1)];
+}
+
+function _startMenuTargetAt(x, y) {
+  const targets = [
+    ...START_MENU_LAYOUT.modes,
+    ...START_MENU_LAYOUT.formats,
+    START_MENU_LAYOUT.play,
+  ];
+  return targets.find(target =>
+    x >= target.x && x <= target.x + target.w &&
+    y >= target.y && y <= target.y + target.h
+  ) || null;
+}
+
+function _startMenuTargetId(target) {
+  return target ? target.type + (target.key ? ":" + target.key : "") : "";
+}
+
+function _isStartMenuTargetEnabled(target) {
+  if (!target) return false;
+  if (target.type === "format" && gameMode === "tutorial") return false;
+  if (target.type === "format" && target.key === "endless" && !runProfile.unlocks.endless) return false;
+  return true;
+}
+
+function _canvasPointFromMouse(event) {
+  const rect = canvas.getBoundingClientRect();
+  return {
+    x: (event.clientX - rect.left) * canvas.width / rect.width,
+    y: (event.clientY - rect.top) * canvas.height / rect.height,
+  };
+}
+
+if (!IS_MOBILE) {
+  canvas.addEventListener("mousemove", event => {
+    if (gameState !== "start") return;
+    const point = _canvasPointFromMouse(event);
+    const target = _startMenuTargetAt(point.x, point.y);
+    startMenuHover = _isStartMenuTargetEnabled(target) ? _startMenuTargetId(target) : "";
+    if (canvas.style) canvas.style.cursor = startMenuHover ? "pointer" : "default";
+  });
+  canvas.addEventListener("mouseleave", () => {
+    startMenuHover = "";
+    if (canvas.style) canvas.style.cursor = "default";
+  });
+  canvas.addEventListener("click", event => {
+    if (gameState !== "start") return;
+    const point = _canvasPointFromMouse(event);
+    const target = _startMenuTargetAt(point.x, point.y);
+    if (!_isStartMenuTargetEnabled(target)) return;
+    if (target.type === "mode") {
+      _setStartMenuMode(target.key);
+      startMenuFocus = "mode";
+    } else if (target.type === "format") {
+      runMode = target.key;
+      startMenuFocus = "format";
+    } else if (target.type === "play") {
+      startMenuFocus = "play";
+      startGame();
+    }
+  });
+}
+
 // ===== КЛАВИШИ =====
 const keys = {};
 window.addEventListener("keydown", e => {
@@ -102,24 +220,25 @@ window.addEventListener("keydown", e => {
     return;
   }
   if (gameState === "start") {
-    if (e.key === "1") { gameMode = "tutorial"; difficulty = "normal"; }
-    if (e.key === "2") { gameMode = "normal"; difficulty = "normal"; }
-    if (e.key === "3") { gameMode = "chaos"; difficulty = "chaos"; }
+    if (e.key === "1") { _setStartMenuMode("tutorial"); startMenuFocus = "mode"; }
+    if (e.key === "2") { _setStartMenuMode("normal"); startMenuFocus = "mode"; }
+    if (e.key === "3") { _setStartMenuMode("chaos"); startMenuFocus = "mode"; }
     if (e.key === "ArrowUp" || e.key === "ArrowDown") {
       e.preventDefault();
-      const order = ["tutorial", "normal", "chaos"];
-      const idx = order.indexOf(gameMode);
-      gameMode = order[(idx + (e.key === "ArrowDown" ? 1 : -1) + 3) % 3];
-      difficulty = gameMode === "chaos" ? "chaos" : "normal";
+      _moveStartMenuFocus(e.key === "ArrowDown" ? 1 : -1);
     }
-    if ((e.key === "ArrowLeft" || e.key === "ArrowRight" || e.key === "e" || e.key === "E") &&
-        gameMode !== "tutorial" && runProfile.unlocks.endless) {
+    if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
       e.preventDefault();
-      runMode = runMode === "campaign" ? "endless" : "campaign";
+      _changeStartMenuChoice(e.key === "ArrowRight" ? 1 : -1);
     }
-    if (e.key === "z" || e.key === "Z") cycleRunCosmetic("pawStyles");
-    if (e.key === "x" || e.key === "X") cycleRunCosmetic("hudFrames");
-    if (e.key === "Enter" || e.key === " ") startGame();
+    if ((e.key === "e" || e.key === "E") && gameMode !== "tutorial" && runProfile.unlocks.endless) {
+      runMode = runMode === "campaign" ? "endless" : "campaign";
+      startMenuFocus = "format";
+    }
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      _activateStartMenuFocus();
+    }
     // QA: Shift+C — сразу открыть финальный CATSTOCK set-piece.
     if (e.key === "C") {
       gameMode = "normal";
@@ -149,8 +268,22 @@ window.addEventListener("keydown", e => {
     if (e.key === "T" && isTutorialActive()) { completeTutorialStage(); return; }
     // Debug: Shift+G — переключить steering overlay
     if (e.key === "G") { _debugSteering = !_debugSteering; }
-    // QA: Shift+U — проверить panic HUD/overlays без ожидания полного таймера.
-    if (e.key === "U") { player.urge = 95; }
+    // QA: Shift+U — пройти три sensory-ступени без ожидания полного таймера.
+    if (e.key === "U") {
+      const ratio=player.urge/player.maxUrge;
+      player.urge=player.maxUrge*(ratio<0.80 ? 0.80 : ratio<0.90 ? 0.90 : 0.96);
+    }
+    // QA: Shift+O — поставить кота на лоток для проверки позы/прогресса/звука.
+    if (e.key === "O") {
+      player.x=litterBox.x+litterBox.width/2-player.size/2;
+      player.y=litterBox.y+litterBox.height/2-player.size/2;
+      poopProgress=0; isPooping=false; litterCueStep=-1;
+    }
+    // QA: Shift+H — подтверждённое попадание без ожидания перезарядки.
+    if (e.key === "H" && owner.active) {
+      poops.push({x:owner.x+owner.width/2,y:owner.y+owner.height/2,dx:0,dy:0,r:POOP_RADIUS,alive:true,trail:[]});
+      updatePoops();
+    }
     // QA: Shift+L — следующий авторский set-piece (5/5 каждой локации).
     if (e.key === "L") {
       const peaks = [5, 10, 15, 20, 25];
@@ -221,13 +354,15 @@ function startGame(seedOverride = null) {
   if (runMode === "endless" && !runProfile.unlocks.endless) runMode = "campaign";
   resetRunProgress();
   player.urge = 0; player.pooping = false; player.poopTimer = 0;
+  player.visualMotion = 0; player.visualDirX = 1; player.visualDirY = 0;
   poops.length = 0; overlayParticles.length = 0; comboPopups.length = 0; pawTrails.length = 0;
   comboCount = 0; comboTimer = 0;
   speedBoostTimer = 0; yarnFreezeTimer = 0;
   shootCooldown = 0; panicShake = 0; alarmTimer = 0;
   panicFlashAlpha = 0; panicFlashTimer = 0;
   puddleAlpha = 0;
-  poopProgress = 0; isPooping = false;
+  poopProgress = 0; isPooping = false; litterCueStep = -1;
+  resetFeedbackState();
   pausedFromState = null; pauseReason = "";
   simulationTimeMs = 0;
   resetSimulationClock();
@@ -252,13 +387,15 @@ function respawnPlayer() {
   player.x = b.left + 60;
   player.y = b.top + (b.bottom - b.top) / 2 - player.size / 2;
   player.urge = 0; player.pooping = false; player.poopTimer = 0;
+  player.visualMotion = 0; player.visualDirX = 1; player.visualDirY = 0;
   poops.length = 0; pawTrails.length = 0;
   comboCount = 0; comboTimer = 0;
   speedBoostTimer = 0; yarnFreezeTimer = 0;
   shootCooldown = 0; panicShake = 0; alarmTimer = 0;
   panicFlashAlpha = 0; panicFlashTimer = 0;
   puddleAlpha = 0;
-  poopProgress = 0; isPooping = false;
+  poopProgress = 0; isPooping = false; litterCueStep = -1;
+  resetFeedbackState();
   owner.activate();
   sndMeow();
   gameState = "playing";
@@ -281,6 +418,8 @@ function update() {
     overlayTimer++;
     return;
   }
+  if (consumeFeedbackHitStopTick()) return;
+  updateFeedbackTimers();
   simulationTimeMs += SIMULATION_STEP_MS;
   player.update();
   updateLocationRule();
