@@ -446,7 +446,7 @@ const owner = {
     //    И текущий план уже не ведёт к актуальной цели (plannedGoalStillClose=false).
     //
     // Chebyshev = max(|Δcol|, |Δrow|) — O(1), без sqrt, grid-native, diagonal-aware.
-    // repathMinDist=2 (normal/chaos) → deadzone 80px; =3 (easy) → 120px.
+    // repathMinDist=2 (normal/chaos) → deadzone 80px.
     // Chaos=2 (не 1): агрессивность через speed/hesitation, не через repath churn.
     //
     // plannedGoalStillClose: конец текущего плана всё ещё близок к goalCell?
@@ -524,6 +524,9 @@ const owner = {
   update() {
     if (!this.active) return;
     if (yarnFreezeTimer > 0) return;
+    // Постановка экрана 2: первый выстрел гарантированно должен упереться
+    // в шкаф. После демонстрации коллизии хозяин начинает обычную погоню.
+    if (isTutorialActive() && tutorialState.stage === 1 && tutorialState.blockedShots === 0) return;
 
     // ===== КОТОВНИК: хозяин уходит в угол и игнорирует кота =====
     if (catnipTimer > 0) {
@@ -637,7 +640,7 @@ const owner = {
     // Случайные микро-заморозки — вероятность убывает с уровнем (гиперболический decay).
     // base / (1 + (level-1) * decay) — плавная кривая, быстрый спад в начале, медленный к флору.
     // На Chaos уровень 10+ → почти нет заморозок (relentless pursuit).
-    // На Easy всегда остаётся минимальная заморозка (hesitateMinProb).
+    // На Normal остаётся минимальная заморозка (hesitateMinProb).
     const diff = DIFF[difficulty];
     const hesitateProb = Math.max(
       diff.hesitateMinProb,
@@ -654,6 +657,7 @@ const owner = {
 
     // Поймал кота
     if (rectsOverlap(playerRect(), ownerRect(), -6)) {
+      if (tutorialHandleFailure()) return;
       stats.totalCaught++;
       stats.update(score, level);
       stopMelody();

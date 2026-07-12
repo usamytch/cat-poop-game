@@ -80,7 +80,6 @@ global.document = {
 // ===== window / navigator =====
 global.window = {
   addEventListener: vi.fn(),
-  ontouchstart: undefined,
   AudioContext: global.AudioContext,
   webkitAudioContext: global.AudioContext,
 };
@@ -150,6 +149,7 @@ export function resetGameState() {
   level = 1;
   lives = 3;
   difficulty = 'normal';
+  gameMode = 'normal';
   gameState = 'start';
   overlayTimer = 0;
   lifeLostTimer = 0;
@@ -211,6 +211,20 @@ export function resetGameState() {
   isPooping = false;
   _pawSpawnCounter = 0;
 
+  // Обучение
+  tutorialState.active = false;
+  tutorialState.completed = false;
+  tutorialState.stage = 0;
+  tutorialState.stageTicks = 0;
+  tutorialState.bannerTimer = 0;
+  tutorialState.movedDistance = 0;
+  tutorialState.shotsFired = 0;
+  tutorialState.blockedShots = 0;
+  tutorialState.comboDone = false;
+  tutorialState.panicTriggered = false;
+  tutorialState.retries = 0;
+  tutorialState.seenBonuses.clear();
+
   // Лоток — безопасная позиция далеко от игрока
   litterBox.x = 900;
   litterBox.y = 400;
@@ -257,6 +271,7 @@ export function loadGame() {
     'js/bonuses.js',
     'js/pathfinding.js',
     'js/level.js',
+    'js/tutorial.js',
     'js/player.js',
     'js/owner.js',
     'js/projectiles.js',
@@ -266,10 +281,13 @@ export function loadGame() {
   for (const f of files) {
     let code = readFileSync(join(ROOT, f), 'utf8');
 
-    // Patch game.js: remove the eager level generation. requestAnimationFrame
+    // Patch game.js: remove only the eager level generation. requestAnimationFrame
     // is mocked and therefore cannot create a recursive browser loop.
     if (f === 'js/game.js') {
-      code = code.replace(/^\s*generateLevel\(\);\s*$/m, '// generateLevel(); // patched by test setup');
+      code = code.replace(
+        /\n\/\/ ===== ИНИЦИАЛИЗАЦИЯ =====\n\s*generateLevel\(\);/,
+        '\n// ===== ИНИЦИАЛИЗАЦИЯ =====\n// generateLevel(); // patched by test setup'
+      );
     }
 
     vm.runInThisContext(code, { filename: f });

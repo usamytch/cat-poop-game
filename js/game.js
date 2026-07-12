@@ -86,6 +86,11 @@ function resumeGame() {
 // ===== КЛАВИШИ =====
 const keys = {};
 window.addEventListener("keydown", e => {
+  if ((e.key === "q" || e.key === "Q") && gameState === "paused" && isTutorialActive()) {
+    e.preventDefault();
+    exitTutorialToMenu();
+    return;
+  }
   if (e.key === "Escape" || e.key === "p" || e.key === "P") {
     e.preventDefault();
     if (gameState === "paused") resumeGame();
@@ -106,30 +111,37 @@ window.addEventListener("keydown", e => {
     return;
   }
   if (gameState === "start") {
-    if (e.key === "1") difficulty = "easy";
-    if (e.key === "2") difficulty = "normal";
-    if (e.key === "3") difficulty = "chaos";
+    if (e.key === "1") { gameMode = "tutorial"; difficulty = "normal"; }
+    if (e.key === "2") { gameMode = "normal"; difficulty = "normal"; }
+    if (e.key === "3") { gameMode = "chaos"; difficulty = "chaos"; }
     if (e.key === "ArrowUp" || e.key === "ArrowDown") {
       e.preventDefault();
-      const order = ["easy", "normal", "chaos"];
-      const idx = order.indexOf(difficulty);
-      difficulty = order[(idx + (e.key === "ArrowDown" ? 1 : -1) + 3) % 3];
+      const order = ["tutorial", "normal", "chaos"];
+      const idx = order.indexOf(gameMode);
+      gameMode = order[(idx + (e.key === "ArrowDown" ? 1 : -1) + 3) % 3];
+      difficulty = gameMode === "chaos" ? "chaos" : "normal";
     }
     if (e.key === "Enter" || e.key === " ") startGame();
     // Чит-код: Shift+B (латинская) — форсировать подвал (corridor)
     if (e.key === "B") {
       cheatBasement = true;
+      gameMode = "normal";
+      difficulty = "normal";
       level = 9;
       startGame();
     }
     // Чит-код: Shift+D (латинская) — форсировать подвал (DFS-лабиринт)
     if (e.key === "D") {
       cheatDfs = true;
+      gameMode = "normal";
+      difficulty = "normal";
       level = 20;
       startGame();
     }
   } else if (gameState === "playing") {
     if (e.key === " " || e.key === "x" || e.key === "X") shootPoop();
+    // Debug/QA: Shift+T — перейти к следующему экрану активного обучения.
+    if (e.key === "T" && isTutorialActive()) { completeTutorialStage(); return; }
     // Debug: Shift+G — переключить steering overlay
     if (e.key === "G") { _debugSteering = !_debugSteering; }
     // Чит-код: Shift+B — телепорт в подвал (corridor) без сброса счёта/жизней
@@ -155,6 +167,8 @@ window.addEventListener("keydown", e => {
     if (e.key === "Enter" || e.key === " ") respawnPlayer();
   } else if (gameState === "paused") {
     if (e.key === "Enter" || e.key === " ") resumeGame();
+  } else if (gameState === "tutorialComplete") {
+    if (e.key === "Enter" || e.key === " ") finishTutorialToMenu();
   } else if (gameState === "win" || gameState === "lose" || gameState === "caught" || gameState === "accident") {
     if (e.key === "r" || e.key === "R") {
       const replayRunSeed = globalSeed;
@@ -187,10 +201,16 @@ function startGame(seedOverride = null) {
   pausedFromState = null; pauseReason = "";
   simulationTimeMs = 0;
   resetSimulationClock();
-  generateLevel();
-  owner.activate();
-  sndMeow();
   gameState = "playing";
+  if (gameMode === "tutorial") {
+    startTutorial();
+  } else {
+    tutorialState.active = false;
+    difficulty = gameMode === "chaos" ? "chaos" : "normal";
+    generateLevel();
+    owner.activate();
+  }
+  sndMeow();
   stopPanicMelody();
   startMelody();
 }
@@ -239,6 +259,7 @@ function update() {
   updatePawTrails();
   updateOverlayParticles();
   updateComboPopups();
+  updateTutorial();
   if (levelMessageTimer > 0) levelMessageTimer--;
 }
 

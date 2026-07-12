@@ -42,6 +42,8 @@ if (IS_MOBILE) {
   const BTN_ACTION = { cx: 600, cy: 635, r: 55, label: "▶", touchId: null };
   // Кнопка мьюта — верхний правый угол, всегда видна
   const BTN_MUTE = { cx: 1155, cy: 45, r: 38 };
+  const BTN_PAUSE = { cx: 1070, cy: 45, r: 32 };
+  const BTN_EXIT_TUTORIAL = { cx: 600, cy: 520, r: 55 };
 
   // ===== ВСПОМОГАТЕЛЬНАЯ ФУНКЦИЯ: canvas-координаты из touch =====
   function canvasCoords(touch) {
@@ -90,6 +92,11 @@ if (IS_MOBILE) {
         continue;
       }
 
+      if (gameState === "playing" && inCircle(x, y, BTN_PAUSE.cx, BTN_PAUSE.cy, BTN_PAUSE.r)) {
+        pauseGame("manual");
+        continue;
+      }
+
       // Джойстик
       if (inCircle(x, y, JOY.cx, JOY.cy, JOY.outerR + 20) && JOY.touchId === null) {
         JOY.active  = true;
@@ -112,16 +119,23 @@ if (IS_MOBILE) {
         // Тап по карточкам сложности — проверяем ПЕРВЫМИ, до BTN_ACTION
         // (иначе нижняя карточка "Хаос" перекрывается кругом BTN_ACTION)
         if (gameState === "start") {
-          const diffs = ["easy", "normal", "chaos"];
+          const diffs = ["tutorial", "normal", "chaos"];
           let diffSelected = false;
           diffs.forEach((key, i) => {
             const bx = canvas.width/2 - 220, by = 330 + i*80, bw = 440, bh = 62;
             if (x >= bx && x <= bx+bw && y >= by && y <= by+bh) {
-              difficulty = key;
+              gameMode = key;
+              difficulty = key === "chaos" ? "chaos" : "normal";
               diffSelected = true;
             }
           });
           if (diffSelected) continue;
+        }
+
+        if (gameState === "paused" && isTutorialActive() &&
+            inCircle(x, y, BTN_EXIT_TUTORIAL.cx, BTN_EXIT_TUTORIAL.cy, BTN_EXIT_TUTORIAL.r)) {
+          exitTutorialToMenu();
+          continue;
         }
 
         // Кнопка "ИГРАТЬ" / "В меню" — точный радиус без лишнего запаса
@@ -132,6 +146,8 @@ if (IS_MOBILE) {
             resumeGame();
           } else if (gameState === "lifeLost") {
             respawnPlayer();
+          } else if (gameState === "tutorialComplete") {
+            finishTutorialToMenu();
           } else {
             gameState = "start";
           }
@@ -199,6 +215,17 @@ if (IS_MOBILE) {
     ctx.fillText(muted ? "🔇" : "🔊", BTN_MUTE.cx, BTN_MUTE.cy + 9);
 
     if (gameState === "playing") {
+      ctx.beginPath();
+      ctx.arc(BTN_PAUSE.cx, BTN_PAUSE.cy, BTN_PAUSE.r, 0, Math.PI*2);
+      ctx.fillStyle = "rgba(30,30,30,0.60)";
+      ctx.fill();
+      ctx.strokeStyle = "rgba(255,255,255,0.45)";
+      ctx.lineWidth = 2.5;
+      ctx.stroke();
+      ctx.font = "bold 22px Arial";
+      ctx.fillStyle = "#fff";
+      ctx.fillText("Ⅱ", BTN_PAUSE.cx, BTN_PAUSE.cy + 8);
+
       // --- Джойстик ---
       // Внешнее кольцо
       ctx.beginPath();
@@ -233,18 +260,32 @@ if (IS_MOBILE) {
       ctx.arc(BTN_SHOOT.cx, BTN_SHOOT.cy, BTN_SHOOT.r, 0, Math.PI*2);
       ctx.fillStyle = BTN_SHOOT.touchId !== null
         ? "rgba(255,213,79,0.65)"
-        : "rgba(139,69,19,0.55)";
+        : tutorialCanShoot() ? "rgba(139,69,19,0.55)" : "rgba(80,80,80,0.40)";
       ctx.fill();
       ctx.strokeStyle = "rgba(255,255,255,0.5)";
       ctx.lineWidth = 3;
       ctx.stroke();
       ctx.font = "36px Arial";
       ctx.textAlign = "center";
-      ctx.fillText(BTN_SHOOT.label, BTN_SHOOT.cx, BTN_SHOOT.cy + 13);
+      ctx.fillText(tutorialCanShoot() ? BTN_SHOOT.label : "🔒", BTN_SHOOT.cx, BTN_SHOOT.cy + 13);
 
     } else {
+      if (gameState === "paused" && isTutorialActive()) {
+        ctx.beginPath();
+        ctx.roundRect(BTN_EXIT_TUTORIAL.cx-110, BTN_EXIT_TUTORIAL.cy-30, 220, 60, 30);
+        ctx.fillStyle = "rgba(255,255,255,0.14)";
+        ctx.fill();
+        ctx.strokeStyle = "rgba(255,255,255,0.35)";
+        ctx.stroke();
+        ctx.font = "bold 20px Arial";
+        ctx.fillStyle = "#fff";
+        ctx.textAlign = "center";
+        ctx.fillText("↩ В МЕНЮ", BTN_EXIT_TUTORIAL.cx, BTN_EXIT_TUTORIAL.cy + 7);
+      }
       // --- Кнопка действия (старт / в меню) ---
-      const label = gameState === "start" ? "▶ ИГРАТЬ" : gameState === "paused" ? "▶ ПРОДОЛЖИТЬ" : "↩ МЕНЮ";
+      const label = gameState === "start" ? "▶ ИГРАТЬ" :
+        gameState === "paused" ? "▶ ПРОДОЛЖИТЬ" :
+        gameState === "tutorialComplete" ? "▶ ДАЛЬШЕ" : "↩ МЕНЮ";
       const t = Date.now() * 0.003;
       const sc = 1 + Math.sin(t) * 0.04;
       ctx.translate(BTN_ACTION.cx, BTN_ACTION.cy);

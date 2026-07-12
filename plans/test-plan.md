@@ -33,6 +33,8 @@ npx vitest run tests/integration/play-feel-regression.test.js
 | `tests/grid.test.js` | сетка, занятость клеток, `aStarPath` |
 | `tests/game.test.js` | состояние игры, старт, respawn, ввод |
 | `tests/touch.test.js` | мобильное управление |
+| `tests/tutorial.test.js` | фиксированные этапы обучения, checkpoint, panic и изоляция статистики |
+| `tests/hud.test.js` | единая нижняя панель, label `ХОЧЕТСЯ`, effects chips и отсутствие рекорда/mute |
 | `tests/integration/combo-flow.test.js` | полный флоу 3 попаданий |
 | `tests/integration/urge-flow.test.js` | рост срочности, таблетка, авария, паника |
 | `tests/integration/level-progression.test.js` | переход уровней и активация хозяина |
@@ -47,7 +49,8 @@ npx vitest run tests/integration/play-feel-regression.test.js
 - Для каждой локации есть обычная тема и ускоренный panic-вариант с математически развёрнутым таймлайном нот.
 - Таблетка снижает срочность по фазам игры, не уводя значение ниже 0.
 - 3 попадания подряд вызывают combo, `owner.flee()` и последующую очистку следов после бегства.
-- `DIFF.easy.firstLvl === 3`, `DIFF.normal.firstLvl === 2`, `DIFF.chaos.firstLvl === 1`.
+- `DIFF` содержит только честные профили `normal` и `chaos`; обучение использует Normal-физику через отдельный `gameMode`.
+- Карты трёх экранов обучения не зависят от seed; поимки, аварии и выстрелы в обучении не меняют обычную статистику.
 - Бонусы `life` и `catnip` появляются только с нужных уровней, жизнь не чаще 1 раза за уровень.
 - На `5/5` гарантированы `pill` и контрольный бонус; `life` чаще при низких жизнях и реже при высоких.
 - Хозяин и кот 36x36, `GRID === 40`, оба проходят через 1-клеточные щели.
@@ -72,3 +75,5 @@ npx vitest run tests/integration/play-feel-regression.test.js
 - Любая правка генерации уровня требует `tests/level.test.js`, `tests/grid.test.js`, проверки подвала и обычной reachability-проверки от спавна до лотка.
 - Любая правка баланса сложности требует `tests/config.test.js`, `tests/player.test.js` и интеграционных сценариев срочности.
 - Любая новая механика бонуса требует unit-теста бонуса, pickup-теста игрока и хотя бы одного интеграционного сценария.
+- Любая правка обучения требует `tests/tutorial.test.js`, релевантные `game/player/owner/touch`-тесты и сценарный smoke-test во встроенном браузере.
+- Любая правка HUD требует `tests/hud.test.js` и browser screenshots обычного, tutorial, panic и touch-состояний.

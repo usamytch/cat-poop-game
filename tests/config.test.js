@@ -10,14 +10,14 @@ beforeAll(() => {
 
 // ---------------------------------------------------------------------------
 describe('DIFF — difficulty modes', () => {
-  it('all three modes present', () => {
-    expect(DIFF).toHaveProperty('easy');
+  it('only the two scored difficulty profiles are present', () => {
+    expect(DIFF).not.toHaveProperty('easy');
     expect(DIFF).toHaveProperty('normal');
     expect(DIFF).toHaveProperty('chaos');
   });
 
   const requiredFields = ['urgeRate', 'baseSpd', 'spdPerLvl', 'maxSpd', 'firstLvl', 'poopTime', 'hitUrgeReduce', 'shootUrgeReduce'];
-  for (const mode of ['easy', 'normal', 'chaos']) {
+  for (const mode of ['normal', 'chaos']) {
     for (const field of requiredFields) {
       it(`DIFF.${mode} has field "${field}"`, () => {
         expect(DIFF[mode]).toHaveProperty(field);
@@ -26,44 +26,34 @@ describe('DIFF — difficulty modes', () => {
     }
   }
 
-  it('chaos.urgeRate > normal.urgeRate > easy.urgeRate', () => {
+  it('chaos.urgeRate > normal.urgeRate', () => {
     expect(DIFF.chaos.urgeRate).toBeGreaterThan(DIFF.normal.urgeRate);
-    expect(DIFF.normal.urgeRate).toBeGreaterThan(DIFF.easy.urgeRate);
   });
 
-  it('chaos.baseSpd > normal.baseSpd > easy.baseSpd', () => {
+  it('chaos.baseSpd > normal.baseSpd', () => {
     expect(DIFF.chaos.baseSpd).toBeGreaterThan(DIFF.normal.baseSpd);
-    expect(DIFF.normal.baseSpd).toBeGreaterThan(DIFF.easy.baseSpd);
   });
 
   it('hitUrgeReduce is > 0 for all modes', () => {
-    expect(DIFF.easy.hitUrgeReduce).toBeGreaterThan(0);
     expect(DIFF.normal.hitUrgeReduce).toBeGreaterThan(0);
     expect(DIFF.chaos.hitUrgeReduce).toBeGreaterThan(0);
   });
 
-  it('easy.hitUrgeReduce > normal.hitUrgeReduce > chaos.hitUrgeReduce', () => {
-    expect(DIFF.easy.hitUrgeReduce).toBeGreaterThan(DIFF.normal.hitUrgeReduce);
+  it('normal.hitUrgeReduce > chaos.hitUrgeReduce', () => {
     expect(DIFF.normal.hitUrgeReduce).toBeGreaterThan(DIFF.chaos.hitUrgeReduce);
   });
 
   it('shootUrgeReduce is >= 0 for all modes', () => {
-    expect(DIFF.easy.shootUrgeReduce).toBeGreaterThanOrEqual(0);
     expect(DIFF.normal.shootUrgeReduce).toBeGreaterThanOrEqual(0);
     expect(DIFF.chaos.shootUrgeReduce).toBeGreaterThanOrEqual(0);
   });
 
-  it('easy.shootUrgeReduce >= normal.shootUrgeReduce >= chaos.shootUrgeReduce', () => {
-    expect(DIFF.easy.shootUrgeReduce).toBeGreaterThanOrEqual(DIFF.normal.shootUrgeReduce);
+  it('normal.shootUrgeReduce >= chaos.shootUrgeReduce', () => {
     expect(DIFF.normal.shootUrgeReduce).toBeGreaterThanOrEqual(DIFF.chaos.shootUrgeReduce);
   });
 
   it('chaos.shootUrgeReduce === 0 (no urge reduction on shoot in chaos)', () => {
     expect(DIFF.chaos.shootUrgeReduce).toBe(0);
-  });
-
-  it('easy.maxSpd === 3.5', () => {
-    expect(DIFF.easy.maxSpd).toBe(3.5);
   });
 
   it('normal.maxSpd === 4.5', () => {
@@ -75,7 +65,6 @@ describe('DIFF — difficulty modes', () => {
   });
 
   it('maxSpd > baseSpd for all modes (cap is above starting speed)', () => {
-    expect(DIFF.easy.maxSpd).toBeGreaterThan(DIFF.easy.baseSpd);
     expect(DIFF.normal.maxSpd).toBeGreaterThan(DIFF.normal.baseSpd);
     expect(DIFF.chaos.maxSpd).toBeGreaterThan(DIFF.chaos.baseSpd);
   });
@@ -85,13 +74,9 @@ describe('DIFF — difficulty modes', () => {
 describe('DIFF — balance: urge reduction vs urge growth per cooldown', () => {
   // Cooldown = 22 frames; urge growth per frame = urgeRate/60
   // On chaos: shootUrgeReduce=0 — misses give no relief, only direct hits help
-  // On easy/normal: shootUrgeReduce > 0 — every shot reduces urge slightly
+  // On normal: shootUrgeReduce > 0 — every shot reduces urge slightly
   it('chaos: shootUrgeReduce === 0 (misses give no urge relief on chaos)', () => {
     expect(DIFF.chaos.shootUrgeReduce).toBe(0);
-  });
-
-  it('easy: shootUrgeReduce > 0 (every shot reduces urge on easy)', () => {
-    expect(DIFF.easy.shootUrgeReduce).toBeGreaterThan(0);
   });
 
   it('normal: shootUrgeReduce > 0 (every shot reduces urge on normal)', () => {
@@ -102,9 +87,6 @@ describe('DIFF — balance: urge reduction vs urge growth per cooldown', () => {
     expect(DIFF.normal.hitUrgeReduce).toBeGreaterThan(0);
   });
 
-  it('easy: hitUrgeReduce is a positive number (shooting reduces urge)', () => {
-    expect(DIFF.easy.hitUrgeReduce).toBeGreaterThan(0);
-  });
 });
 
 // ---------------------------------------------------------------------------
@@ -173,6 +155,19 @@ describe('BONUS_TYPES', () => {
 
 // ---------------------------------------------------------------------------
 describe('obstacleCatalog', () => {
+  it('each location has its own thematic HUD icon', () => {
+    const expectedIcons = {
+      hall: '🛋️',
+      bathroom: '🚿',
+      kitchen: '🍳',
+      street: '🌳',
+      country: '🏡',
+      basement: '🕸️',
+    };
+    expect(Object.fromEntries(locationThemes.map(theme => [theme.key, theme.icon]))).toEqual(expectedIcons);
+    expect(new Set(locationThemes.map(theme => theme.icon)).size).toBe(locationThemes.length);
+  });
+
   it('all obstacle types from locationThemes are in catalog', () => {
     const catalogKeys = Object.keys(obstacleCatalog);
     for (const theme of locationThemes) {

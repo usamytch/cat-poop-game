@@ -213,7 +213,7 @@ function draw() {
   drawOverlayParticles();
   drawComboPopups();
   drawUI();
-  drawLivesHUD();
+  drawTutorialGuidance();
 
   if (gameState !== "playing" && gameState !== "start") drawOverlay();
   if (IS_MOBILE) drawTouchControls();

@@ -139,20 +139,6 @@ describe('owner.activate()', () => {
     expect(owner.active).toBe(true);
   });
 
-  it('easy mode: level 1 → inactive (firstLvl=3)', () => {
-    difficulty = 'easy'; // firstLvl = 3
-    level = 1;
-    owner.activate();
-    expect(owner.active).toBe(false);
-  });
-
-  it('easy mode: level 3 → active', () => {
-    difficulty = 'easy'; // firstLvl = 3
-    level = 3;
-    owner.activate();
-    expect(owner.active).toBe(true);
-  });
-
   it('speed = baseSpd + (effectiveLevel-1) * spdPerLvl', () => {
     difficulty = 'normal';
     level = 3;
@@ -166,13 +152,6 @@ describe('owner.activate()', () => {
     level = 50; // far beyond cap
     owner.activate();
     expect(owner.speed).toBeCloseTo(DIFF.normal.maxSpd);
-  });
-
-  it('speed is capped at maxSpd on very high level (easy)', () => {
-    difficulty = 'easy';
-    level = 50;
-    owner.activate();
-    expect(owner.speed).toBeCloseTo(DIFF.easy.maxSpd);
   });
 
   it('speed is capped at maxSpd on very high level (chaos)', () => {

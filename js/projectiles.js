@@ -7,6 +7,7 @@ let shootCooldown = 0;
 let lastDir = {x:1, y:0};
 
 function shootPoop() {
+  if (!tutorialCanShoot()) return;
   if (shootCooldown > 0) return;
   const cx = player.x + player.size/2;
   const cy = player.y + player.size/2;
@@ -27,7 +28,8 @@ function shootPoop() {
     r: 10, alive: true,
     trail: [],
   });
-  stats.totalPoops++;
+  if (shouldRecordRunStats()) stats.totalPoops++;
+  tutorialOnShotFired();
   shootCooldown = 22;
   sndFart();
   // Снижаем срочность при выстреле (на лёгком и нормале)
@@ -55,7 +57,12 @@ function updatePoops() {
 
     // Попала в препятствие
     const pr = {x:p.x-p.r, y:p.y-p.r, width:p.r*2, height:p.r*2};
-    if (hitsObstacles(pr)) { p.alive = false; comboCount = 0; continue; }
+    if (hitsObstacles(pr)) {
+      p.alive = false;
+      comboCount = 0;
+      tutorialOnShotBlocked();
+      continue;
+    }
 
     // Попала в хозяина
     if (owner.active && circleRect({x:p.x, y:p.y, r:p.r}, ownerRect())) {
@@ -81,12 +88,13 @@ function updatePoops() {
         comboPopups.push({x:owner.x+owner.width/2, y:owner.y-20, text:"COMBO! x"+comboCount, timer:90, color:"#ff9800"});
         sndCombo();
         owner.flee();
+        tutorialOnCombo();
         comboCount = 0; comboTimer = 0;
       } else {
         comboPopups.push({x:owner.x+owner.width/2, y:owner.y-20, text:"HIT! "+comboCount+"/3", timer:60, color:"#fff176"});
         sndHit();
       }
-      score += 2;
+      if (shouldRecordRunStats()) score += 2;
     }
   }
   // OPT 8: swap-and-pop вместо splice — O(1) вместо O(n)

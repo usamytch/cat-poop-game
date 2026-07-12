@@ -110,7 +110,10 @@ function drawLitterBox() {
   ctx.fillStyle = labelColor;
   setFont("bold 12px Arial");
   ctx.textAlign = "center";
-  ctx.fillText("🐾 Лоток", litterBox.x + litterBox.width / 2, litterBox.y + litterBox.height + 20);
+  const litterLabel = isTutorialActive() && tutorialState.stage === 1 && !tutorialState.comboDone
+    ? "🔒 Сначала COMBO"
+    : "🐾 Лоток";
+  ctx.fillText(litterLabel, litterBox.x + litterBox.width / 2, litterBox.y + litterBox.height + 20);
 
   ctx.restore();
 
@@ -145,51 +148,130 @@ function drawLitterBox() {
 }
 
 // ===== HUD =====
+function _drawHudEffectChip(x, y, emoji, seconds, color) {
+  const w = 64, h = 24;
+  ctx.save();
+  ctx.fillStyle = "rgba(0,0,0,0.24)";
+  ctx.beginPath(); ctx.roundRect(x, y, w, h, 10); ctx.fill();
+  ctx.globalAlpha = 0.58;
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.roundRect(x, y, w, h, 10); ctx.stroke();
+  ctx.globalAlpha = 1;
+  setFont("bold 13px Arial");
+  ctx.fillStyle = "#fff";
+  ctx.textAlign = "center";
+  ctx.fillText(emoji+" "+seconds+"с", x+w/2, y+17);
+  ctx.restore();
+}
+
 function drawUI() {
   const p = currentLocation.palette;
   const urgeRatio = player.urge / player.maxUrge;
   const panic = urgeRatio > 0.75;
-
+  const tutorial = isTutorialActive();
+  const dockX = 14;
   const dockY = WORLD.height - WORLD.floorHeight + 8;
-  const panelH = WORLD.floorHeight - 16;
-  const statsX = 14, statsW = 330;
-  const urgeW = 470;
-  const urgeX = WORLD.width - urgeW - 14;
+  const dockW = WORLD.width - dockX * 2;
+  const dockH = WORLD.floorHeight - 16;
   const panelColor = p.ui || "rgba(30,20,10,0.72)";
-  const panelR = 14;
+  const panelR = 16;
+
+  // На touch нижние углы заняты джойстиком и кнопкой выстрела.
+  // Фон остаётся единым, а полезный контент живёт в центральном safe corridor.
+  const contentLeft = IS_MOBILE ? 230 : dockX + 18;
+  const contentRight = IS_MOBILE ? 970 : dockX + dockW - 18;
+  const topY = dockY + 25;
 
   ctx.fillStyle = panelColor;
-  ctx.beginPath(); ctx.roundRect(statsX, dockY, statsW, panelH, panelR); ctx.fill();
-  ctx.beginPath(); ctx.roundRect(urgeX, dockY, urgeW, panelH, panelR); ctx.fill();
+  ctx.beginPath(); ctx.roundRect(dockX, dockY, dockW, dockH, panelR); ctx.fill();
+  ctx.strokeStyle = "rgba(255,255,255,0.12)";
+  ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.roundRect(dockX+0.5, dockY+0.5, dockW-1, dockH-1, panelR); ctx.stroke();
+  ctx.fillStyle = p.accent || "rgba(255,255,255,0.25)";
+  ctx.globalAlpha = 0.42;
+  ctx.beginPath(); ctx.roundRect(dockX+16, dockY+1, dockW-32, 2, 1); ctx.fill();
+  ctx.globalAlpha = 1;
+
+  // Верхняя строка: жизни → контекст → счёт → эффекты → режим.
+  let infoX = contentLeft;
+  if (!tutorial) {
+    const lifeSize = 20;
+    const useImg = typeof lifeImage !== "undefined" && lifeImage.complete && lifeImage.naturalWidth > 0;
+    if (useImg) ctx.drawImage(lifeImage, infoX, topY-lifeSize+4, lifeSize, lifeSize);
+    else {
+      setFont("19px Arial");
+      ctx.textAlign = "left";
+      ctx.fillText("🐱", infoX, topY+4);
+    }
+    ctx.fillStyle = "#fff";
+    setFont("bold 15px Arial");
+    ctx.textAlign = "left";
+    ctx.fillText("×"+lives, infoX+26, topY);
+    infoX += 66;
+    ctx.strokeStyle = "rgba(255,255,255,0.16)";
+    ctx.beginPath(); ctx.moveTo(infoX-12, dockY+13); ctx.lineTo(infoX-12, dockY+34); ctx.stroke();
+  }
 
   ctx.fillStyle = "#fff";
-  setFont("bold 16px Arial");
+  setFont("bold 15px Arial");
   ctx.textAlign = "left";
   const locationAlpha = levelMessageTimer > 0 ? 1 : 0.84;
   const progression = currentLevelProgression || getLevelProgression(level);
   const actLabel = progression.actStep + "/" + progression.actLength;
   ctx.globalAlpha = locationAlpha;
-  ctx.fillText("📍 "+currentLocation.name+" · "+actLabel+" · Ур. "+level, statsX+14, dockY+23);
+  const locationText = tutorial
+    ? "🎓 "+(tutorialState.stage+1)+"/3 · "+TUTORIAL_STAGES[tutorialState.stage].title
+    : (currentLocation.icon || "📍")+" "+currentLocation.name+" · "+actLabel+" · Уровень "+level;
+  ctx.fillText(locationText, infoX, topY);
   ctx.globalAlpha = 1;
-  ctx.fillStyle = "#ffd54f";
-  setFont("bold 14px Arial");
-  ctx.fillText("Счёт: "+score, statsX+14, dockY+45);
-  ctx.fillStyle = "#b0bec5";
-  setFont("13px Arial");
-  ctx.fillText("Рекорд: "+stats.highScore, statsX+118, dockY+45);
 
-  ctx.fillStyle = "#90caf9";
-  setFont("13px Arial");
-  const modeText = progression.modifier ? DIFF[difficulty].label+" · "+progression.modifier.label : DIFF[difficulty].label;
-  ctx.fillText(modeText, statsX+14, dockY+64);
-  const muteIcon = muted ? "🔇" : "🔊";
-  setFont("15px Arial");
+  if (!tutorial) {
+    ctx.fillStyle = "#ffd54f";
+    setFont("bold 15px Arial");
+    ctx.textAlign = "center";
+    ctx.fillText("СЧЁТ  "+score, IS_MOBILE ? 560 : WORLD.width/2, topY);
+  }
+
+  let effectX = IS_MOBILE ? 650 : 690;
+  const effectY = dockY + 10;
+  if (speedBoostTimer > 0) {
+    _drawHudEffectChip(effectX, effectY, "🐟", Math.ceil(speedBoostTimer/60), "#4fc3f7");
+    effectX += 72;
+  }
+  if (yarnFreezeTimer > 0) {
+    _drawHudEffectChip(effectX, effectY, "🧶", Math.ceil(yarnFreezeTimer/60), "#ce93d8");
+    effectX += 72;
+  }
+  if (catnipTimer > 0) {
+    _drawHudEffectChip(effectX, effectY, "🌿", Math.ceil(catnipTimer/60), "#80cbc4");
+  }
+
+  const modeText = tutorial
+    ? (IS_MOBILE ? "🎓" : "🎓 ОБУЧЕНИЕ")
+    : IS_MOBILE
+      ? (difficulty === "chaos" ? "😈" : "😼")
+      : progression.modifier ? DIFF[difficulty].label+" · "+progression.modifier.label : DIFF[difficulty].label;
+  ctx.fillStyle = "rgba(255,255,255,0.68)";
+  setFont("bold 13px Arial");
   ctx.textAlign = "right";
-  ctx.fillStyle = muted ? "rgba(255,100,100,0.9)" : "rgba(255,255,255,0.7)";
-  ctx.fillText(muteIcon + " M", statsX+statsW-14, dockY+64);
+  ctx.fillText(modeText, contentRight, topY);
 
-  const barX=urgeX+18, barY=dockY+25, barW=urgeW-36, barH=22;
-  ctx.fillStyle = "rgba(0,0,0,0.4)"; ctx.beginPath(); ctx.roundRect(barX,barY,barW,barH,10); ctx.fill();
+  // Нижняя строка: отдельный label, полноширинный bar и стабильный процент.
+  const barY = dockY + 45;
+  const barH = 17;
+  const labelW = 116;
+  const percentW = 50;
+  const barX = contentLeft + labelW;
+  const barW = contentRight - percentW - barX;
+
+  ctx.fillStyle = panic ? "#ff6b6b" : "rgba(255,255,255,0.86)";
+  setFont("bold 14px Arial");
+  ctx.textAlign = "left";
+  ctx.fillText((panic ? "😱 " : "💩 ")+"ХОЧЕТСЯ", contentLeft, barY+13);
+
+  ctx.fillStyle = "rgba(0,0,0,0.42)";
+  ctx.beginPath(); ctx.roundRect(barX,barY,barW,barH,barH/2); ctx.fill();
 
   let barColor;
   if (urgeRatio < 0.5)       barColor = "#66bb6a";
@@ -199,71 +281,26 @@ function drawUI() {
   const fillW = barW * urgeRatio;
   if (fillW > 0) {
     ctx.fillStyle = barColor;
-    ctx.beginPath(); ctx.roundRect(barX, barY, fillW, barH, 10); ctx.fill();
+    ctx.beginPath(); ctx.roundRect(barX, barY, fillW, barH, barH/2); ctx.fill();
   }
+
+  ctx.strokeStyle = "rgba(255,255,255,0.20)";
+  ctx.lineWidth = 1;
+  const marker50X = Math.round(barX + barW * 0.5) + 0.5;
+  const marker75X = Math.round(barX + barW * 0.75) + 0.5;
+  ctx.beginPath(); ctx.moveTo(marker50X, barY+3); ctx.lineTo(marker50X, barY+barH-3); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(marker75X, barY+3); ctx.lineTo(marker75X, barY+barH-3); ctx.stroke();
 
   if (panic) {
     ctx.strokeStyle = `rgba(255,50,50,${0.5+Math.sin(_now*0.015)*0.5})`;
     ctx.lineWidth = 3;
-    ctx.beginPath(); ctx.roundRect(barX-2, barY-2, barW+4, barH+4, 12); ctx.stroke();
+    ctx.beginPath(); ctx.roundRect(barX-2, barY-2, barW+4, barH+4, (barH+4)/2); ctx.stroke();
   }
 
-  ctx.fillStyle = "#fff";
-  setFont("bold 13px Arial");
-  ctx.textAlign = "center";
-  ctx.fillText(panic ? "😱 СРОЧНО!" : "💩 Хочется: "+Math.floor(urgeRatio*100)+"%", barX+barW/2, barY+15);
-
-  let bx = urgeX+18;
-  const bonusY = dockY+62;
-  if (speedBoostTimer > 0) {
-    ctx.fillStyle = "#4fc3f7";
-    setFont("13px Arial");
-    ctx.textAlign = "left";
-    ctx.fillText("🐟 "+Math.ceil(speedBoostTimer/60)+"с", bx, bonusY); bx += 72;
-  }
-  if (yarnFreezeTimer > 0) {
-    ctx.fillStyle = "#ce93d8";
-    setFont("13px Arial");
-    ctx.textAlign = "left";
-    ctx.fillText("🧶 "+Math.ceil(yarnFreezeTimer/60)+"с", bx, bonusY); bx += 72;
-  }
-  if (catnipTimer > 0) {
-    ctx.fillStyle = "#80cbc4";
-    setFont("13px Arial");
-    ctx.textAlign = "left";
-    ctx.fillText("🌿 "+Math.ceil(catnipTimer/60)+"с", bx, bonusY);
-  }
-
-  ctx.textAlign = "left";
-}
-
-// ===== ЖИЗНИ (компактно, верхний левый угол) =====
-function drawLivesHUD() {
-  const iconSize = 22;
-  const panelX = 14;
-  const panelY = 14;
-  const panelW = 74;
-  const panelH = 34;
-
-  // Фон панели
-  ctx.fillStyle = currentLocation.palette.ui || "rgba(0,0,0,0.52)";
-  ctx.beginPath(); ctx.roundRect(panelX, panelY, panelW, panelH, 10); ctx.fill();
-
-  const iconX = panelX + 9;
-  const iconY = panelY + 6;
-  const useImg = typeof lifeImage !== "undefined" && lifeImage.complete && lifeImage.naturalWidth > 0;
-
-  ctx.globalAlpha = 1;
-  if (useImg) {
-    ctx.drawImage(lifeImage, iconX, iconY, iconSize, iconSize);
-  } else {
-    setFont(iconSize + "px Arial"); ctx.textAlign = "left";
-    ctx.fillText("🐱", iconX, iconY + iconSize - 2);
-  }
-  ctx.fillStyle = "#fff";
-  setFont("bold 17px Arial");
-  ctx.textAlign = "left";
-  ctx.fillText("×"+lives, iconX + iconSize + 8, panelY + 23);
+  ctx.fillStyle = panic ? "#ff8a80" : "#fff";
+  setFont("bold 14px Arial");
+  ctx.textAlign = "right";
+  ctx.fillText(Math.floor(urgeRatio*100)+"%", contentRight, barY+13);
   ctx.textAlign = "left";
 }
 
@@ -298,15 +335,15 @@ function drawStartScreen() {
   ctx.fillText("Поймано хозяином: "+stats.totalCaught+"  |  Аварий: "+stats.totalAccidents+"  |  Какашек выпущено: "+stats.totalPoops, WORLD.width/2, 248);
 
   setFont("bold 24px Arial"); ctx.fillStyle = "#fff";
-  ctx.fillText("Выбери сложность:", WORLD.width/2, 300);
+  ctx.fillText("Выбери режим:", WORLD.width/2, 300);
 
   const diffs = [
-    {key:"easy",   label:"😸 Лёгкий",  desc:"Медленная срочность · хозяин с 3 уровня · облегчение на ходу"},
+    {key:"tutorial", label:"🎓 Обучение", desc:"3 постановочных экрана · без рекордов · можно повторять"},
     {key:"normal", label:"😼 Нормал",   desc:"Стандартный режим · хозяин со 2 уровня · облегчение на ходу"},
     {key:"chaos",  label:"😈 Хаос",     desc:"Быстрая срочность · хозяин с 1 уровня · меткое облегчение"},
   ];
   diffs.forEach((d, i) => {
-    const sel = difficulty === d.key;
+    const sel = gameMode === d.key;
     const bx = WORLD.width/2-220, by = 330+i*80, bw = 440, bh = 62;
     ctx.fillStyle = sel ? "rgba(255,213,79,0.22)" : "rgba(255,255,255,0.07)";
     ctx.beginPath(); ctx.roundRect(bx,by,bw,bh,16); ctx.fill();
@@ -366,7 +403,14 @@ function drawOverlay() {
     setFont("20px Arial");
     ctx.fillStyle = "#b0bec5";
     ctx.fillText("Срочность, хозяин, препятствия и таймеры заморожены", cx, cy + 25);
-    ctx.fillText("Enter / Esc / P — продолжить", cx, cy + 70);
+    ctx.fillText(IS_MOBILE ? "Нажми ▶, чтобы продолжить" : "Enter / Esc / P — продолжить", cx, cy + 62);
+    if (isTutorialActive()) {
+      const seen = getTutorialPauseLegend();
+      setFont("16px Arial");
+      ctx.fillStyle = "rgba(255,255,255,0.58)";
+      ctx.fillText(seen.length > 0 ? "Встречено: "+seen.join("  ·  ") : "Бонусы откроются на третьем экране", cx, cy + 98);
+      if (!IS_MOBILE) ctx.fillText("Q — выйти из обучения в меню", cx, cy + 128);
+    }
     ctx.restore();
     return;
   }
@@ -409,7 +453,16 @@ function drawOverlay() {
     return;
   }
 
-  if (gameState === "win") {
+  if (gameState === "tutorialComplete") {
+    setFont("bold 58px Arial"); ctx.fillStyle = "#ffd54f";
+    ctx.shadowColor = "#ff9800"; ctx.shadowBlur = 30;
+    ctx.fillText("🎓 ОБУЧЕНИЕ ПРОЙДЕНО", cx, cy-70);
+    ctx.shadowBlur = 0;
+    setFont("bold 26px Arial"); ctx.fillStyle = "#fff";
+    ctx.fillText("Теперь правила будут честными, но пощады не будет.", cx, cy-15);
+    setFont("20px Arial"); ctx.fillStyle = "#b0bec5";
+    ctx.fillText("Основным режимом выбран 😼 Нормал", cx, cy+25);
+  } else if (gameState === "win") {
     setFont("bold 72px Arial"); ctx.fillStyle = "#ffd54f";
     ctx.shadowColor = "#ff9800"; ctx.shadowBlur = 30;
     ctx.fillText("🎉 ПОБЕДА!", cx, cy-60);
@@ -438,29 +491,73 @@ function drawOverlay() {
     ctx.fillText("Счёт: "+score+"  |  Уровень: "+level, cx, cy+30);
   }
 
-  setFont("14px monospace"); ctx.fillStyle = "rgba(255,255,255,0.48)";
-  ctx.fillText("Seed: "+globalSeed, cx, cy+55);
-  if (!IS_MOBILE) {
-    setFont("14px Arial");
-    ctx.fillText("R — повторить этот забег", cx, cy+75);
+  if (gameState !== "tutorialComplete") {
+    setFont("14px monospace"); ctx.fillStyle = "rgba(255,255,255,0.48)";
+    ctx.fillText("Seed: "+globalSeed, cx, cy+55);
+    if (!IS_MOBILE) {
+      setFont("14px Arial");
+      ctx.fillText("R — повторить этот забег", cx, cy+75);
+    }
   }
 
-  if (score >= stats.highScore && score > 0) {
+  if (gameState !== "tutorialComplete" && score >= stats.highScore && score > 0) {
     setFont("bold 22px Arial"); ctx.fillStyle = "#ffd54f";
     ctx.fillText("🏆 НОВЫЙ РЕКОРД!", cx, cy+100);
   }
 
   // На мобиле кнопку "В меню" рисует drawTouchControls()
   if (!IS_MOBILE) {
+    const tutorialComplete = gameState === "tutorialComplete";
+    const buttonW = tutorialComplete ? 360 : 260;
+    const buttonH = tutorialComplete ? 60 : 52;
+    const buttonLabel = tutorialComplete ? "▶  ПРОДОЛЖИТЬ" : "↩  В меню  (Enter)";
     const t = _now*0.003;
     const sc = 1 + Math.sin(t)*0.04;
     ctx.save(); ctx.translate(cx, cy+155); ctx.scale(sc, sc);
     ctx.fillStyle = "#ffd54f";
-    ctx.beginPath(); ctx.roundRect(-130,-26,260,52,26); ctx.fill();
-    setFont("bold 22px Arial"); ctx.fillStyle = "#1a1a2e";
-    ctx.fillText("↩  В меню  (Enter)", 0, 8);
+    ctx.beginPath(); ctx.roundRect(-buttonW/2,-buttonH/2,buttonW,buttonH,buttonH/2); ctx.fill();
+    setFont(tutorialComplete ? "bold 24px Arial" : "bold 22px Arial");
+    ctx.fillStyle = "#1a1a2e";
+    ctx.fillText(buttonLabel, 0, tutorialComplete ? 8 : 8);
     ctx.restore();
   }
 
   ctx.restore();
+}
+
+// ===== КОНТЕКСТНЫЕ ПОДСКАЗКИ ОБУЧЕНИЯ =====
+function drawTutorialGuidance() {
+  if (!isTutorialActive() || gameState !== "playing") return;
+
+  const prompt = getTutorialPrompt();
+  if (prompt) {
+    const boxW = 760;
+    const boxX = (WORLD.width - boxW) / 2;
+    ctx.save();
+    ctx.fillStyle = "rgba(15,18,30,0.88)";
+    ctx.beginPath(); ctx.roundRect(boxX, 14, boxW, 46, 18); ctx.fill();
+    ctx.strokeStyle = tutorialState.bannerTimer > 90 ? "#ffd54f" : "rgba(255,255,255,0.24)";
+    ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.roundRect(boxX, 14, boxW, 46, 18); ctx.stroke();
+    setFont("bold 18px Arial");
+    ctx.fillStyle = "#fff";
+    ctx.textAlign = "center";
+    ctx.fillText(prompt, WORLD.width / 2, 43);
+    ctx.restore();
+  }
+
+  if (tutorialState.stage === 2) {
+    for (const bonus of bonuses) {
+      if (!bonus.alive || !bonus.tutorialLabel) continue;
+      const meta = BONUS_TYPES[bonus.type];
+      ctx.save();
+      setFont("bold 13px Arial");
+      ctx.textAlign = "center";
+      ctx.fillStyle = "rgba(0,0,0,0.72)";
+      ctx.beginPath(); ctx.roundRect(bonus.x-76, bonus.y-43, 152, 24, 10); ctx.fill();
+      ctx.fillStyle = meta.color;
+      ctx.fillText(meta.emoji+" "+meta.label, bonus.x, bonus.y-26);
+      ctx.restore();
+    }
+  }
 }

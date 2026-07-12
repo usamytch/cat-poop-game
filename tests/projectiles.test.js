@@ -85,13 +85,6 @@ describe('shootPoop()', () => {
     expect(p.dx).toBeLessThan(0);
   });
 
-  it('easy: shooting reduces player.urge by shootUrgeReduce', () => {
-    difficulty = 'easy';
-    player.urge = 50;
-    shootPoop();
-    expect(player.urge).toBeCloseTo(50 - DIFF.easy.shootUrgeReduce);
-  });
-
   it('normal: shooting reduces player.urge by shootUrgeReduce', () => {
     difficulty = 'normal';
     player.urge = 50;
@@ -107,7 +100,7 @@ describe('shootPoop()', () => {
   });
 
   it('shooting does not reduce urge below 0', () => {
-    difficulty = 'easy';
+    difficulty = 'normal';
     player.urge = 0;
     shootPoop();
     expect(player.urge).toBeGreaterThanOrEqual(0);

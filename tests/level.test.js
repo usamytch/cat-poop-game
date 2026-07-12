@@ -855,7 +855,7 @@ describe('generateLevel()', () => {
     BASEMENT.corridorProb = 0;
     BASEMENT.dfsProb = 0;
     try {
-      for (const diff of ['easy', 'normal', 'chaos']) {
+      for (const diff of ['normal', 'chaos']) {
         difficulty = diff;
         for (let lvl = 1; lvl <= 40; lvl++) {
           level = lvl;

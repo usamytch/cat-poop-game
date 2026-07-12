@@ -110,20 +110,6 @@ describe('Level progression via litter box', () => {
     expect(typeof owner.active).toBe('boolean');
   });
 
-  it('on level diff.firstLvl - 1: owner is inactive', () => {
-    difficulty = 'easy'; // firstLvl = 3
-    level = 2;
-    owner.activate();
-    expect(owner.active).toBe(false);
-  });
-
-  it('on level diff.firstLvl: owner is active', () => {
-    difficulty = 'easy'; // firstLvl = 3
-    level = 3;
-    owner.activate();
-    expect(owner.active).toBe(true);
-  });
-
   it('on level diff.firstLvl (normal=2): owner is active from level 2', () => {
     difficulty = 'normal'; // firstLvl = 2
     level = 2;

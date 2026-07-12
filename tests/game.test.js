@@ -13,7 +13,10 @@ function fullReset() {
   level = 1;
   lives = 3;
   difficulty = 'normal';
+  gameMode = 'normal';
   gameState = 'start';
+  tutorialState.active = false;
+  tutorialState.completed = false;
   lifeLostTimer = 0;
   lifeLostReason = '';
   pausedFromState = null;
@@ -369,7 +372,7 @@ describe('keyboard input handling', () => {
     keys[key] = false;
   }
 
-  it('keys "1"/"2"/"3" on start screen change difficulty', () => {
+  it('menu modes map to tutorial/normal/chaos while difficulty stays scored-only', () => {
     gameState = 'start';
     difficulty = 'normal';
     // Simulate pressing "1"
@@ -377,11 +380,11 @@ describe('keyboard input handling', () => {
     // The keydown handler is registered on window — we test via keys object
     // and the game logic that reads it. Since keydown is event-driven,
     // we test the state directly by calling the logic.
-    // The handler is: if (e.key === "1") difficulty = "easy"
+    // The handler maps key 1 to tutorial on Normal physics.
     // We can't easily fire DOM events in node, so we test the keys object
     // and verify the game reads it correctly.
-    // Instead, verify difficulty values are valid
-    expect(['easy', 'normal', 'chaos']).toContain(difficulty);
+    expect(['tutorial', 'normal', 'chaos']).toContain(gameMode);
+    expect(['normal', 'chaos']).toContain(difficulty);
     keys['1'] = false;
   });
 

@@ -118,6 +118,7 @@ const player = {
 
     // Авария
     if (this.urge >= this.maxUrge) {
+      if (tutorialHandleFailure()) return;
       stats.totalAccidents++;
       stats.update(score, level);
       spawnPuddle(this.x+this.size/2, this.y+this.size/2);
@@ -140,7 +141,7 @@ const player = {
     // Лоток — нужно постоять poopTime кадров чтобы покакать
     const pr = playerRect();
     const lr = {x:litterBox.x, y:litterBox.y, width:litterBox.width, height:litterBox.height};
-    const onLitter = rectsOverlap(pr, lr);
+    const onLitter = rectsOverlap(pr, lr) && tutorialCanUseLitter();
     if (onLitter) {
       const poopTime = DIFF[difficulty].poopTime;
       poopProgress++;
@@ -148,6 +149,12 @@ const player = {
       if (poopProgress >= poopTime) {
         // Успешно покакал!
         poopProgress = 0; isPooping = false;
+        if (isTutorialActive()) {
+          spawnConfetti(litterBox.x+litterBox.width/2, litterBox.y+litterBox.height/2);
+          sndWin();
+          completeTutorialStage();
+          return;
+        }
         score += Math.max(1, Math.floor((1 - this.urge/this.maxUrge)*10) + level);
         stats.update(score, level);
         level++;
@@ -171,7 +178,12 @@ const player = {
     for (const b of bonuses) {
       if (!b.alive) continue;
       const br = {x:b.x-20, y:b.y-20, width:40, height:40};
-      if (rectsOverlap(pr, br)) { applyBonus(b.type); b.alive = false; sndPickup(); }
+      if (rectsOverlap(pr, br)) {
+        applyBonus(b.type);
+        tutorialOnBonusPicked(b.type);
+        b.alive = false;
+        sndPickup();
+      }
     }
 
     // Таймеры бонусов

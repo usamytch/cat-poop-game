@@ -35,7 +35,6 @@ const DIFF = {
   // hesitateProbDecay — hyperbolic decay coefficient: prob = base / (1 + (level-1) * decay)
   // hesitateMinProb   — floor probability (never goes below this)
   // hesitateDur       — duration of micro-freeze in frames
-  easy:   { label:"😸 Лёгкий", urgeRate:1.0,  baseSpd:1.2, spdPerLvl:0.2,  maxSpd:3.5, firstLvl:3, poopTime:120, hitUrgeReduce:3.0, shootUrgeReduce:1.5, repathMinDist:3, hesitateBaseProb:0.008, hesitateProbDecay:0.08, hesitateMinProb:0.003, hesitateDur:18 },
   normal: { label:"😼 Нормал", urgeRate:1.9,  baseSpd:1.6, spdPerLvl:0.25, maxSpd:4.5, firstLvl:2, poopTime:180, hitUrgeReduce:2.0, shootUrgeReduce:1.0, repathMinDist:2, hesitateBaseProb:0.004, hesitateProbDecay:0.10, hesitateMinProb:0.001, hesitateDur:12 },
   chaos:  { label:"😈 Хаос",   urgeRate:3.0,  baseSpd:2.3, spdPerLvl:0.40, maxSpd:6.5, firstLvl:1, poopTime:240, hitUrgeReduce:1.5, shootUrgeReduce:0,   repathMinDist:2, hesitateBaseProb:0.002, hesitateProbDecay:0.20, hesitateMinProb:0.0,  hesitateDur:8  },
 };
@@ -77,35 +76,35 @@ const POOP_SPEED = 7;
 // ===== ЛОКАЦИИ =====
 const locationThemes = [
   {
-    key:"hall", name:"Зал",
+    key:"hall", name:"Зал", icon:"🛋️",
     palette:{wall:"#e8d8c3",floor:"#b98f68",trim:"#8f6548",accent:"#d9bfa3",shadow:"rgba(70,40,20,0.18)",ui:"rgba(40,24,16,0.72)"},
     decorations:["window","painting","lamp"],
     obstacleTypes:["wardrobe","dresser","armchair","plant"],
     decorTypes:["rug","mat"],
   },
   {
-    key:"bathroom", name:"Ванная",
+    key:"bathroom", name:"Ванная", icon:"🚿",
     palette:{wall:"#d9eef7",floor:"#9fc4d1",trim:"#5f8ea0",accent:"#f7fbfd",shadow:"rgba(30,70,90,0.18)",ui:"rgba(20,55,70,0.72)"},
     decorations:["mirror","tiles","towel"],
     obstacleTypes:["sink","toilet","laundry","cabinet"],
     decorTypes:["bathmat","tiles_decor"],
   },
   {
-    key:"kitchen", name:"Кухня",
+    key:"kitchen", name:"Кухня", icon:"🍳",
     palette:{wall:"#f4ead2",floor:"#caa56d",trim:"#8d6b3f",accent:"#fff4dc",shadow:"rgba(80,55,20,0.18)",ui:"rgba(65,45,18,0.72)"},
     decorations:["shelves","fridge","clock"],
     obstacleTypes:["table","fridge","stool","counter"],
     decorTypes:["rug","mat"],
   },
   {
-    key:"street", name:"Двор",
+    key:"street", name:"Двор", icon:"🌳",
     palette:{wall:"#b9d8f0",floor:"#7ea35f",trim:"#4f6f3d",accent:"#dff2ff",shadow:"rgba(30,60,20,0.18)",ui:"rgba(28,52,20,0.72)"},
     decorations:["clouds","fence","sun"],
     obstacleTypes:["tree","bench","bush","crate"],
     decorTypes:["patch","stone"],
   },
   {
-    key:"country", name:"Дача",
+    key:"country", name:"Дача", icon:"🏡",
     palette:{wall:"#efe2c8",floor:"#a97d4f",trim:"#6f4d2d",accent:"#f8f0df",shadow:"rgba(60,35,15,0.2)",ui:"rgba(55,32,14,0.72)"},
     decorations:["fireplace","window","rack"],
     obstacleTypes:["dresser","woodpile","rockingChair","barrel"],
@@ -113,7 +112,7 @@ const locationThemes = [
   },
   // ===== ЗАКРЫТАЯ ЛОКАЦИЯ — появляется только с уровня 9+ =====
   {
-    key:"basement", name:"Подвал",
+    key:"basement", name:"Подвал", icon:"🕸️",
     palette:{wall:"#1e1c1a",floor:"#141210",trim:"#2e2620",accent:"#3a3028",shadow:"rgba(0,0,0,0.70)",ui:"rgba(8,5,3,0.88)"},
     decorations:["cobweb","wallpipe","bulb"],
     obstacleTypes:["fishBones","ragMouse","teddyBear","toyCar","toyPlane","juiceCan"],

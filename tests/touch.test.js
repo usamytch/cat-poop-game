@@ -113,6 +113,7 @@ describe('touch.js — карточки сложности на стартово
     resetGameState();
     setGameVar('gameState', 'start');
     setGameVar('difficulty', 'normal');
+    setGameVar('gameMode', 'normal');
     // Мокаем startGame через vm-контекст
     startGameCalled = false;
     vm.runInThisContext('startGame = function() { startGameCalled_touch = true; }');
@@ -120,18 +121,19 @@ describe('touch.js — карточки сложности на стартово
     handlers = loadTouchJS();
   });
 
-  it('тап по карточке "Лёгкий" (easy, i=0) меняет difficulty на easy', () => {
-    // easy: bx=380, by=330, bw=440, bh=62 → центр (600, 361)
+  it('тап по карточке "Обучение" выбирает tutorial на Normal-физике', () => {
     touchStart(handlers['touchstart'], [makeTouch(600, 361)]);
-    expect(getGameVar('difficulty')).toBe('easy');
+    expect(getGameVar('gameMode')).toBe('tutorial');
+    expect(getGameVar('difficulty')).toBe('normal');
     expect(globalThis.startGameCalled_touch).toBe(false);
   });
 
   it('тап по карточке "Нормал" (normal, i=1) меняет difficulty на normal', () => {
-    setGameVar('difficulty', 'easy');
+    setGameVar('gameMode', 'tutorial');
     // normal: bx=380, by=410, bw=440, bh=62 → центр (600, 441)
     touchStart(handlers['touchstart'], [makeTouch(600, 441)]);
     expect(getGameVar('difficulty')).toBe('normal');
+    expect(getGameVar('gameMode')).toBe('normal');
     expect(globalThis.startGameCalled_touch).toBe(false);
   });
 
@@ -140,6 +142,7 @@ describe('touch.js — карточки сложности на стартово
     // Расстояние до BTN_ACTION (600,590) = 69px < старый радиус 85px → раньше запускало игру!
     touchStart(handlers['touchstart'], [makeTouch(600, 521)]);
     expect(getGameVar('difficulty')).toBe('chaos');
+    expect(getGameVar('gameMode')).toBe('chaos');
     expect(globalThis.startGameCalled_touch).toBe(false);
   });
 
@@ -152,9 +155,11 @@ describe('touch.js — карточки сложности на стартово
 
   it('тап вне карточек не меняет difficulty', () => {
     setGameVar('difficulty', 'normal');
+    setGameVar('gameMode', 'normal');
     // y=280 — выше всех карточек
     touchStart(handlers['touchstart'], [makeTouch(600, 280)]);
     expect(getGameVar('difficulty')).toBe('normal');
+    expect(getGameVar('gameMode')).toBe('normal');
   });
 });
 
@@ -167,9 +172,11 @@ describe('touch.js — кнопка BTN_ACTION (ИГРАТЬ / В меню)', ()
     vm.runInThisContext('startGame = function() { startGameCalled_btn = true; }');
     vm.runInThisContext('respawnPlayer = function() { respawnCalled_btn = true; }');
     vm.runInThisContext('resumeGame = function() { resumeCalled_btn = true; }');
+    vm.runInThisContext('finishTutorialToMenu = function() { finishTutorialCalled_btn = true; }');
     globalThis.startGameCalled_btn = false;
     globalThis.respawnCalled_btn = false;
     globalThis.resumeCalled_btn = false;
+    globalThis.finishTutorialCalled_btn = false;
     handlers = loadTouchJS();
   });
 
@@ -202,6 +209,12 @@ describe('touch.js — кнопка BTN_ACTION (ИГРАТЬ / В меню)', ()
     setGameVar('gameState', 'paused');
     touchStart(handlers['touchstart'], [makeTouch(600, 590)]);
     expect(globalThis.resumeCalled_btn).toBe(true);
+  });
+
+  it('тап по BTN_ACTION после обучения подтверждает финал', () => {
+    setGameVar('gameState', 'tutorialComplete');
+    touchStart(handlers['touchstart'], [makeTouch(600, 635)]);
+    expect(globalThis.finishTutorialCalled_btn).toBe(true);
   });
 
   it('тап далеко от BTN_ACTION (y=400) не запускает игру', () => {
@@ -313,5 +326,31 @@ describe('touch.js — кнопка мьюта', () => {
     setGameVar('gameState', 'playing');
     touchStart(handlers['touchstart'], [makeTouch(1155, 45)]);
     expect(globalThis.toggleMuteCalled_touch).toBe(true);
+  });
+});
+
+describe('touch.js — пауза обучения', () => {
+  let handlers;
+
+  beforeEach(() => {
+    resetGameState();
+    vm.runInThisContext('pauseGame = function() { pauseGameCalled_touch = true; }');
+    vm.runInThisContext('exitTutorialToMenu = function() { exitTutorialCalled_touch = true; }');
+    globalThis.pauseGameCalled_touch = false;
+    globalThis.exitTutorialCalled_touch = false;
+    handlers = loadTouchJS();
+  });
+
+  it('тап по кнопке паузы во время игры вызывает pauseGame()', () => {
+    setGameVar('gameState', 'playing');
+    touchStart(handlers['touchstart'], [makeTouch(1070, 45)]);
+    expect(globalThis.pauseGameCalled_touch).toBe(true);
+  });
+
+  it('из паузы обучения можно выйти в меню отдельной кнопкой', () => {
+    setGameVar('gameState', 'paused');
+    vm.runInThisContext('tutorialState.active = true;');
+    touchStart(handlers['touchstart'], [makeTouch(600, 520)]);
+    expect(globalThis.exitTutorialCalled_touch).toBe(true);
   });
 });

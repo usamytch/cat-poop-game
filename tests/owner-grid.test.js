@@ -843,49 +843,6 @@ describe('replanning hysteresis — Chebyshev distance guard', () => {
     expect(owner.pathTimer).toBe(owner.PATH_RECALC);
   });
 
-  it('easy (minDist=3): moving player 2 cells does NOT trigger repath', () => {
-    difficulty = 'easy'; // repathMinDist = 3
-    setupOwnerAtNode(5, 7);
-
-    // Give owner an active nextNode + mid-transition to block canRepath
-    owner.nextNode = { col: 6, row: 7 };
-    owner.nodeQueue = [{ col: 7, row: 7 }];
-    owner.moveProgress = 0.5;
-
-    owner.lastRepathGoalCell = { col: 10, row: 7 };
-
-    // Move player 2 cells away (col=12) — Chebyshev dist = 2 < repathMinDist=3
-    const targetPx = cellToPixel(12, 7);
-    player.x = targetPx.x - owner.width / 2;
-    player.y = targetPx.y - owner.height / 2;
-    const prevPathTimer = owner.pathTimer;
-
-    owner._moveTowardTarget(player.x, player.y, owner.speed);
-
-    expect(owner.pathTimer).toBe(prevPathTimer - 1);
-  });
-
-  it('easy (minDist=3): moving player 3 cells DOES trigger repath', () => {
-    difficulty = 'easy'; // repathMinDist = 3
-    setupOwnerAtNode(5, 7);
-
-    // moveProgress=0.05 < 0.1 → canRepath allowed when needRepath=true
-    owner.nextNode = { col: 6, row: 7 };
-    owner.nodeQueue = [{ col: 7, row: 7 }];
-    owner.moveProgress = 0.05;
-
-    owner.lastRepathGoalCell = { col: 10, row: 7 };
-
-    // Move player 3 cells away (col=13) — Chebyshev dist = 3 >= repathMinDist=3
-    const targetPx = cellToPixel(13, 7);
-    player.x = targetPx.x - owner.width / 2;
-    player.y = targetPx.y - owner.height / 2;
-
-    owner._moveTowardTarget(player.x, player.y, owner.speed);
-
-    expect(owner.pathTimer).toBe(owner.PATH_RECALC);
-  });
-
   it('chaos (minDist=2): moving player 1 cell does NOT trigger repath', () => {
     difficulty = 'chaos'; // repathMinDist = 2
     setupOwnerAtNode(5, 7);
@@ -948,8 +905,8 @@ describe('replanning hysteresis — Chebyshev distance guard', () => {
     expect(owner.pathTimer).toBe(owner.PATH_RECALC);
   });
 
-  it('path exhausted triggers repath regardless of distance (easy)', () => {
-    difficulty = 'easy'; // repathMinDist = 3
+  it('path exhausted triggers repath regardless of distance (normal)', () => {
+    difficulty = 'normal';
     setupOwnerAtNode(5, 7);
 
     // lastRepathGoalCell same as goal → dist=0 (would not trigger playerCellChanged)
@@ -1050,10 +1007,6 @@ describe('hesitation scaling — hyperbolic decay by level', () => {
     return Math.max(d.hesitateMinProb, d.hesitateBaseProb / (1 + (lvl - 1) * d.hesitateProbDecay));
   }
 
-  it('hesitateProb at level 1 equals hesitateBaseProb (easy)', () => {
-    expect(computeHesitateProb('easy', 1)).toBeCloseTo(DIFF.easy.hesitateBaseProb, 6);
-  });
-
   it('hesitateProb at level 1 equals hesitateBaseProb (normal)', () => {
     expect(computeHesitateProb('normal', 1)).toBeCloseTo(DIFF.normal.hesitateBaseProb, 6);
   });
@@ -1078,11 +1031,6 @@ describe('hesitation scaling — hyperbolic decay by level', () => {
     expect(p10).toBeLessThan(p5);
   });
 
-  it('hesitateProb never goes below hesitateMinProb (easy, level 50)', () => {
-    const prob = computeHesitateProb('easy', 50);
-    expect(prob).toBeGreaterThanOrEqual(DIFF.easy.hesitateMinProb);
-  });
-
   it('hesitateProb never goes below hesitateMinProb (normal, level 50)', () => {
     const prob = computeHesitateProb('normal', 50);
     expect(prob).toBeGreaterThanOrEqual(DIFF.normal.hesitateMinProb);
@@ -1101,13 +1049,8 @@ describe('hesitation scaling — hyperbolic decay by level', () => {
     expect(prob).toBeLessThan(0.001);
   });
 
-  it('easy level 10: hesitateProb still > hesitateMinProb (owner still hesitates)', () => {
-    const prob = computeHesitateProb('easy', 10);
-    expect(prob).toBeGreaterThan(DIFF.easy.hesitateMinProb);
-  });
-
   it('hyperbolic: prob at level 5 is between level 1 and level 10 (smooth curve)', () => {
-    for (const diff of ['easy', 'normal', 'chaos']) {
+    for (const diff of ['normal', 'chaos']) {
       const p1  = computeHesitateProb(diff, 1);
       const p5  = computeHesitateProb(diff, 5);
       const p10 = computeHesitateProb(diff, 10);
@@ -1117,7 +1060,7 @@ describe('hesitation scaling — hyperbolic decay by level', () => {
   });
 
   it('DIFF entries have all required hesitate fields', () => {
-    for (const key of ['easy', 'normal', 'chaos']) {
+    for (const key of ['normal', 'chaos']) {
       const d = DIFF[key];
       expect(typeof d.hesitateBaseProb).toBe('number');
       expect(typeof d.hesitateProbDecay).toBe('number');
@@ -1131,15 +1074,12 @@ describe('hesitation scaling — hyperbolic decay by level', () => {
   });
 
   it('DIFF entries have repathMinDist field', () => {
-    for (const key of ['easy', 'normal', 'chaos']) {
+    for (const key of ['normal', 'chaos']) {
       expect(typeof DIFF[key].repathMinDist).toBe('number');
       expect(DIFF[key].repathMinDist).toBeGreaterThanOrEqual(1);
     }
   });
 
-  it('easy repathMinDist > normal repathMinDist (easy is more lenient)', () => {
-    expect(DIFF.easy.repathMinDist).toBeGreaterThan(DIFF.normal.repathMinDist);
-  });
 });
 
 // ---------------------------------------------------------------------------
@@ -1341,24 +1281,6 @@ describe('plannedGoalStillClose — repath skipped when plan still leads to goal
 
     // pathTimer reset to PATH_RECALC → repath happened
     expect(owner.pathTimer).toBe(owner.PATH_RECALC);
-  });
-
-  it('easy: larger repathMinDist=3 means plan stays valid for wider goal zone', () => {
-    // easy repathMinDist = 3
-    setupForRepathTest('easy');
-
-    owner.lastRepathGoalCell = { col: 0, row: 0 };
-
-    // nodeQueue last node = (8,7). goalCell = (11,7). Chebyshev = 3 ≤ repathMinDist=3
-    // → plannedGoalStillClose = true → repath skipped
-    const goalPx = cellToPixel(11, 7);
-    player.x = goalPx.x - owner.width / 2;
-    player.y = goalPx.y - owner.height / 2;
-
-    const prevPathTimer = owner.pathTimer;
-    owner._moveTowardTarget(player.x, player.y, owner.speed);
-
-    expect(owner.pathTimer).toBe(prevPathTimer - 1);
   });
 
   it('path exhausted always triggers repath regardless of plannedGoalStillClose', () => {
