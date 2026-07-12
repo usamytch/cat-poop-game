@@ -43,6 +43,7 @@ read_file("README.md")
 | [`js/bonuses.js`](js/bonuses.js) | Бонусы: подбор, эффекты, таймеры |
 | [`js/pathfinding.js`](js/pathfinding.js) | MinHeap + aStarPath (A* алгоритм) |
 | [`js/level.js`](js/level.js) | Сетка + generateLevel + updateObstacles |
+| [`js/location-rules.js`](js/location-rules.js) | Авторское правило каждой комнаты, фазы Дачи и их performance-счётчики |
 | [`js/tutorial.js`](js/tutorial.js) | Фиксированные карты обучения, этапы, подсказки, чекпоинты |
 | [`js/player.js`](js/player.js) | Объект player: движение, срочность, лоток, паника |
 | [`js/owner.js`](js/owner.js) | Объект owner: AI, A*-навигация, бегство, человечность |

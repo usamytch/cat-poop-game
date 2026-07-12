@@ -92,6 +92,9 @@ const perfMonitor = {
       cpuMs: cpu,
       framesOver20ms: this.frameTimes.filter(value => value > 20).length,
       framesOver33ms: this.frameTimes.filter(value => value > 33.4).length,
+      locationRule: typeof getLocationRulePerformanceReport === "function"
+        ? getLocationRulePerformanceReport()
+        : null,
     };
 
     this.enabled = false;

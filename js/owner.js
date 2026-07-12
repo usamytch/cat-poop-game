@@ -44,6 +44,8 @@ const owner = {
   // Человечность
   hesitateTimer: 0,   // кадры микро-заморозки
   shotReactTimer: 0,  // кадры отображения реакции на выстрел
+  ruleSenseIcon: "",
+  ruleSenseTimer: 0,
 
   // Читаемая модель осведомлённости. Спецрежимы flee/catnip/yarn имеют
   // приоритет в update/draw, но не маскируются под эти четыре состояния.
@@ -175,6 +177,8 @@ const owner = {
     this.poopHits = 0; this.facePoops = [];
     this.hesitateTimer = 0;
     this.shotReactTimer = 0;
+    this.ruleSenseIcon = "";
+    this.ruleSenseTimer = 0;
     this.awarenessState = "guard";
     this.lastKnownTarget = null;
     this.heardTarget = null;
@@ -226,12 +230,56 @@ const owner = {
     this.moveProgress = 0;
     this.pathTimer = 0;
     this.hesitateTimer = 0;
+    this.ruleSenseIcon = "";
+    this.ruleSenseTimer = 0;
     this.awarenessState = "guard";
     this.lastKnownTarget = null;
     this.heardTarget = null;
     this.memoryTimer = 0;
     this.searchTimer = 0;
     this.heardTimer = 0;
+  },
+
+  onLocationNoise(noiseX, noiseY, icon) {
+    if (!this.active || this.fleeTimer > 0 || catnipTimer > 0 || yarnFreezeTimer > 0) return;
+    const target = {
+      x: noiseX - this.width / 2,
+      y: noiseY - this.height / 2,
+    };
+    this.ruleSenseIcon = icon || "👂";
+    this.ruleSenseTimer = 60;
+    if (this._canSeePlayer()) {
+      this._rememberPlayer();
+      this._setAwarenessState("chase");
+    } else {
+      this.heardTarget = target;
+      this.lastKnownTarget = { x: target.x, y: target.y };
+      this._setAwarenessState("heard");
+    }
+  },
+
+  onFoodSmell(foodX, foodY) {
+    this.onLocationNoise(foodX, foodY, "🍗");
+    if (this.awarenessState === "heard") {
+      this.heardTimer = LOCATION_RULES.kitchen.smellTicks;
+      this.ruleSenseTimer = LOCATION_RULES.kitchen.smellTicks;
+    }
+  },
+
+  onWorldGeometryChanged() {
+    this.path = [];
+    this.nodeQueue = [];
+    this.lastRepathGoalCell = null;
+    this.pathTimer = 0;
+    if (this.nextNode && !isCellFree(this.nextNode.col, this.nextNode.row)) {
+      if (this.currentNode) {
+        const pos = cellToPixel(this.currentNode.col, this.currentNode.row);
+        this.x = pos.x;
+        this.y = pos.y;
+      }
+      this.nextNode = null;
+      this.moveProgress = 0;
+    }
   },
 
   // Вызывается при выстреле кота — хозяин реагирует
@@ -298,6 +346,8 @@ const owner = {
     const dy = py - oy;
     const dist = Math.sqrt(dx*dx + dy*dy);
 
+    if (typeof isPlayerHiddenByLocationRule === "function" &&
+        isPlayerHiddenByLocationRule() && dist > LOCATION_RULES.street.closeVision) return false;
     if (firstObstacleOnSegment(ox, oy, px, py, OWNER_AI.sightPadding)) return false;
     if (basementMode === "" || dist <= OWNER_AI.basementCloseVision) return true;
     if (dist <= 0.001) return true;
@@ -481,6 +531,7 @@ const owner = {
     let signalColor = "#fff";
     if (catnipTimer > 0 || yarnFreezeTimer > 0) signal = "😵";
     else if (this.fleeTimer > 0) signal = "💨";
+    else if (this.awarenessState === "heard" && this.ruleSenseTimer > 0 && this.ruleSenseIcon) signal = this.ruleSenseIcon;
     else if (this.awarenessState === "heard" || this.shotReactTimer > 0) signal = "😱";
     else if (this.awarenessState === "chase") { signal = "!"; signalColor = "#ff2222"; }
     else if (this.awarenessState === "search") { signal = "?"; signalColor = "#ffdd00"; }
@@ -697,6 +748,10 @@ const owner = {
   update() {
     if (!this.active) return;
     if (this.shotReactTimer > 0) this.shotReactTimer--;
+    if (this.ruleSenseTimer > 0) {
+      this.ruleSenseTimer--;
+      if (this.ruleSenseTimer === 0) this.ruleSenseIcon = "";
+    }
     if (this.hitReactTimer > 0) this.hitReactTimer--;
     if (yarnFreezeTimer > 0) return;
     // Постановка экрана 2: первый выстрел гарантированно должен упереться

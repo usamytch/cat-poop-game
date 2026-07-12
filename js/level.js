@@ -13,6 +13,8 @@ let basementMode = "";
 let cheatBasement = false;
 // Флаг чит-кода: при true следующий generateLevel() форсирует подвал (dfs)
 let cheatDfs = false;
+// QA-only: пропустить случайную аномалию и открыть конкретную обычную комнату.
+let cheatLocationKey = "";
 // Per-run random seed set from Date.now() at startGame(). Geometry is derived
 // only from this seed + level + bounded candidate variant: score never changes
 // the map. AI has its own deterministic stream; cosmetic FX may stay random.
@@ -929,7 +931,11 @@ function buildLevelQualityReport(spawnCol, spawnRow, progression = currentLevelP
 
   if (!basePath) reasons.push("no_path");
   if (!safePath) reasons.push("moving_sweep_blocks_route");
-  if (pathSteps < LEVEL_QUALITY.minPathLengthByStep[stepIndex]) reasons.push("path_too_short");
+  const conservativePathSteps = currentLocation.key === "country" &&
+    typeof locationRuleState !== "undefined"
+      ? Math.max(pathSteps, locationRuleState.countryConservativePathSteps || 0)
+      : pathSteps;
+  if (conservativePathSteps < LEVEL_QUALITY.minPathLengthByStep[stepIndex]) reasons.push("path_too_short");
   if (travelBudgetRatio > LEVEL_QUALITY.maxTravelBudgetRatioByStep[stepIndex]) reasons.push("travel_budget");
   if (spawnExits < LEVEL_QUALITY.minSpawnExitsByStep[stepIndex]) reasons.push("spawn_safety");
   if (litterEntryExits < LEVEL_QUALITY.minLitterEntryExitsByStep[stepIndex]) reasons.push("litter_safety");
@@ -1561,17 +1567,30 @@ function _generateLevelCandidate(rng, progression) {
 
 function _selectLevelLocation(progression) {
   const rng = createRng(mixSeed(globalSeed, level, 0x4c4f4341));
+  const anomalyRoll = rng();
   basementMode = "";
-  if (cheatDfs) {
+  if (cheatLocationKey) {
+    const forced = locationThemes.find(t => t.key === cheatLocationKey && t.key !== "basement");
+    currentLocation = makeActLocationTheme(forced || progression.locationTheme, progression.variantTier);
+  } else if (cheatDfs) {
     currentLocation = locationThemes.find(t => t.key === "basement");
     basementMode = "dfs";
   } else if (cheatBasement) {
     currentLocation = locationThemes.find(t => t.key === "basement");
     basementMode = "corridor";
-  } else if (level >= BASEMENT.dfsMinLevel && rng() < BASEMENT.dfsProb) {
-    currentLocation = locationThemes.find(t => t.key === "basement");
-    basementMode = "dfs";
-  } else if (level >= BASEMENT.corridorMinLevel && rng() < BASEMENT.corridorProb) {
+  } else if (level >= BASEMENT.dfsMinLevel) {
+    // Один взаимоисключающий бросок: 10% DFS + 8% corridor, а не два
+    // последовательных шанса, которые раньше давали почти 50% Подвала.
+    if (anomalyRoll < BASEMENT.dfsProb) {
+      currentLocation = locationThemes.find(t => t.key === "basement");
+      basementMode = "dfs";
+    } else if (anomalyRoll < BASEMENT.dfsProb + BASEMENT.corridorProb) {
+      currentLocation = locationThemes.find(t => t.key === "basement");
+      basementMode = "corridor";
+    } else {
+      currentLocation = makeActLocationTheme(progression.locationTheme, progression.variantTier);
+    }
+  } else if (level >= BASEMENT.corridorMinLevel && anomalyRoll < BASEMENT.corridorProb) {
     currentLocation = locationThemes.find(t => t.key === "basement");
     basementMode = "corridor";
   } else {
@@ -1579,6 +1598,7 @@ function _selectLevelLocation(progression) {
   }
   cheatDfs = false;
   cheatBasement = false;
+  cheatLocationKey = "";
 }
 
 function _snapshotLevelCandidate(spawnCol, spawnRow, report) {
@@ -1621,6 +1641,7 @@ function _collectBonusCandidates(spawnCol, spawnRow, path, rng) {
     for (let col = 1; col < GRID_COLS - 1; col++) {
       const index = _gridIndex(col, row);
       if (reachability.distance[index] < 0 || pathCells.has(cellKey(col, row))) continue;
+      if (typeof locationRuleCellReserved === "function" && locationRuleCellReserved(col, row)) continue;
       let detour = 8;
       for (const cell of path || []) {
         detour = Math.min(detour, Math.abs(cell.col - col) + Math.abs(cell.row - row));
@@ -1709,6 +1730,12 @@ function generateLevel() {
   }
 
   _restoreLevelCandidate(bestCandidate);
+  // Правило размечается только на выбранном кандидате: не добавляет работу в
+  // candidate loop и не влияет на детерминированность геометрии.
+  if (typeof initLocationRule === "function") initLocationRule(progression);
+  if (currentLocation.key === "country" && typeof locationRuleState !== "undefined") {
+    locationRuleState.countryConservativePathSteps = bestCandidate.report.pathLengthCells || 0;
+  }
   const bonusRng = createRng(mixSeed(levelSeed, 0x424f4e55));
   _spawnReachableBonuses(
     progression,

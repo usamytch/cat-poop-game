@@ -75,13 +75,20 @@ const player = {
     if (keys["ArrowDown"]  || keys["s"] || keys["S"]) { dy =  1; lastDir = {x:0, y: 1}; }
     if (dx !== 0 && dy !== 0) { dx *= 0.707; dy *= 0.707; }
 
-    const nx = clamp(this.x+dx*spd, b.left, b.right-this.size);
-    const ny = clamp(this.y+dy*spd, b.top,  b.bottom-this.size);
+    const movement = applyLocationPlayerMovementRule(this, dx, dy, spd);
+    const oldX = this.x;
+    const oldY = this.y;
+    const nx = clamp(this.x+movement.stepX, b.left, b.right-this.size);
+    const ny = clamp(this.y+movement.stepY, b.top,  b.bottom-this.size);
     if (!hitsObstacles(playerRect(nx, this.y))) this.x = nx;
+    else onLocationRuleCollision("x");
     if (!hitsObstacles(playerRect(this.x, ny))) this.y = ny;
+    else onLocationRuleCollision("y");
+    const moved = Math.abs(this.x - oldX) > 0.01 || Math.abs(this.y - oldY) > 0.01;
+    updateLocationPlayerPresence(this, moved);
 
     // Следы лапок — спавним при движении
-    if (dx !== 0 || dy !== 0) {
+    if (moved) {
       spawnPawTrail(this.x + this.size / 2, this.y + this.size * 0.75);
     }
 

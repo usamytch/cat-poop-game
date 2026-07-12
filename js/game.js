@@ -58,6 +58,18 @@ function clearInputState() {
   for (const key in keys) keys[key] = false;
 }
 
+function debugJumpToLevel(targetLevel, forcedLocationKey) {
+  level = targetLevel;
+  cheatLocationKey = forcedLocationKey || "";
+  player.urge = 0;
+  poopProgress = 0;
+  isPooping = false;
+  generateLevel();
+  syncLocationMelody();
+  owner.activate();
+  levelMessageTimer = 180;
+}
+
 function pauseGame(reason = "manual") {
   if (gameState === "paused") return false;
   if (gameState !== "playing" && gameState !== "lifeLost") return false;
@@ -122,6 +134,13 @@ window.addEventListener("keydown", e => {
       difficulty = gameMode === "chaos" ? "chaos" : "normal";
     }
     if (e.key === "Enter" || e.key === " ") startGame();
+    // QA: Shift+C — сразу открыть финальный CATSTOCK set-piece.
+    if (e.key === "C") {
+      gameMode = "normal";
+      difficulty = "normal";
+      startGame();
+      debugJumpToLevel(25, "country");
+    }
     // Чит-код: Shift+B (латинская) — форсировать подвал (corridor)
     if (e.key === "B") {
       cheatBasement = true;
@@ -144,6 +163,17 @@ window.addEventListener("keydown", e => {
     if (e.key === "T" && isTutorialActive()) { completeTutorialStage(); return; }
     // Debug: Shift+G — переключить steering overlay
     if (e.key === "G") { _debugSteering = !_debugSteering; }
+    // QA: Shift+U — проверить panic HUD/overlays без ожидания полного таймера.
+    if (e.key === "U") { player.urge = 95; }
+    // QA: Shift+L — следующий авторский set-piece (5/5 каждой локации).
+    if (e.key === "L") {
+      const peaks = [5, 10, 15, 20, 25];
+      let next = peaks.find(value => value > level);
+      if (!next) next = peaks[0];
+      debugJumpToLevel(next, getLevelProgression(next).locationTheme.key);
+      return;
+    }
+    if (e.key === "C") { debugJumpToLevel(25, "country"); return; }
     // Чит-код: Shift+B — телепорт в подвал (corridor) без сброса счёта/жизней
     if (e.key === "B") {
       cheatBasement = true;
@@ -252,6 +282,7 @@ function update() {
   }
   simulationTimeMs += SIMULATION_STEP_MS;
   player.update();
+  updateLocationRule();
   owner.update();
   updatePoops();
   updateBonuses();

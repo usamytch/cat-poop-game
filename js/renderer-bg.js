@@ -308,6 +308,37 @@ function _drawDecorItemTo(bctx, d) {
     default:
       break;
   }
+  // Интерактивные зоны получают читаемый, но дешёвый знак прямо в offscreen.
+  if (d.ruleKind === "hallRug") {
+    bctx.globalAlpha = 0.58;
+    bctx.strokeStyle = "#fff3b0";
+    bctx.lineWidth = 3;
+    const cy = y + h / 2;
+    for (let i = -1; i <= 1; i++) {
+      const ax = x + w / 2 + i * 24;
+      bctx.beginPath();
+      bctx.moveTo(ax - 9, cy + 8); bctx.lineTo(ax, cy); bctx.lineTo(ax - 9, cy - 8);
+      bctx.stroke();
+    }
+  } else if (d.ruleKind === "bathroomWet") {
+    bctx.globalAlpha = 0.32;
+    bctx.fillStyle = "#b7f0ff";
+    for (let i = 0; i < 5; i++) {
+      bctx.beginPath();
+      bctx.ellipse(x + 18 + (i * 31) % Math.max(24, w - 30), y + 18 + (i * 19) % Math.max(24, h - 30), 8, 3, 0.3, 0, Math.PI * 2);
+      bctx.fill();
+    }
+  } else if (d.ruleKind === "streetGrass") {
+    bctx.globalAlpha = 0.78;
+    bctx.strokeStyle = "#365f2b";
+    bctx.lineWidth = 3;
+    for (let gx = x + 12; gx < x + w - 8; gx += 16) {
+      bctx.beginPath();
+      bctx.moveTo(gx, y + h - 8);
+      bctx.quadraticCurveTo(gx - 7, y + h * 0.55, gx + 2, y + 12);
+      bctx.stroke();
+    }
+  }
   bctx.globalAlpha = 1;
   bctx.restore();
 }
@@ -327,6 +358,27 @@ function _drawObstacleTo(bctx, ob) {
   const oy = y + (ob.axis === "y" ? sway : 0);
   bctx.save();
   bctx.translate(ox, oy);
+  // Расплавленная фаза целиком кэшируется в offscreen background. В обычном
+  // кадре она не добавляет ни одного draw call сверх общего drawImage слоя.
+  if (ob.surrealRule && !ob.ruleSolid) {
+    bctx.fillStyle = ob.rulePendingSolid ? "rgba(255,210,80,0.62)" : "rgba(170,65,190,0.52)";
+    bctx.beginPath();
+    bctx.ellipse(w / 2, h - 10, Math.max(18, w * 0.46), Math.max(9, h * 0.16), 0, 0, Math.PI * 2);
+    bctx.fill();
+    bctx.strokeStyle = "rgba(80,20,100,0.62)";
+    bctx.lineWidth = 3;
+    bctx.beginPath();
+    bctx.moveTo(w * 0.18, h - 14);
+    bctx.bezierCurveTo(w * 0.36, h - 30, w * 0.66, h + 4, w * 0.84, h - 14);
+    bctx.stroke();
+    bctx.fillStyle = "rgba(255,245,170,0.82)";
+    bctx.beginPath(); bctx.arc(w * 0.58, h - 13, 9, 0, Math.PI * 2); bctx.fill();
+    bctx.strokeStyle = "rgba(70,35,30,0.76)";
+    bctx.lineWidth = 2;
+    bctx.beginPath(); bctx.moveTo(w * 0.58, h - 13); bctx.lineTo(w * 0.58, h - 20); bctx.stroke();
+    bctx.restore();
+    return;
+  }
   // Ground shadow — ellipse for organic shapes, rect for furniture
   if (type === "plant" || type === "tree" || type === "bush") {
     bctx.fillStyle = currentLocation.palette.shadow;
@@ -576,12 +628,115 @@ function _drawObstacleTo(bctx, ob) {
       break;
     }
   }
+  if (ob.surrealRule) {
+    // Собственная сюрреалистическая грамматика: длинные ноги и мягкие часы,
+    // без копирования конкретной картины или дорогих Canvas filters.
+    bctx.strokeStyle = "rgba(82,31,104,0.72)";
+    bctx.lineWidth = 4;
+    bctx.beginPath();
+    bctx.moveTo(w * 0.22, h * 0.72); bctx.lineTo(w * 0.14, h + 18);
+    bctx.moveTo(w * 0.78, h * 0.72); bctx.lineTo(w * 0.86, h + 18);
+    bctx.stroke();
+    bctx.fillStyle = "rgba(255,232,142,0.86)";
+    bctx.beginPath();
+    bctx.ellipse(w * 0.68, Math.max(16, h * 0.24), 18, 12, 0.28, 0, Math.PI * 2);
+    bctx.fill();
+    bctx.strokeStyle = "rgba(75,42,30,0.82)";
+    bctx.lineWidth = 2;
+    bctx.beginPath();
+    bctx.moveTo(w * 0.68, Math.max(16, h * 0.24));
+    bctx.lineTo(w * 0.68 + 7, Math.max(16, h * 0.24) - 4);
+    bctx.stroke();
+  }
   bctx.restore();
 }
 
 // Рисует движущееся препятствие на основном ctx (вызывается каждый кадр)
 function drawObstacle(ob) {
   _drawObstacleTo(ctx, ob);
+}
+
+// Небольшие интерактивные сигналы. Дача здесь рисует только телеграф смены;
+// сама мебель уже запечена в offscreen слое.
+function drawLocationRuleDynamic() {
+  if (locationRuleState.key === "hall" && locationRuleState.hallCharge > 0.08) {
+    ctx.save();
+    ctx.globalAlpha = 0.18 + locationRuleState.hallCharge * 0.42;
+    ctx.strokeStyle = "#fff3b0";
+    ctx.lineWidth = 3;
+    for (let i = 0; i < 3; i++) {
+      const back = 14 + i * 11;
+      ctx.beginPath();
+      ctx.moveTo(player.x + player.size / 2 - locationRuleState.hallDirX * back - locationRuleState.hallDirY * 8,
+                 player.y + player.size / 2 - locationRuleState.hallDirY * back + locationRuleState.hallDirX * 8);
+      ctx.lineTo(player.x + player.size / 2 - locationRuleState.hallDirX * (back + 12) - locationRuleState.hallDirY * 8,
+                 player.y + player.size / 2 - locationRuleState.hallDirY * (back + 12) + locationRuleState.hallDirX * 8);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  if (locationRuleState.key === "kitchen") {
+    for (const d of decorItems) {
+      if (d.ruleKind !== "kitchenFood" || d.ruleConsumed) continue;
+      const cx = d.x + d.width / 2;
+      const cy = d.y + d.height / 2;
+      ctx.save();
+      ctx.fillStyle = "rgba(255,248,220,0.88)";
+      ctx.beginPath(); ctx.ellipse(cx, cy + 8, 25, 11, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = "rgba(130,70,20,0.55)"; ctx.lineWidth = 2; ctx.stroke();
+      drawEmoji("🍗", cx, cy, 30);
+      ctx.restore();
+    }
+  }
+
+  if (locationRuleState.key === "country") {
+    const rule = LOCATION_RULES.country;
+    if (locationRuleState.countryPhaseTicks <= rule.telegraphTicks) {
+      const ratio = 1 - locationRuleState.countryPhaseTicks / rule.telegraphTicks;
+      ctx.save();
+      ctx.globalAlpha = 0.18 + ratio * 0.42;
+      ctx.strokeStyle = locationRuleState.countryPhase === 0 ? "#ffea70" : "#ef75ff";
+      ctx.lineWidth = 4 + ratio * 5;
+      const inset = 10 + ratio * 12;
+      ctx.strokeRect(inset, WORLD.topPadding + inset, WORLD.width - inset * 2, getPlayBounds().bottom - inset * 2);
+      ctx.globalAlpha = 0.16 + ratio * 0.22;
+      for (let i = 0; i < 7; i++) {
+        const y = 70 + i * 72;
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.bezierCurveTo(300, y - 22, 760, y + 28, WORLD.width, y - 4);
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+  }
+}
+
+function drawLocationRuleForeground() {
+  if (locationRuleState.key !== "street") return;
+  const grass = _entityCenterInRuleDecor(player, "streetGrass");
+  if (!grass) return;
+  ctx.save();
+  ctx.strokeStyle = locationRuleState.streetHidden ? "rgba(55,105,42,0.96)" : "rgba(65,120,48,0.80)";
+  ctx.lineWidth = 4;
+  const baseY = player.y + player.size + 5;
+  for (let i = 0; i < 5; i++) {
+    const x = player.x - 3 + i * 11;
+    ctx.beginPath();
+    ctx.moveTo(x, baseY);
+    ctx.quadraticCurveTo(x - 5, baseY - 17, x + 2, baseY - 34 - (i % 2) * 7);
+    ctx.stroke();
+  }
+  if (locationRuleState.streetHidden) {
+    ctx.fillStyle = "rgba(20,45,16,0.82)";
+    ctx.beginPath(); ctx.roundRect(player.x - 9, player.y - 25, 54, 22, 10); ctx.fill();
+    ctx.fillStyle = "#dff5d6";
+    ctx.font = "bold 12px Arial";
+    ctx.textAlign = "center";
+    ctx.fillText("НЕ ВИДНО", player.x + player.size / 2, player.y - 10);
+  }
+  ctx.restore();
 }
 
 // ===== ПАТТЕРНЫ ПОЛА =====
@@ -897,6 +1052,46 @@ function _drawWallPattern(bctx, locationKey, seed) {
   bctx.restore();
 }
 
+function _drawCountrySurrealBackground(bctx) {
+  if (currentLocation.key !== "country") return;
+  const step = (currentLevelProgression || getLevelProgression(level)).actStep;
+  const intensity = step / ACT.length;
+  const floorBottom = WORLD.height - WORLD.floorHeight - 6;
+  bctx.save();
+  bctx.globalAlpha = 0.08 + intensity * 0.16;
+
+  // Невозможное внутреннее солнце и цветовые кольца — один раз в offscreen.
+  const sx = WORLD.width * 0.54;
+  const sy = 118;
+  const colors = ["#ffef6e", "#ff7b5f", "#bb5cff", "#4ed7c8"];
+  for (let i = 4; i >= 0; i--) {
+    bctx.fillStyle = colors[i % colors.length];
+    bctx.beginPath(); bctx.arc(sx, sy, 34 + i * 24 * intensity, 0, Math.PI * 2); bctx.fill();
+  }
+
+  bctx.strokeStyle = "#5c276f";
+  bctx.lineWidth = 5;
+  const waveCount = 2 + step;
+  for (let i = 0; i < waveCount; i++) {
+    const y = 250 + i * ((floorBottom - 270) / Math.max(1, waveCount - 1));
+    bctx.beginPath();
+    bctx.moveTo(0, y);
+    bctx.bezierCurveTo(260, y - 45 * intensity, 720, y + 55 * intensity, WORLD.width, y - 8);
+    bctx.stroke();
+  }
+
+  // Парящие ящики и отдельные тени становятся заметнее по мере трипа.
+  for (let i = 0; i < step + 1; i++) {
+    const x = 120 + ((i * 197 + levelSeed) % 860);
+    const y = 150 + ((i * 83 + levelSeed) % 280);
+    bctx.fillStyle = colors[(i + 1) % colors.length];
+    bctx.beginPath(); bctx.roundRect(x, y, 34, 20, 7); bctx.fill();
+    bctx.fillStyle = "rgba(40,15,55,0.60)";
+    bctx.beginPath(); bctx.ellipse(x + 42, y + 42, 28, 8, 0.2, 0, Math.PI * 2); bctx.fill();
+  }
+  bctx.restore();
+}
+
 // ===== ФОН ЛОКАЦИИ =====
 function _drawBgTo(bctx) {
   const p = currentLocation.palette;
@@ -926,6 +1121,7 @@ function _drawBgTo(bctx) {
   if (dec.includes("sun"))      { bctx.fillStyle="#ffd54f"; bctx.beginPath(); bctx.arc(WORLD.width-120,90,34,0,Math.PI*2); bctx.fill(); }
   if (dec.includes("fireplace")){ _rrectTo(bctx,WORLD.width-260,90,170,150,16,"#c79a6d"); _rrectTo(bctx,WORLD.width-220,130,90,80,12,"#5a3420"); _softLineTo(bctx,WORLD.width-238,108,WORLD.width-130,108,"rgba(255,255,255,0.16)",3); bctx.fillStyle="#ffb347"; bctx.beginPath(); bctx.arc(WORLD.width-175,185,18,0,Math.PI*2); bctx.fill(); }
   if (dec.includes("rack"))     { _rrectTo(bctx,90,80,10,170,4,p.trim); _rrectTo(bctx,90,80,120,10,4,p.trim); _rrectTo(bctx,90,160,120,10,4,p.trim); }
+  _drawCountrySurrealBackground(bctx);
   // ===== ПОДВАЛ =====
   if (dec.includes("cobweb")) {
     // Паутина в верхнем левом углу

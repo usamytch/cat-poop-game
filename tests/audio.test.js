@@ -46,11 +46,12 @@ describe('melody data constants', () => {
       expect(theme.notes.length).toBeGreaterThan(0);
 
       for (const note of theme.notes) {
-        expect(note).toHaveLength(5);
+        expect([5, 6]).toContain(note.length);
         expect(note[0]).toBeGreaterThan(0);
         expect(note[1]).toBeGreaterThanOrEqual(0);
         expect(note[1] + note[2]).toBeLessThanOrEqual(theme.beats);
         expect(['sine', 'square', 'sawtooth', 'triangle']).toContain(note[4]);
+        if (note[5]) expect(note[5]).toBeGreaterThanOrEqual(2);
       }
     }
   });
@@ -58,9 +59,11 @@ describe('melody data constants', () => {
   it('panic variants are exact faster timeline reversals of their location themes', () => {
     for (const [key, normal] of Object.entries(_LOCATION_MELODIES)) {
       const panic = _LOCATION_PANIC_MELODIES[key];
-      const expected = normal.notes.map(note => [
-        note[0], normal.beats - note[1] - note[2], note[2], note[3], note[4],
-      ]).sort((a, b) => a[1] - b[1] || a[0] - b[0]);
+      const expected = normal.notes.map(note => {
+        const reversed = [note[0], normal.beats - note[1] - note[2], note[2], note[3], note[4]];
+        if (note[5]) reversed.push(note[5]);
+        return reversed;
+      }).sort((a, b) => a[1] - b[1] || a[0] - b[0]);
 
       expect(panic.bpm).toBeCloseTo(normal.bpm * _PANIC_SPEED);
       expect(panic.duration).toBeLessThan(normal.duration);
@@ -94,6 +97,13 @@ describe('melody data constants', () => {
 
   it('_PANIC_MELODY_DUR is positive', () => {
     expect(_PANIC_MELODY_DUR).toBeGreaterThan(0);
+  });
+
+  it('country is the layered original psychedelic theme', () => {
+    const theme = _LOCATION_MELODIES.country;
+    expect(theme.title).toBe('Кислота в сметане');
+    expect(theme.bpm).toBe(LOCATION_RULES.country.bpm);
+    expect(new Set(theme.notes.map(note => note[5] || 1))).toEqual(new Set([1, 2, 3, 4, 5]));
   });
 
   it('panic loop is shorter than normal loop (more tension)', () => {

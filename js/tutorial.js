@@ -152,6 +152,7 @@ function loadTutorialStage(stageIndex, retry = false) {
   decorItems.length = 0;
   occupiedCells.clear();
   stage.obstacles.forEach(_tutorialAddObstacle);
+  if (typeof resetLocationRuleState === "function") resetLocationRuleState("tutorial");
 
   const start = cellToPixel(stage.start.col, stage.start.row);
   player.x = start.x;

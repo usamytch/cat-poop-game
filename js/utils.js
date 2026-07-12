@@ -62,8 +62,12 @@ function ownerRect(x, y) {
   return { x, y, width: owner.width, height: owner.height };
 }
 
+function isObstacleSolid(obstacle) {
+  return !obstacle.surrealRule || obstacle.ruleSolid;
+}
+
 function hitsObstacles(rect, ignId) {
-  return obstacles.some(o => o.id !== ignId && rectsOverlap(rect, o));
+  return obstacles.some(o => o.id !== ignId && isObstacleSolid(o) && rectsOverlap(rect, o));
 }
 
 // Возвращает параметр t (0..1) первой точки пересечения отрезка с AABB.
@@ -111,7 +115,7 @@ function firstObstacleOnSegment(x1, y1, x2, y2, padding, ignId) {
   let nearest = null;
   let nearestT = Infinity;
   for (const obstacle of obstacles) {
-    if (obstacle.id === ignId) continue;
+    if (obstacle.id === ignId || !isObstacleSolid(obstacle)) continue;
     const t = segmentRectHitT(x1, y1, x2, y2, obstacle, padding);
     if (t !== null && t < nearestT) {
       nearestT = t;

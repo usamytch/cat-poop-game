@@ -3,7 +3,11 @@
 // ==========================================
 
 // ===== ОПРЕДЕЛЕНИЕ УСТРОЙСТВА =====
-const IS_MOBILE = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
+const FORCE_TOUCH_QA = !!(
+  window.location && typeof URLSearchParams !== "undefined" &&
+  new URLSearchParams(window.location.search || "").get("touch") === "1"
+);
+const IS_MOBILE = FORCE_TOUCH_QA || ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
 
 // Canvas init здесь — до touch.js, который регистрирует canvas.addEventListener
 const canvas = document.getElementById("gameCanvas");
@@ -65,6 +69,57 @@ const ACT = {
   ],
 };
 
+// ===== АВТОРСКИЕ ПРАВИЛА ЛОКАЦИЙ =====
+// Все временные значения заданы в simulation ticks (60 Гц). Дача использует
+// 120 BPM: один beat = 30 ticks, поэтому смены реальности всегда приходятся на
+// музыкальную границу и остаются детерминированными даже при muted audio.
+const LOCATION_RULES = {
+  hall: {
+    title:"КОВЁР ЛЮБИТ ПРЯМЫЕ",
+    hint:"Держи курс — ковёр разгоняет кота",
+    peakTitle:"КРАСНАЯ ДОРОЖКА",
+    maxSpeedScale:1.45,
+    chargeTicks:30,
+  },
+  bathroom: {
+    title:"МОКРОЕ НЕ ПРОЩАЕТ ПОВОРОТОВ",
+    hint:"Плитка скользит, коврик мгновенно тормозит",
+    peakTitle:"БОЛЬШАЯ СТИРКА",
+    wetFriction:0.90,
+    wetControl:0.24,
+    wetMaxSpeedScale:1.08,
+  },
+  kitchen: {
+    title:"ХОЗЯИН СНАЧАЛА ЕСТ",
+    hint:"Спрячься и проведи хозяина мимо блюда",
+    peakTitle:"ОБЕД ИЗ ТРЁХ БЛЮД",
+    smellTicks:180,
+  },
+  street: {
+    title:"В ТРАВЕ — НЕ ШЕВЕЛИСЬ",
+    hint:"Замри на четверть секунды и пропади из виду",
+    peakTitle:"ТИХИЙ ЧАС",
+    hideTicks:15,
+    closeVision:72,
+    rustleCooldown:30,
+  },
+  country: {
+    title:"МУЗЫКА ПЛАВИТ РЕАЛЬНОСТЬ",
+    hint:"На сильную долю мебель меняет состояние",
+    peakTitle:"КОТСТОК '69",
+    bpm:120,
+    phaseTicksByStep:[480,480,360,360,240],
+    telegraphTicks:60,
+    transitionTicks:18,
+    maxSurrealObstacles:8,
+  },
+  basement: {
+    title:"СВЕТ — ЭТО ЕГО ВЗГЛЯД",
+    hint:"Читай фонарик, слух и темноту",
+    peakTitle:"ТЬМА ПОМНИТ ШУМ",
+  },
+};
+
 // ===== КОНТРАКТ ЧЕСТНОСТИ ПРОЦЕДУРНЫХ УРОВНЕЙ =====
 // Проверяется только при генерации, не участвует в горячем игровом цикле.
 // На пике акта маршрут может быть теснее и хозяин может раньше прийти в
@@ -87,6 +142,7 @@ const POOP_RADIUS = 10;
 const locationThemes = [
   {
     key:"hall", name:"Зал", icon:"🛋️",
+    rule:LOCATION_RULES.hall,
     palette:{wall:"#e8d8c3",floor:"#b98f68",trim:"#8f6548",accent:"#d9bfa3",shadow:"rgba(70,40,20,0.18)",ui:"rgba(40,24,16,0.72)"},
     decorations:["window","painting","lamp"],
     obstacleTypes:["wardrobe","dresser","armchair","plant"],
@@ -94,6 +150,7 @@ const locationThemes = [
   },
   {
     key:"bathroom", name:"Ванная", icon:"🚿",
+    rule:LOCATION_RULES.bathroom,
     palette:{wall:"#d9eef7",floor:"#9fc4d1",trim:"#5f8ea0",accent:"#f7fbfd",shadow:"rgba(30,70,90,0.18)",ui:"rgba(20,55,70,0.72)"},
     decorations:["mirror","tiles","towel"],
     obstacleTypes:["sink","toilet","laundry","cabinet"],
@@ -101,6 +158,7 @@ const locationThemes = [
   },
   {
     key:"kitchen", name:"Кухня", icon:"🍳",
+    rule:LOCATION_RULES.kitchen,
     palette:{wall:"#f4ead2",floor:"#caa56d",trim:"#8d6b3f",accent:"#fff4dc",shadow:"rgba(80,55,20,0.18)",ui:"rgba(65,45,18,0.72)"},
     decorations:["shelves","fridge","clock"],
     obstacleTypes:["table","fridge","stool","counter"],
@@ -108,6 +166,7 @@ const locationThemes = [
   },
   {
     key:"street", name:"Двор", icon:"🌳",
+    rule:LOCATION_RULES.street,
     palette:{wall:"#b9d8f0",floor:"#7ea35f",trim:"#4f6f3d",accent:"#dff2ff",shadow:"rgba(30,60,20,0.18)",ui:"rgba(28,52,20,0.72)"},
     decorations:["clouds","fence","sun"],
     obstacleTypes:["tree","bench","bush","crate"],
@@ -115,6 +174,7 @@ const locationThemes = [
   },
   {
     key:"country", name:"Дача", icon:"🏡",
+    rule:LOCATION_RULES.country,
     palette:{wall:"#efe2c8",floor:"#a97d4f",trim:"#6f4d2d",accent:"#f8f0df",shadow:"rgba(60,35,15,0.2)",ui:"rgba(55,32,14,0.72)"},
     decorations:["fireplace","window","rack"],
     obstacleTypes:["dresser","woodpile","rockingChair","barrel"],
@@ -123,6 +183,7 @@ const locationThemes = [
   // ===== ЗАКРЫТАЯ ЛОКАЦИЯ — появляется только с уровня 9+ =====
   {
     key:"basement", name:"Подвал", icon:"🕸️",
+    rule:LOCATION_RULES.basement,
     palette:{wall:"#1e1c1a",floor:"#141210",trim:"#2e2620",accent:"#3a3028",shadow:"rgba(0,0,0,0.70)",ui:"rgba(8,5,3,0.88)"},
     decorations:["cobweb","wallpipe","bulb"],
     obstacleTypes:["fishBones","ragMouse","teddyBear","toyCar","toyPlane","juiceCan"],
@@ -185,9 +246,9 @@ const decorCatalog = {
 // Все пороги и вероятности вынесены сюда для удобной настройки.
 const BASEMENT = {
   corridorMinLevel: 9,    // с какого уровня появляется corridor-подвал
-  corridorProb:     0.25, // вероятность corridor-подвала (при level >= corridorMinLevel)
+  corridorProb:     0.08, // 8%; на 20+ складывается с DFS в едином броске
   dfsMinLevel:      20,   // с какого уровня появляется DFS-подвал
-  dfsProb:          0.33, // вероятность DFS-подвала (при level >= dfsMinLevel, проверяется первым)
+  dfsProb:          0.10, // 10%; суммарный шанс любой аномалии на 20+ = 18%
   // Количество вмурованных предметов в стенах лабиринта (corridor и dfs)
   wallEmbedCount:   {min: 10, max: 15},
   // Прозрачность вмурованных предметов (0=невидимо, 1=непрозрачно)

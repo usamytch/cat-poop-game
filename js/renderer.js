@@ -205,15 +205,19 @@ function draw() {
     if (ob.moving) drawObstacle(ob);
   }
 
+  drawLocationRuleDynamic();
+
   drawBonuses();
   drawShotPreview();
   drawPoops();
   owner.draw();
   drawPawTrails();
   player.draw();
+  drawLocationRuleForeground();
   drawOverlayParticles();
   drawComboPopups();
   drawUI();
+  drawLocationRuleBanner();
   drawTutorialGuidance();
 
   if (gameState !== "playing" && gameState !== "start") drawOverlay();

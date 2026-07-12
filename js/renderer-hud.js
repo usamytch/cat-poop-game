@@ -304,6 +304,52 @@ function drawUI() {
   ctx.textAlign = "left";
 }
 
+function drawLocationRuleBanner() {
+  if (locationRuleState.kitchenBlockedPulse > 0) {
+    ctx.save();
+    const alpha = Math.min(1, locationRuleState.kitchenBlockedPulse / 8);
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = "rgba(70,25,12,0.88)";
+    ctx.beginPath(); ctx.roundRect(player.x - 68, player.y - 42, 172, 28, 12); ctx.fill();
+    ctx.fillStyle = "#ffe0a8";
+    setFont("bold 12px Arial");
+    ctx.textAlign = "center";
+    ctx.fillText("СНАЧАЛА СПРЯЧЬСЯ", player.x + player.size / 2, player.y - 23);
+    ctx.restore();
+  }
+
+  if (!shouldShowLocationRuleBanner()) return;
+  const rule = currentLocation.rule;
+  if (!rule) return;
+
+  const fadeIn = clamp((180 - levelMessageTimer) / 18, 0, 1);
+  const fadeOut = clamp(levelMessageTimer / 24, 0, 1);
+  const alpha = Math.min(fadeIn, fadeOut);
+  const w = 620;
+  const h = 82;
+  const x = (WORLD.width - w) / 2;
+  const y = 14;
+
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  ctx.fillStyle = currentLocation.key === "country"
+    ? "rgba(45,14,60,0.90)"
+    : (currentLocation.palette.ui || "rgba(25,20,15,0.88)");
+  ctx.beginPath(); ctx.roundRect(x, y, w, h, 18); ctx.fill();
+  ctx.strokeStyle = currentLocation.key === "country" ? "#f4d35e" : "rgba(255,255,255,0.34)";
+  ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.roundRect(x, y, w, h, 18); ctx.stroke();
+
+  ctx.fillStyle = "#fff";
+  setFont("bold 22px Arial");
+  ctx.textAlign = "center";
+  ctx.fillText((currentLocation.icon || "📍") + "  " + getLocationRuleBannerTitle(), WORLD.width / 2, y + 32);
+  ctx.fillStyle = currentLocation.key === "country" ? "#ffe888" : "rgba(255,255,255,0.78)";
+  setFont("14px Arial");
+  ctx.fillText(rule.hint, WORLD.width / 2, y + 66);
+  ctx.restore();
+}
+
 // ===== СТАРТОВЫЙ ЭКРАН =====
 function drawStartScreen() {
   // OPT 13: WORLD.width/height вместо canvas.width/height

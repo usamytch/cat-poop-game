@@ -926,6 +926,29 @@ describe('basement level', () => {
     expect(BASEMENT.corridorProb).toBeLessThanOrEqual(1);
     expect(BASEMENT.dfsProb).toBeGreaterThan(0);
     expect(BASEMENT.dfsProb).toBeLessThanOrEqual(1);
+    expect(BASEMENT.corridorProb + BASEMENT.dfsProb).toBeLessThanOrEqual(0.20);
+  });
+
+  it('uses one bounded anomaly roll: about 18% basement at level 20+', () => {
+    level = BASEMENT.dfsMinLevel;
+    const progression = getLevelProgression(level);
+    let corridor = 0;
+    let dfs = 0;
+    const samples = 10000;
+    for (let seed = 1; seed <= samples; seed++) {
+      globalSeed = seed;
+      cheatBasement = false;
+      cheatDfs = false;
+      cheatLocationKey = '';
+      _selectLevelLocation(progression);
+      if (basementMode === 'corridor') corridor++;
+      if (basementMode === 'dfs') dfs++;
+    }
+    const anomalyRatio = (corridor + dfs) / samples;
+    expect(anomalyRatio).toBeGreaterThan(0.16);
+    expect(anomalyRatio).toBeLessThan(0.20);
+    expect(dfs / samples).toBeGreaterThan(0.08);
+    expect(dfs / samples).toBeLessThan(0.12);
   });
 
   it('basement does NOT appear on levels below corridorMinLevel', () => {

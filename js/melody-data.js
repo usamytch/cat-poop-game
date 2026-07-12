@@ -13,22 +13,26 @@ function _midi(note) {
   return 440 * Math.pow(2, (note - 69) / 12);
 }
 
-function _addSequence(notes, pitches, start, step, duration, volume, type) {
+function _addSequence(notes, pitches, start, step, duration, volume, type, minActStep) {
   pitches.forEach(function(pitch, index) {
     if (pitch === null) return;
-    notes.push([_midi(pitch), start + index * step, duration, volume, type]);
+    const note = [_midi(pitch), start + index * step, duration, volume, type];
+    if (minActStep && minActStep > 1) note.push(minActStep);
+    notes.push(note);
   });
 }
 
-function _addPattern(notes, pitches, start, step, duration, volume, type, repeats) {
+function _addPattern(notes, pitches, start, step, duration, volume, type, repeats, minActStep) {
   for (let repeat = 0; repeat < repeats; repeat++) {
-    _addSequence(notes, pitches, start + repeat * pitches.length * step, step, duration, volume, type);
+    _addSequence(notes, pitches, start + repeat * pitches.length * step, step, duration, volume, type, minActStep);
   }
 }
 
-function _addChord(notes, pitches, beat, duration, volume, type) {
+function _addChord(notes, pitches, beat, duration, volume, type, minActStep) {
   pitches.forEach(function(pitch) {
-    notes.push([_midi(pitch), beat, duration, volume, type]);
+    const note = [_midi(pitch), beat, duration, volume, type];
+    if (minActStep && minActStep > 1) note.push(minActStep);
+    notes.push(note);
   });
 }
 
@@ -105,17 +109,27 @@ const _LOCATION_MELODIES = {
     });
   }),
 
-  // Bright rescue adventure: major-key fanfare, propeller-like pulse, call/response.
-  country: _makeTheme("country", "Дачный патруль", "бодрое спасательное приключение", 144, 32, function(n) {
-    _addPattern(n, [43,50,55,50,43,50,57,50], 0, 0.5, 0.38, 0.042, "square", 8);
-    _addSequence(n, [31,null,31,null,36,null,38,null,31,null,34,null,36,null,38,null,
-                     31,null,31,null,36,null,38,null,40,null,38,null,36,null,31,null],
-                     0, 1, 0.68, 0.065, "sawtooth");
-    _addSequence(n, [67,71,74,null,79,null,74,null,72,71,69,null,67,null,62,null,
-                     67,69,71,72,74,76,78,null,79,78,76,74,71,null,67,null],
-                     0, 1, 0.72, 0.09, "triangle");
-    _addSequence(n, [79,null,83,null,81,null,78,null,79,null,86,null,83,null,79,null],
-                     0, 2, 0.62, 0.035, "sine");
+  // Original psychedelic-rock jam. Layers 2..5 are scheduled from the start
+  // but opened by gain as the act advances, so the clock never restarts.
+  country: _makeTheme("country", "Кислота в сметане", "дачный психоделический джем", 120, 32, function(n) {
+    // 1/5: lazy bass riff + pulse.
+    _addPattern(n, [40,null,40,43,45,null,43,38], 0, 1, 0.82, 0.068, "triangle", 4);
+    _addPattern(n, [52,52,null,55,57,null,55,null], 0, 1, 0.42, 0.030, "square", 4);
+    // 2/5: trembling organ chords.
+    [0,8,16,24].forEach(function(beat, i) {
+      _addChord(n, i % 2 ? [55,60,64] : [52,57,60], beat, 6.2, 0.024, "triangle", 2);
+    });
+    // 3/5: fuzz-like saw lead, entirely original.
+    _addSequence(n, [64,null,67,69,67,64,null,62,64,67,null,71,69,67,64,null,
+                     64,67,69,71,74,null,71,69,67,null,64,62,64,null,null],
+                     0, 1, 0.78, 0.072, "sawtooth", 3);
+    // 4/5: floating high response.
+    _addSequence(n, [76,null,null,79,null,78,null,74,76,null,81,null,79,null,76,null],
+                     0, 2, 1.45, 0.030, "sine", 4);
+    // 5/5: CATSTOCK punctuation on phrase boundaries.
+    [7.5,15.5,23.5,31].forEach(function(beat, i) {
+      _addChord(n, i === 3 ? [52,59,64,71] : [50,57,62], beat, 0.44, 0.050, "square", 5);
+    });
   }),
 
   // Desert stealth: Phrygian colour, low drone and an angular plucked motif.
@@ -136,7 +150,9 @@ function _reverseTheme(theme) {
   const bpm = theme.bpm * _PANIC_SPEED;
   const eighth = 60 / bpm / 2;
   const notes = theme.notes.map(function(note) {
-    return [note[0], theme.beats - note[1] - note[2], note[2], note[3], note[4]];
+    const reversed = [note[0], theme.beats - note[1] - note[2], note[2], note[3], note[4]];
+    if (note[5]) reversed.push(note[5]);
+    return reversed;
   }).sort(function(a, b) { return a[1] - b[1] || a[0] - b[0]; });
 
   return {

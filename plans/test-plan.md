@@ -30,6 +30,7 @@ npx vitest run tests/integration/play-feel-regression.test.js
 | `tests/owner.test.js` | активация хозяина, бегство, поимка, catnip, speed cap |
 | `tests/owner-grid.test.js` | grid-node движение, repath hysteresis, self-loop guard |
 | `tests/level.test.js` | генерация уровней, препятствия, подвал |
+| `tests/location-rules.test.js` | ковры, скольжение, еда, трава, обе фазы и performance contract Дачи |
 | `tests/grid.test.js` | сетка, занятость клеток, `aStarPath` |
 | `tests/game.test.js` | состояние игры, старт, respawn, ввод |
 | `tests/touch.test.js` | мобильное управление |
@@ -45,6 +46,8 @@ npx vitest run tests/integration/play-feel-regression.test.js
 - Срочность растёт по формуле `urgeRate / 60 * getUrgeScale(level)`, где `getUrgeScale()` использует актовый `effectiveLevel` и мягкий кап.
 - `getLevelProgression()` делит уровни на 5-уровневые акты, даёт sawtooth-инвариант `L5 > L4`, `L6 < L5`, `L6 > L1`.
 - Обычные локации идут блоками по 5 уровней и повторяются вариантами `II`, `III`, ...
+- Каждая обычная локация имеет одно правило; Дача перестраивает offscreen-фон только на музыкальной границе и не материализует мебель поверх персонажа.
+- Подвал появляется с вероятностью 8% на уровнях 9–19 и одним взаимоисключающим броском 10% DFS + 8% corridor на 20+.
 - Паника начинается при `urge / maxUrge > 0.75`, авария при `urge >= maxUrge`.
 - Для каждой локации есть обычная тема и ускоренный panic-вариант с математически развёрнутым таймлайном нот.
 - Таблетка снижает срочность по фазам игры, не уводя значение ниже 0.
@@ -77,3 +80,4 @@ npx vitest run tests/integration/play-feel-regression.test.js
 - Любая новая механика бонуса требует unit-теста бонуса, pickup-теста игрока и хотя бы одного интеграционного сценария.
 - Любая правка обучения требует `tests/tutorial.test.js`, релевантные `game/player/owner/touch`-тесты и сценарный smoke-test во встроенном браузере.
 - Любая правка HUD требует `tests/hud.test.js` и browser screenshots обычного, tutorial, panic и touch-состояний.
+- Для touch screenshot на desktop используется `?touch=1`: проверить старт, playing, panic, safe corridor HUD, карточку правила и карточку `5/5` в landscape.

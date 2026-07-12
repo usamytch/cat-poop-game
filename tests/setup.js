@@ -180,6 +180,8 @@ export function resetGameState() {
   owner.facePoops = [];
   owner.hesitateTimer = 0;
   owner.shotReactTimer = 0;
+  owner.ruleSenseIcon = '';
+  owner.ruleSenseTimer = 0;
   owner.awarenessState = 'guard';
   owner.lastKnownTarget = null;
   owner.heardTarget = null;
@@ -204,6 +206,9 @@ export function resetGameState() {
   pawTrails.length = 0;
   bonuses.length = 0;
   obstacles.length = 0;
+  decorItems.length = 0;
+  occupiedCells.clear();
+  resetLocationRuleState();
 
   // Таймеры и счётчики
   comboCount = 0;
@@ -241,6 +246,7 @@ export function resetGameState() {
 
   // RNG seed
   globalSeed = 0;
+  cheatLocationKey = '';
 }
 
 // ===== hitOwner() — вспомогательная функция для тестов комбо/попаданий =====
@@ -279,6 +285,7 @@ export function loadGame() {
     'js/bonuses.js',
     'js/pathfinding.js',
     'js/level.js',
+    'js/location-rules.js',
     'js/tutorial.js',
     'js/player.js',
     'js/owner.js',

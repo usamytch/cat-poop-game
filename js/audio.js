@@ -63,6 +63,7 @@ let _melodyScheduled = -1;    // последняя запланированна
 let _melodyTimer = null;
 let _melodyNodes = [];        // все активные [oscillator, gain] пары
 let _melodyTheme = null;       // тема выбранной локации на момент старта
+let _melodyLayerGains = [];
 // Мастер-шина обычной мелодии: обнуление gain мгновенно глушит все ноты,
 // даже те что запланированы в будущем (o.stop(futureTime) ненадёжен в Web Audio)
 let _melodyMaster = null;
@@ -76,19 +77,50 @@ function _getMelodyMaster() {
   return _melodyMaster;
 }
 
+function _activeArrangementStep() {
+  if (typeof getLevelProgression !== "function" || typeof level === "undefined") return ACT.length;
+  return getLevelProgression(level).actStep;
+}
+
+function _createLayerGains(master) {
+  const ac = getAC();
+  const activeStep = _activeArrangementStep();
+  const gains = [];
+  for (let layer = 1; layer <= ACT.length; layer++) {
+    const gain = ac.createGain();
+    gain.gain.setValueAtTime(layer <= activeStep ? 1 : 0, ac.currentTime);
+    gain.connect(master);
+    gains.push(gain);
+  }
+  return gains;
+}
+
+function _syncLayerGains(gains) {
+  if (!_ac || !gains || gains.length === 0) return;
+  const activeStep = _activeArrangementStep();
+  for (let i = 0; i < gains.length; i++) {
+    const param = gains[i].gain;
+    const target = i + 1 <= activeStep ? 1 : 0;
+    param.cancelScheduledValues(_ac.currentTime);
+    param.setValueAtTime(param.value || 0.0001, _ac.currentTime);
+    param.linearRampToValueAtTime(target, _ac.currentTime + 0.24);
+  }
+}
+
 function _scheduleMelodyIteration(iteration) {
   const ac = getAC();
   const master = _getMelodyMaster();
   const iterStart = _melodyStartTime + iteration * _melodyTheme.duration;
   _melodyTheme.notes.forEach(function(note) {
     const freq = note[0], beat = note[1], durBeats = note[2], vol = note[3], type = note[4];
+    const layer = clamp(note[5] || 1, 1, ACT.length);
     const t   = iterStart + beat * _melodyTheme.eighth;
     const dur = durBeats * _melodyTheme.eighth;
     if (t + dur < ac.currentTime) return; // уже прошло
     try {
       const o = ac.createOscillator(), g = ac.createGain();
       // Осциллятор → нота-gain → мастер-gain → destination
-      o.connect(g); g.connect(master);
+      o.connect(g); g.connect(_melodyLayerGains[layer - 1] || master);
       o.type = type;
       o.frequency.setValueAtTime(freq, t);
       g.gain.setValueAtTime(vol, t);
@@ -126,6 +158,7 @@ function startMelody() {
   _melodyMaster = ac.createGain();
   _melodyMaster.gain.setValueAtTime(1, ac.currentTime);
   _melodyMaster.connect(ac.destination);
+  _melodyLayerGains = _createLayerGains(_melodyMaster);
   _melodyStartTime = ac.currentTime;
   _melodyScheduled = -1;
   // Планируем сразу первые две итерации
@@ -151,6 +184,10 @@ function stopMelody() {
   for (const [o, g] of _melodyNodes) {
     try { o.stop(0); o.disconnect(); g.disconnect(); } catch(e) {}
   }
+  for (const gain of _melodyLayerGains) {
+    try { gain.disconnect(); } catch(e) {}
+  }
+  _melodyLayerGains = [];
   _melodyNodes = [];
   _melodyStartTime = null;
   _melodyScheduled = -1;
@@ -163,6 +200,7 @@ let _panicScheduled = -1;
 let _panicTimer = null;
 let _panicNodes = [];
 let _panicTheme = null;
+let _panicLayerGains = [];
 // Мастер-шина паника-мелодии — аналогично обычной
 let _panicMaster = null;
 
@@ -181,12 +219,13 @@ function _schedulePanicIteration(iteration) {
   const iterStart = _panicStartTime + iteration * _panicTheme.duration;
   _panicTheme.notes.forEach(function(note) {
     const freq = note[0], beat = note[1], durBeats = note[2], vol = note[3], type = note[4];
+    const layer = clamp(note[5] || 1, 1, ACT.length);
     const t   = iterStart + beat * _panicTheme.eighth;
     const dur = durBeats * _panicTheme.eighth;
     if (t + dur < ac.currentTime) return; // уже прошло
     try {
       const o = ac.createOscillator(), g = ac.createGain();
-      o.connect(g); g.connect(master);
+      o.connect(g); g.connect(_panicLayerGains[layer - 1] || master);
       o.type = type;
       o.frequency.setValueAtTime(freq, t);
       g.gain.setValueAtTime(vol, t);
@@ -223,6 +262,7 @@ function startPanicMelody() {
   _panicMaster = ac.createGain();
   _panicMaster.gain.setValueAtTime(1, ac.currentTime);
   _panicMaster.connect(ac.destination);
+  _panicLayerGains = _createLayerGains(_panicMaster);
   _panicStartTime = ac.currentTime;
   _panicScheduled = -1;
   _schedulePanicIteration(0);
@@ -245,6 +285,10 @@ function stopPanicMelody() {
   for (const [o, g] of _panicNodes) {
     try { o.stop(0); o.disconnect(); g.disconnect(); } catch(e) {}
   }
+  for (const gain of _panicLayerGains) {
+    try { gain.disconnect(); } catch(e) {}
+  }
+  _panicLayerGains = [];
   _panicNodes = [];
   _panicStartTime = null;
   _panicScheduled = -1;
@@ -257,7 +301,10 @@ function syncLocationMelody() {
   if (muted || typeof gameState === "undefined" || gameState !== "playing") return;
   const locationKey = typeof currentLocation !== "undefined" ? currentLocation.key : "hall";
   const activeTheme = _panicTheme || _melodyTheme;
-  if (activeTheme && activeTheme.key === locationKey) return;
+  if (activeTheme && activeTheme.key === locationKey) {
+    _syncLayerGains(_panicStartTime !== null ? _panicLayerGains : _melodyLayerGains);
+    return;
+  }
 
   if (_panicStartTime !== null) {
     stopPanicMelody();
