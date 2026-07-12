@@ -48,6 +48,14 @@ function resetCommon() {
   owner.facePoops = [];
   owner.hesitateTimer = 0;
   owner.shotReactTimer = 0;
+  owner.awarenessState = 'guard';
+  owner.lastKnownTarget = null;
+  owner.heardTarget = null;
+  owner.memoryTimer = 0;
+  owner.searchTimer = 0;
+  owner.heardTimer = 0;
+  owner.hitReactTimer = 0;
+  owner.hitReactStage = 0;
   owner.path = [];
   owner.pathTimer = 0;
   owner.catnipTarget = null;
@@ -716,6 +724,12 @@ describe('steering — dynamic obstacle forces repath', () => {
     owner.nodeQueue = [];
     owner.moveProgress = 0;
     owner.pathTimer = 100;
+    owner.awarenessState = 'chase';
+    owner.lastKnownTarget = {
+      x: player.x + player.size / 2 - owner.width / 2,
+      y: player.y + player.size / 2 - owner.height / 2,
+    };
+    owner.memoryTimer = DIFF.normal.chaseMemory;
 
     // Verify owner IS overlapping the wall before update
     const ownerRect0 = { x: owner.x, y: owner.y, width: owner.width, height: owner.height };

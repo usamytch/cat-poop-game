@@ -69,14 +69,15 @@ describe('Full combo flow', () => {
     expect(hitPopups.length).toBeGreaterThanOrEqual(1);
   });
 
-  it('3rd hit: comboCount=0 (reset), facePoops.length=3, poopHits=3, COMBO popup, fleeTimer=300', () => {
+  it('3rd hit: comboCount=0, facePoops stay visible, COMBO starts a balanced flee window', () => {
     hitOwner();
     hitOwner();
     hitOwner();
     expect(comboCount).toBe(0);
     expect(owner.facePoops.length).toBe(3);
     expect(owner.poopHits).toBe(3);
-    expect(owner.fleeTimer).toBe(300);
+    expect(owner.fleeTimer).toBeGreaterThanOrEqual(DIFF.normal.comboFleeMin);
+    expect(owner.fleeTimer).toBeLessThanOrEqual(DIFF.normal.comboFleeMax);
     const comboPopup = comboPopups.find(p => p.text.includes('COMBO'));
     expect(comboPopup).toBeDefined();
   });
@@ -85,16 +86,17 @@ describe('Full combo flow', () => {
     hitOwner();
     hitOwner();
     hitOwner();
-    // fleeTimer = 300, facePoops should still be there
+    // Какашки остаются на лице на всём рассчитанном окне бегства.
     expect(owner.fleeTimer).toBeGreaterThan(0);
     expect(owner.facePoops.length).toBe(3);
   });
 
-  it('after fleeTimer expires (300 ticks): facePoops=[], poopHits=0', () => {
+  it('after the computed flee window expires: facePoops=[], poopHits=0', () => {
     hitOwner();
     hitOwner();
     hitOwner();
-    expect(owner.fleeTimer).toBe(300);
+    const fleeDuration = owner.fleeTimer;
+    expect(fleeDuration).toBeGreaterThan(0);
 
     // Move player far away to avoid catch during flee
     player.x = 100;
@@ -104,7 +106,7 @@ describe('Full combo flow', () => {
     owner.fleeTarget = { x: owner.x, y: owner.y };
 
     // Tick down fleeTimer to 0
-    for (let i = 0; i < 300; i++) {
+    for (let i = 0; i < fleeDuration; i++) {
       owner.update();
     }
     // Now fleeTimer = 0; next update triggers cleanup

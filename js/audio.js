@@ -37,6 +37,13 @@ function sndAlarm()  { tone(880,"square",0.06,0.15); tone(660,"square",0.06,0.15
 function sndWin()    { [523,659,784,1047].forEach((f,i) => tone(f,"sine",0.18,0.3,i*0.12)); }
 function sndLose()   { [400,300,200,150].forEach((f,i) => tone(f,"sawtooth",0.2,0.35,i*0.14)); }
 function sndCombo()  { [800,1000,1200,1500].forEach((f,i) => tone(f,"sine",0.1,0.3,i*0.07)); }
+function sndComboHit(stage) {
+  const base = stage === 2 ? 330 : 260;
+  tone(base, "square", 0.055, 0.32);
+  tone(base * 1.5, "sine", 0.07, 0.20, 0.045);
+}
+function sndOwnerHeard() { tone(520,"triangle",0.07,0.14); tone(690,"triangle",0.08,0.12,0.07); }
+function sndOwnerAlert() { tone(760,"square",0.055,0.12); }
 function sndPickup() { tone(1200,"sine",0.08,0.2); tone(1500,"sine",0.06,0.15,0.07); }
 function sndLifeLost() {
   tone(523,"sine",0.15,0.3,0.0);

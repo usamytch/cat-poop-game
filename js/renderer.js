@@ -206,6 +206,7 @@ function draw() {
   }
 
   drawBonuses();
+  drawShotPreview();
   drawPoops();
   owner.draw();
   drawPawTrails();

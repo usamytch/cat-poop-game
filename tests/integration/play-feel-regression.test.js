@@ -40,6 +40,14 @@ function resetPlayFeel() {
   owner.facePoops = [];
   owner.hesitateTimer = 0;
   owner.shotReactTimer = 0;
+  owner.awarenessState = 'guard';
+  owner.lastKnownTarget = null;
+  owner.heardTarget = null;
+  owner.memoryTimer = 0;
+  owner.searchTimer = 0;
+  owner.heardTimer = 0;
+  owner.hitReactTimer = 0;
+  owner.hitReactStage = 0;
   owner.path = [];
   owner.pathTimer = 0;
   owner.currentNode = null;
@@ -167,7 +175,9 @@ describe('play-feel regression scenarios', () => {
     hitOwner();
 
     expect(comboCount).toBe(0);
-    expect(owner.fleeTimer).toBe(300);
+    const fleeDuration = owner.fleeTimer;
+    expect(fleeDuration).toBeGreaterThanOrEqual(DIFF.normal.comboFleeMin);
+    expect(fleeDuration).toBeLessThanOrEqual(DIFF.normal.comboFleeMax);
     expect(owner.facePoops).toHaveLength(3);
     expect(comboPopups.some(p => p.text.includes('COMBO'))).toBe(true);
 
@@ -177,7 +187,7 @@ describe('play-feel regression scenarios', () => {
     owner.y = 500;
     owner.fleeTarget = { x: owner.x, y: owner.y };
 
-    for (let frame = 0; frame < 300; frame++) {
+    for (let frame = 0; frame < fleeDuration; frame++) {
       owner.update();
     }
     owner.update();

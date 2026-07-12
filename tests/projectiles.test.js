@@ -85,11 +85,12 @@ describe('shootPoop()', () => {
     expect(p.dx).toBeLessThan(0);
   });
 
-  it('normal: shooting reduces player.urge by shootUrgeReduce', () => {
+  it('normal: shooting alone does not heal urgency', () => {
     difficulty = 'normal';
     player.urge = 50;
     shootPoop();
-    expect(player.urge).toBeCloseTo(50 - DIFF.normal.shootUrgeReduce);
+    expect(DIFF.normal.shootUrgeReduce).toBe(0);
+    expect(player.urge).toBeCloseTo(50);
   });
 
   it('chaos: shooting does NOT reduce player.urge (shootUrgeReduce === 0)', () => {
@@ -104,6 +105,23 @@ describe('shootPoop()', () => {
     player.urge = 0;
     shootPoop();
     expect(player.urge).toBeGreaterThanOrEqual(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+describe('getShotPreview()', () => {
+  it('reports a clear line to the owner when furniture does not intervene', () => {
+    obstacles.length = 0;
+    const preview = getShotPreview();
+    expect(preview.clear).toBe(true);
+    expect(preview.hit).toBeNull();
+  });
+
+  it('reports the first blocking obstacle using projectile radius', () => {
+    obstacles.push({ id: 'wardrobe', x: 430, y: 260, width: 80, height: 120 });
+    const preview = getShotPreview();
+    expect(preview.clear).toBe(false);
+    expect(preview.hit.obstacle.id).toBe('wardrobe');
   });
 });
 
@@ -234,7 +252,8 @@ describe('updatePoops() — combo (3rd hit)', () => {
     comboCount = 2;
     hitOwner();
     expect(comboCount).toBe(0);
-    expect(owner.fleeTimer).toBe(300);
+    expect(owner.fleeTimer).toBeGreaterThanOrEqual(DIFF.normal.comboFleeMin);
+    expect(owner.fleeTimer).toBeLessThanOrEqual(DIFF.normal.comboFleeMax);
   });
 
   it('3rd hit adds COMBO popup', () => {

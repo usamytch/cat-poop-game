@@ -66,8 +66,10 @@ describe('tutorial fixed stages', () => {
     expect(owner.x).toBe(startX);
     expect(owner.y).toBe(startY);
 
+    owner.onShotFired(player.x + player.size / 2, player.y + player.size / 2);
     tutorialOnShotBlocked();
     owner.update();
+    expect(owner.awarenessState).toBe('heard');
     expect(owner.pathTimer).toBe(owner.PATH_RECALC);
   });
 

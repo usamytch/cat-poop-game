@@ -136,3 +136,34 @@ describe('hitsObstacles(rect, ignId)', () => {
     expect(hitsObstacles({ x: 100, y: 100, width: 50, height: 50 })).toBe(false);
   });
 });
+
+// ---------------------------------------------------------------------------
+describe('segment visibility helpers', () => {
+  it('segmentRectHitT returns the first normalized hit point', () => {
+    const t = segmentRectHitT(0, 50, 200, 50, { x: 80, y: 20, width: 40, height: 60 }, 0);
+    expect(t).toBeCloseTo(0.4);
+  });
+
+  it('segmentRectHitT returns null when the segment misses', () => {
+    const t = segmentRectHitT(0, 0, 200, 0, { x: 80, y: 20, width: 40, height: 60 }, 0);
+    expect(t).toBeNull();
+  });
+
+  it('firstObstacleOnSegment returns the nearest obstacle, independent of array order', () => {
+    obstacles.length = 0;
+    obstacles.push(
+      { id: 'far', x: 160, y: 20, width: 20, height: 60 },
+      { id: 'near', x: 60, y: 20, width: 20, height: 60 },
+    );
+    const hit = firstObstacleOnSegment(0, 50, 220, 50, 0);
+    expect(hit.obstacle.id).toBe('near');
+    expect(hit.x).toBeCloseTo(60);
+  });
+
+  it('padding makes projectile-sized near misses count as blocked', () => {
+    obstacles.length = 0;
+    obstacles.push({ id: 'edge', x: 80, y: 20, width: 40, height: 20 });
+    expect(firstObstacleOnSegment(0, 48, 200, 48, 0)).toBeNull();
+    expect(firstObstacleOnSegment(0, 48, 200, 48, POOP_RADIUS)).not.toBeNull();
+  });
+});

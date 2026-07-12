@@ -66,6 +66,67 @@ function hitsObstacles(rect, ignId) {
   return obstacles.some(o => o.id !== ignId && rectsOverlap(rect, o));
 }
 
+// Возвращает параметр t (0..1) первой точки пересечения отрезка с AABB.
+// padding расширяет прямоугольник: для снаряда это его радиус, для зрения —
+// небольшой запас, чтобы луч не "просачивался" по самому краю мебели.
+function segmentRectHitT(x1, y1, x2, y2, rect, padding) {
+  padding = padding || 0;
+  const minX = rect.x - padding;
+  const maxX = rect.x + rect.width + padding;
+  const minY = rect.y - padding;
+  const maxY = rect.y + rect.height + padding;
+  const dx = x2 - x1;
+  const dy = y2 - y1;
+  let tMin = 0;
+  let tMax = 1;
+
+  if (Math.abs(dx) < 1e-9) {
+    if (x1 < minX || x1 > maxX) return null;
+  } else {
+    let tx1 = (minX - x1) / dx;
+    let tx2 = (maxX - x1) / dx;
+    if (tx1 > tx2) { const tmp = tx1; tx1 = tx2; tx2 = tmp; }
+    tMin = Math.max(tMin, tx1);
+    tMax = Math.min(tMax, tx2);
+    if (tMin > tMax) return null;
+  }
+
+  if (Math.abs(dy) < 1e-9) {
+    if (y1 < minY || y1 > maxY) return null;
+  } else {
+    let ty1 = (minY - y1) / dy;
+    let ty2 = (maxY - y1) / dy;
+    if (ty1 > ty2) { const tmp = ty1; ty1 = ty2; ty2 = tmp; }
+    tMin = Math.max(tMin, ty1);
+    tMax = Math.min(tMax, ty2);
+    if (tMin > tMax) return null;
+  }
+
+  return tMin;
+}
+
+// Ближайшее препятствие на отрезке. Один и тот же helper используют зрение
+// хозяина и preview выстрела, поэтому визуальная подсказка совпадает с логикой.
+function firstObstacleOnSegment(x1, y1, x2, y2, padding, ignId) {
+  let nearest = null;
+  let nearestT = Infinity;
+  for (const obstacle of obstacles) {
+    if (obstacle.id === ignId) continue;
+    const t = segmentRectHitT(x1, y1, x2, y2, obstacle, padding);
+    if (t !== null && t < nearestT) {
+      nearestT = t;
+      nearest = obstacle;
+    }
+  }
+  if (!nearest) return null;
+  return {
+    obstacle: nearest,
+    t: nearestT,
+    x: x1 + (x2 - x1) * nearestT,
+    y: y1 + (y2 - y1) * nearestT,
+  };
+}
+
 // Выталкивает сущность из препятствий если она внутри.
 // Возвращает true если пришлось выталкивать.
 function escapeObstacles(entity) {

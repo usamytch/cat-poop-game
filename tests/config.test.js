@@ -16,7 +16,11 @@ describe('DIFF — difficulty modes', () => {
     expect(DIFF).toHaveProperty('chaos');
   });
 
-  const requiredFields = ['urgeRate', 'baseSpd', 'spdPerLvl', 'maxSpd', 'firstLvl', 'poopTime', 'hitUrgeReduce', 'shootUrgeReduce'];
+  const requiredFields = [
+    'urgeRate', 'baseSpd', 'spdPerLvl', 'maxSpd', 'firstLvl', 'poopTime',
+    'hitUrgeReduce', 'shootUrgeReduce', 'chaseMemory', 'searchDuration',
+    'heardDuration', 'comboFleeMin', 'comboFleeMax',
+  ];
   for (const mode of ['normal', 'chaos']) {
     for (const field of requiredFields) {
       it(`DIFF.${mode} has field "${field}"`, () => {
@@ -48,11 +52,8 @@ describe('DIFF — difficulty modes', () => {
     expect(DIFF.chaos.shootUrgeReduce).toBeGreaterThanOrEqual(0);
   });
 
-  it('normal.shootUrgeReduce >= chaos.shootUrgeReduce', () => {
-    expect(DIFF.normal.shootUrgeReduce).toBeGreaterThanOrEqual(DIFF.chaos.shootUrgeReduce);
-  });
-
-  it('chaos.shootUrgeReduce === 0 (no urge reduction on shoot in chaos)', () => {
+  it('misses give no urge reduction in either scored mode', () => {
+    expect(DIFF.normal.shootUrgeReduce).toBe(0);
     expect(DIFF.chaos.shootUrgeReduce).toBe(0);
   });
 
@@ -72,21 +73,37 @@ describe('DIFF — difficulty modes', () => {
 
 // ---------------------------------------------------------------------------
 describe('DIFF — balance: urge reduction vs urge growth per cooldown', () => {
-  // Cooldown = 22 frames; urge growth per frame = urgeRate/60
-  // On chaos: shootUrgeReduce=0 — misses give no relief, only direct hits help
-  // On normal: shootUrgeReduce > 0 — every shot reduces urge slightly
-  it('chaos: shootUrgeReduce === 0 (misses give no urge relief on chaos)', () => {
+  // Промах не лечит ни в одном режиме; облегчение подтверждает только hit.
+  it('chaos: shootUrgeReduce === 0', () => {
     expect(DIFF.chaos.shootUrgeReduce).toBe(0);
   });
 
-  it('normal: shootUrgeReduce > 0 (every shot reduces urge on normal)', () => {
-    expect(DIFF.normal.shootUrgeReduce).toBeGreaterThan(0);
+  it('normal: shootUrgeReduce === 0', () => {
+    expect(DIFF.normal.shootUrgeReduce).toBe(0);
   });
 
   it('normal: hitUrgeReduce is a positive number (shooting reduces urge)', () => {
     expect(DIFF.normal.hitUrgeReduce).toBeGreaterThan(0);
   });
 
+});
+
+// ---------------------------------------------------------------------------
+describe('OWNER_AI — readable perception contract', () => {
+  it('Chaos keeps visual memory longer than Normal', () => {
+    expect(DIFF.chaos.chaseMemory).toBeGreaterThan(DIFF.normal.chaseMemory);
+  });
+
+  it('combo flee windows are ordered and shorter in Chaos', () => {
+    expect(DIFF.normal.comboFleeMin).toBeLessThan(DIFF.normal.comboFleeMax);
+    expect(DIFF.chaos.comboFleeMin).toBeLessThan(DIFF.chaos.comboFleeMax);
+    expect(DIFF.chaos.comboFleeMax).toBeLessThan(DIFF.normal.comboFleeMax);
+  });
+
+  it('basement flashlight and close vision use positive ranges', () => {
+    expect(OWNER_AI.basementConeHalfAngle).toBeGreaterThan(0);
+    expect(OWNER_AI.basementCloseVision).toBeGreaterThan(0);
+  });
 });
 
 // ---------------------------------------------------------------------------

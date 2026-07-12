@@ -46,6 +46,14 @@ function resetCommon() {
   owner.facePoops = [];
   owner.hesitateTimer = 0;
   owner.shotReactTimer = 0;
+  owner.awarenessState = 'guard';
+  owner.lastKnownTarget = null;
+  owner.heardTarget = null;
+  owner.memoryTimer = 0;
+  owner.searchTimer = 0;
+  owner.heardTimer = 0;
+  owner.hitReactTimer = 0;
+  owner.hitReactStage = 0;
   owner.path = [];
   owner.pathTimer = 0;
   owner.catnipTarget = null;
@@ -244,9 +252,10 @@ describe('owner.activate()', () => {
 
 // ---------------------------------------------------------------------------
 describe('owner.flee()', () => {
-  it('sets fleeTimer to 300', () => {
+  it('sets fleeTimer inside the difficulty window', () => {
     owner.flee();
-    expect(owner.fleeTimer).toBe(300);
+    expect(owner.fleeTimer).toBeGreaterThanOrEqual(DIFF.normal.comboFleeMin);
+    expect(owner.fleeTimer).toBeLessThanOrEqual(DIFF.normal.comboFleeMax);
   });
 
   it('fleeTarget is set to a corner', () => {

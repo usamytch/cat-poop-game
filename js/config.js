@@ -35,8 +35,17 @@ const DIFF = {
   // hesitateProbDecay — hyperbolic decay coefficient: prob = base / (1 + (level-1) * decay)
   // hesitateMinProb   — floor probability (never goes below this)
   // hesitateDur       — duration of micro-freeze in frames
-  normal: { label:"😼 Нормал", urgeRate:1.9,  baseSpd:1.6, spdPerLvl:0.25, maxSpd:4.5, firstLvl:2, poopTime:180, hitUrgeReduce:2.0, shootUrgeReduce:1.0, repathMinDist:2, hesitateBaseProb:0.004, hesitateProbDecay:0.10, hesitateMinProb:0.001, hesitateDur:12 },
-  chaos:  { label:"😈 Хаос",   urgeRate:3.0,  baseSpd:2.3, spdPerLvl:0.40, maxSpd:6.5, firstLvl:1, poopTime:240, hitUrgeReduce:1.5, shootUrgeReduce:0,   repathMinDist:2, hesitateBaseProb:0.002, hesitateProbDecay:0.20, hesitateMinProb:0.0,  hesitateDur:8  },
+  normal: { label:"😼 Нормал", urgeRate:1.9,  baseSpd:1.6, spdPerLvl:0.25, maxSpd:4.5, firstLvl:2, poopTime:180, hitUrgeReduce:2.0, shootUrgeReduce:0, repathMinDist:2, hesitateBaseProb:0.004, hesitateProbDecay:0.10, hesitateMinProb:0.001, hesitateDur:12, chaseMemory:45, searchDuration:75, heardDuration:120, comboFleeMin:180, comboFleeMax:270 },
+  chaos:  { label:"😈 Хаос",   urgeRate:3.0,  baseSpd:2.3, spdPerLvl:0.40, maxSpd:6.5, firstLvl:1, poopTime:240, hitUrgeReduce:1.5, shootUrgeReduce:0, repathMinDist:2, hesitateBaseProb:0.002, hesitateProbDecay:0.20, hesitateMinProb:0.0,  hesitateDur:8,  chaseMemory:90, searchDuration:120, heardDuration:150, comboFleeMin:120, comboFleeMax:210 },
+};
+
+// Контракт восприятия хозяина. В обычных комнатах достаточно чистой линии
+// зрения; в Подвале зрение ограничено нарисованным конусом фонарика.
+const OWNER_AI = {
+  sightPadding: 2,
+  basementConeHalfAngle: Math.PI / 4.5,
+  basementCloseVision: 72,
+  targetArrivalRadius: GRID * 0.9,
 };
 
 // ===== АКТЫ ПОЗДНЕЙ ИГРЫ =====
@@ -72,6 +81,7 @@ const LEVEL_QUALITY = {
 
 // Скорость снаряда-какашки
 const POOP_SPEED = 7;
+const POOP_RADIUS = 10;
 
 // ===== ЛОКАЦИИ =====
 const locationThemes = [

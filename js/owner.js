@@ -45,6 +45,17 @@ const owner = {
   hesitateTimer: 0,   // кадры микро-заморозки
   shotReactTimer: 0,  // кадры отображения реакции на выстрел
 
+  // Читаемая модель осведомлённости. Спецрежимы flee/catnip/yarn имеют
+  // приоритет в update/draw, но не маскируются под эти четыре состояния.
+  awarenessState: "guard", // guard | heard | chase | search
+  lastKnownTarget: null,   // top-left цель последней видимой позиции кота
+  heardTarget: null,       // top-left координата источника шума
+  memoryTimer: 0,
+  searchTimer: 0,
+  heardTimer: 0,
+  hitReactTimer: 0,
+  hitReactStage: 0,
+
   activate() {
     const diff = DIFF[difficulty];
     if (level < diff.firstLvl) { this.active = false; return; }
@@ -164,6 +175,14 @@ const owner = {
     this.poopHits = 0; this.facePoops = [];
     this.hesitateTimer = 0;
     this.shotReactTimer = 0;
+    this.awarenessState = "guard";
+    this.lastKnownTarget = null;
+    this.heardTarget = null;
+    this.memoryTimer = 0;
+    this.searchTimer = 0;
+    this.heardTimer = 0;
+    this.hitReactTimer = 0;
+    this.hitReactStage = 0;
   },
 
   // Запускает режим бегства — хозяин убегает в дальний угол от кота
@@ -182,7 +201,23 @@ const owner = {
       if (d2 > bestDist) { bestDist = d2; best = c; }
     }
     this.fleeTarget = best;
-    this.fleeTimer = 300; // 5 секунд при 60fps
+    // В обучении окно всегда максимально безопасное. В основных режимах оно
+    // длиннее, когда до лотка ещё далеко, и короче в агрессивном Chaos.
+    if (isTutorialActive()) {
+      this.fleeTimer = 300;
+    } else {
+      const diff = DIFF[difficulty];
+      const pcx = player.x + player.size / 2;
+      const pcy = player.y + player.size / 2;
+      const lcx = litterBox.x + litterBox.width / 2;
+      const lcy = litterBox.y + litterBox.height / 2;
+      const b = getPlayBounds();
+      const maxDist = Math.hypot(b.right - b.left, b.bottom - b.top);
+      const distanceRatio = clamp(Math.hypot(lcx - pcx, lcy - pcy) / maxDist, 0, 1);
+      this.fleeTimer = Math.round(
+        diff.comboFleeMin + (diff.comboFleeMax - diff.comboFleeMin) * distanceRatio
+      );
+    }
     this.path = [];
     // Grid-node reset
     this.currentNode = null;
@@ -191,13 +226,156 @@ const owner = {
     this.moveProgress = 0;
     this.pathTimer = 0;
     this.hesitateTimer = 0;
+    this.awarenessState = "guard";
+    this.lastKnownTarget = null;
+    this.heardTarget = null;
+    this.memoryTimer = 0;
+    this.searchTimer = 0;
+    this.heardTimer = 0;
   },
 
   // Вызывается при выстреле кота — хозяин реагирует
-  onShotFired() {
-    if (!this.active || this.fleeTimer > 0) return;
-    this.pathTimer = 0;       // форсируем пересчёт пути на следующем кадре
-    this.shotReactTimer = 30; // ~0.5 сек показываем знак паники ‼
+  onShotFired(shotX, shotY) {
+    if (!this.active || this.fleeTimer > 0 || catnipTimer > 0 || yarnFreezeTimer > 0) return;
+    shotX = Number.isFinite(shotX) ? shotX : player.x + player.size / 2;
+    shotY = Number.isFinite(shotY) ? shotY : player.y + player.size / 2;
+    const target = { x: shotX - this.width / 2, y: shotY - this.height / 2 };
+    this.shotReactTimer = 30;
+
+    if (this._canSeePlayer()) {
+      this._rememberPlayer();
+      this._setAwarenessState("chase");
+    } else {
+      this.heardTarget = target;
+      this.lastKnownTarget = { x: target.x, y: target.y };
+      this._setAwarenessState("heard");
+    }
+  },
+
+  onPoopHit(stage) {
+    this.hitReactStage = clamp(stage, 1, 3);
+    this.hitReactTimer = stage >= 3 ? 42 : 24;
+  },
+
+  _rememberPlayer() {
+    this.lastKnownTarget = {
+      x: player.x + player.size / 2 - this.width / 2,
+      y: player.y + player.size / 2 - this.height / 2,
+    };
+    this.memoryTimer = DIFF[difficulty].chaseMemory;
+  },
+
+  _setAwarenessState(nextState) {
+    const previous = this.awarenessState;
+    if (previous === nextState) return;
+    this.awarenessState = nextState;
+    this.pathTimer = 0;
+    this.lastRepathGoalCell = null;
+    const diff = DIFF[difficulty];
+
+    if (nextState === "heard") {
+      this.heardTimer = diff.heardDuration;
+      sndOwnerHeard();
+    } else if (nextState === "chase") {
+      this.memoryTimer = diff.chaseMemory;
+      if (previous !== "chase") sndOwnerAlert();
+    } else if (nextState === "search") {
+      this.searchTimer = diff.searchDuration;
+    } else if (nextState === "guard") {
+      this.memoryTimer = 0;
+      this.searchTimer = 0;
+      this.heardTimer = 0;
+      this.heardTarget = null;
+    }
+  },
+
+  _canSeePlayer() {
+    const ox = this.x + this.width / 2;
+    const oy = this.y + this.height / 2;
+    const px = player.x + player.size / 2;
+    const py = player.y + player.size / 2;
+    const dx = px - ox;
+    const dy = py - oy;
+    const dist = Math.sqrt(dx*dx + dy*dy);
+
+    if (firstObstacleOnSegment(ox, oy, px, py, OWNER_AI.sightPadding)) return false;
+    if (basementMode === "" || dist <= OWNER_AI.basementCloseVision) return true;
+    if (dist <= 0.001) return true;
+
+    const dot = (dx / dist) * this.facingX + (dy / dist) * this.facingY;
+    return dot >= Math.cos(OWNER_AI.basementConeHalfAngle);
+  },
+
+  _targetReached(target) {
+    if (!target) return true;
+    const dx = target.x - this.x;
+    const dy = target.y - this.y;
+    return dx*dx + dy*dy <= OWNER_AI.targetArrivalRadius * OWNER_AI.targetArrivalRadius;
+  },
+
+  _updateAwareness() {
+    const canSeePlayer = this._canSeePlayer();
+
+    if (canSeePlayer) {
+      this._rememberPlayer();
+      this._setAwarenessState("chase");
+    }
+
+    // Таймер пластической микро-паузы идёт в любом awareness-состоянии.
+    // Видимость и переходы уже обработаны, поэтому пауза не делает AI слепым.
+    if (this.hesitateTimer > 0) {
+      this.hesitateTimer--;
+      return;
+    }
+
+    let target = null;
+    if (this.awarenessState === "guard") {
+      return;
+    }
+
+    if (this.awarenessState === "heard") {
+      target = this.heardTarget;
+      this.heardTimer--;
+      if (!target || this._targetReached(target) || this.heardTimer <= 0) {
+        if (target) this.lastKnownTarget = { x: target.x, y: target.y };
+        this._setAwarenessState("search");
+        target = this.lastKnownTarget;
+      }
+    } else if (this.awarenessState === "chase") {
+      if (!canSeePlayer) {
+        this.memoryTimer--;
+        if (this.memoryTimer <= 0) this._setAwarenessState("search");
+      }
+      target = this.lastKnownTarget;
+    } else if (this.awarenessState === "search") {
+      target = this.lastKnownTarget;
+      if (!target) {
+        this._setAwarenessState("guard");
+        return;
+      }
+      if (this._targetReached(target)) {
+        this.searchTimer--;
+        if (this.searchTimer <= 0) {
+          this._setAwarenessState("guard");
+          return;
+        }
+      }
+    }
+
+    if (!target) return;
+
+    // Микро-пауза остаётся вторичной пластикой движения, но awareness и знак
+    // над головой уже обновлены — игрок не принимает её за потерю цели.
+    if (this.awarenessState === "chase") {
+      const diff = DIFF[difficulty];
+      const hesitateProb = Math.max(
+        diff.hesitateMinProb,
+        diff.hesitateBaseProb / (1 + (level - 1) * diff.hesitateProbDecay)
+      );
+      if (aiRng() < hesitateProb) this.hesitateTimer = diff.hesitateDur;
+    }
+
+    this._moveTowardTarget(target.x, target.y, this.speed);
   },
 
   // Конус фонарика — рисуется ДО спрайта хозяина (под ним)
@@ -249,9 +427,9 @@ const owner = {
 
     // Визуальный wobble — синусоидальное смещение спрайта ±1.5px
     // Не влияет на owner.x/y, коллизии и A* — чисто рендер-эффект
-    const isChasing = this.nodeQueue.length > 0 || this.nextNode !== null;
-    const wobbleX = isChasing ? Math.sin(_now / 220) * 1.5 : 0;
-    const wobbleY = isChasing ? Math.cos(_now / 310) * 1.0 : 0;
+    const isMoving = this.nodeQueue.length > 0 || this.nextNode !== null;
+    const wobbleX = isMoving ? Math.sin(_now / 220) * 1.5 : 0;
+    const wobbleY = isMoving ? Math.cos(_now / 310) * 1.0 : 0;
 
     drawSprite(masterImage, this.x + wobbleX, this.y + wobbleY, this.width, this.height, () => {
       ctx.fillStyle = "#e07b39"; ctx.beginPath();
@@ -260,6 +438,24 @@ const owner = {
       ctx.fillText("👨", this.x+this.width/2, this.y+this.height/2+8);
       ctx.textAlign = "left";
     });
+    if (this.hitReactTimer > 0) {
+      const maxTimer = this.hitReactStage >= 3 ? 42 : 24;
+      const alpha = clamp(this.hitReactTimer / maxTimer, 0, 1);
+      const colors = ["#fff176", "#ffb74d", "#ff7043"];
+      ctx.save();
+      ctx.globalAlpha = 0.35 + alpha * 0.55;
+      ctx.strokeStyle = colors[this.hitReactStage - 1] || colors[0];
+      ctx.lineWidth = 2 + this.hitReactStage;
+      ctx.beginPath();
+      ctx.arc(
+        this.x + this.width / 2,
+        this.y + this.height / 2,
+        this.width * (0.62 + (1 - alpha) * 0.28),
+        0, Math.PI * 2
+      );
+      ctx.stroke();
+      ctx.restore();
+    }
     // Рисуем какашки на лице хозяина
     if (this.facePoops.length > 0) {
       const cx = this.x + this.width / 2;
@@ -278,52 +474,29 @@ const owner = {
     ctx.globalAlpha = 1;
 
     // ===== ЗНАК НАД ГОЛОВОЙ =====
-    if (this.fleeTimer === 0) {
-      const cx = this.x + this.width / 2;
-      const bounce = Math.sin(_now / 180) * 3;
-      const cy = this.y - 10;
+    const cx = this.x + this.width / 2;
+    const bounce = Math.sin(_now / 180) * 3;
+    const cy = this.y - 10;
+    let signal = "";
+    let signalColor = "#fff";
+    if (catnipTimer > 0 || yarnFreezeTimer > 0) signal = "😵";
+    else if (this.fleeTimer > 0) signal = "💨";
+    else if (this.awarenessState === "heard" || this.shotReactTimer > 0) signal = "😱";
+    else if (this.awarenessState === "chase") { signal = "!"; signalColor = "#ff2222"; }
+    else if (this.awarenessState === "search") { signal = "?"; signalColor = "#ffdd00"; }
 
-      if (catnipTimer > 0) {
-        // Котовник — хозяин одурманен
-        ctx.save();
-        ctx.font = "20px Arial";
-        ctx.textAlign = "center";
-        ctx.textBaseline = "bottom";
-        ctx.fillText("😵", cx, cy + bounce);
-        ctx.restore();
-      } else if (this.shotReactTimer > 0) {
-        // Реакция на выстрел — эмодзи паники
-        ctx.save();
-        ctx.font = "20px Arial";
-        ctx.textAlign = "center";
-        ctx.textBaseline = "bottom";
-        ctx.fillText("😱", cx, cy + bounce);
-        ctx.restore();
-      } else {
-        // Преследует кота — восклицательный знак
-        if (isChasing) {
-          ctx.save();
-          ctx.font = "bold 20px Arial";
-          ctx.textAlign = "center";
-          ctx.textBaseline = "bottom";
-          ctx.fillStyle = "rgba(0,0,0,0.35)";
-          ctx.fillText("!", cx + 1, cy + bounce + 1);
-          ctx.fillStyle = "#ff2222";
-          ctx.fillText("!", cx, cy + bounce);
-          ctx.restore();
-        } else if (this.hesitateTimer > 0) {
-          // Тупит / не знает куда идти — знак вопроса
-          ctx.save();
-          ctx.font = "bold 18px Arial";
-          ctx.textAlign = "center";
-          ctx.textBaseline = "bottom";
-          ctx.fillStyle = "rgba(0,0,0,0.35)";
-          ctx.fillText("?", cx + 1, cy + bounce + 1);
-          ctx.fillStyle = "#ffdd00";
-          ctx.fillText("?", cx, cy + bounce);
-          ctx.restore();
-        }
+    if (signal) {
+      ctx.save();
+      ctx.font = signal === "!" || signal === "?" ? "bold 20px Arial" : "20px Arial";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "bottom";
+      if (signal === "!" || signal === "?") {
+        ctx.fillStyle = "rgba(0,0,0,0.35)";
+        ctx.fillText(signal, cx + 1, cy + bounce + 1);
       }
+      ctx.fillStyle = signalColor;
+      ctx.fillText(signal, cx, cy + bounce);
+      ctx.restore();
     }
   },
 
@@ -523,6 +696,8 @@ const owner = {
 
   update() {
     if (!this.active) return;
+    if (this.shotReactTimer > 0) this.shotReactTimer--;
+    if (this.hitReactTimer > 0) this.hitReactTimer--;
     if (yarnFreezeTimer > 0) return;
     // Постановка экрана 2: первый выстрел гарантированно должен упереться
     // в шкаф. После демонстрации коллизии хозяин начинает обычную погоню.
@@ -556,8 +731,6 @@ const owner = {
       if (catnipTimer === 0) this.catnipTarget = null;
       return;
     }
-
-    const b = getPlayBounds();
 
     // ===== ESCAPE OBSTACLES =====
     // Hard snap к ближайшей свободной ячейке + repath.
@@ -628,32 +801,7 @@ const owner = {
       this.poopHits = 0;
     }
 
-    // ===== ТАЙМЕР РЕАКЦИИ НА ВЫСТРЕЛ =====
-    if (this.shotReactTimer > 0) this.shotReactTimer--;
-
-    // ===== МИКРО-ЗАМОРОЗКА (человечность) =====
-    if (this.hesitateTimer > 0) {
-      this.hesitateTimer--;
-      return;
-    }
-
-    // Случайные микро-заморозки — вероятность убывает с уровнем (гиперболический decay).
-    // base / (1 + (level-1) * decay) — плавная кривая, быстрый спад в начале, медленный к флору.
-    // На Chaos уровень 10+ → почти нет заморозок (relentless pursuit).
-    // На Normal остаётся минимальная заморозка (hesitateMinProb).
-    const diff = DIFF[difficulty];
-    const hesitateProb = Math.max(
-      diff.hesitateMinProb,
-      diff.hesitateBaseProb / (1 + (level - 1) * diff.hesitateProbDecay)
-    );
-    if (aiRng() < hesitateProb) {
-      this.hesitateTimer = diff.hesitateDur;
-    }
-
-    // Преследование кота через A*
-    const tx = player.x + player.size/2 - this.width/2;
-    const ty = player.y + player.size/2 - this.height/2;
-    this._moveTowardTarget(tx, ty, this.speed);
+    this._updateAwareness();
 
     // Поймал кота
     if (rectsOverlap(playerRect(), ownerRect(), -6)) {
