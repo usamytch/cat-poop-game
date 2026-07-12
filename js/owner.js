@@ -643,7 +643,7 @@ const owner = {
       diff.hesitateMinProb,
       diff.hesitateBaseProb / (1 + (level - 1) * diff.hesitateProbDecay)
     );
-    if (Math.random() < hesitateProb) {
+    if (aiRng() < hesitateProb) {
       this.hesitateTimer = diff.hesitateDur;
     }
 

@@ -5,16 +5,19 @@
 let currentLocation = locationThemes[0];
 let currentLevelProgression = null;
 let levelSeed = 1;
+let currentLevelVariant = 0;
+let currentLevelQualityReport = null;
 // "corridor" | "dfs" | "" — режим подвала для текущего уровня
 let basementMode = "";
 // Флаг чит-кода: при true следующий generateLevel() форсирует подвал (corridor)
 let cheatBasement = false;
 // Флаг чит-кода: при true следующий generateLevel() форсирует подвал (dfs)
 let cheatDfs = false;
-// Per-run random seed set from Date.now() at startGame().
-// Mixing it into levelSeed makes every game run produce a unique map
-// while keeping tests deterministic (tests set globalSeed = 0).
+// Per-run random seed set from Date.now() at startGame(). Geometry is derived
+// only from this seed + level + bounded candidate variant: score never changes
+// the map. AI has its own deterministic stream; cosmetic FX may stay random.
 let globalSeed = 0;
+let aiRng = createRng(1);
 let levelMessageTimer = 180;
 const obstacles = [];
 const decorItems = []; // фоновые декоративные элементы (без коллизий)
@@ -710,9 +713,285 @@ function _findPathToLitterEntry(spawnCol, spawnRow, entityW, entityH, litterRect
   return bestPath;
 }
 
-function _candidateHasReachableLitterEntry(c, r, lbW, lbH, spawnCol, spawnRow, entityW, entityH) {
+// ===== LEVEL QUALITY REPORT =====
+// These helpers run only while a level is generated. Runtime A* remains the
+// small hot-path implementation in pathfinding.js.
+function _gridIndex(col, row) {
+  return row * GRID_COLS + col;
+}
+
+function _movingSweepBlockedCells() {
+  const blocked = new Set();
+  for (const ob of obstacles) {
+    if (!ob.moving || ob.range <= 0) continue;
+    addRectCells(blocked, obstacleSweepCellRect(
+      ob.col, ob.row, ob.wCells, ob.hCells, ob.moving, ob.axis, ob.range
+    ));
+  }
+  return blocked;
+}
+
+function _buildReachability(spawnCol, spawnRow, extraBlocked = null) {
+  const size = GRID_COLS * GRID_ROWS;
+  const distance = new Int16Array(size);
+  const parent = new Int16Array(size);
+  distance.fill(-1);
+  parent.fill(-1);
+
+  const start = _gridIndex(spawnCol, spawnRow);
+  if (!isCellFree(spawnCol, spawnRow) || (extraBlocked && extraBlocked.has(cellKey(spawnCol, spawnRow)))) {
+    return { distance, parent, start, reachableCount: 0 };
+  }
+
+  const queue = new Int16Array(size);
+  let head = 0;
+  let tail = 0;
+  queue[tail++] = start;
+  distance[start] = 0;
+  const dc = [1, -1, 0, 0];
+  const dr = [0, 0, 1, -1];
+
+  while (head < tail) {
+    const index = queue[head++];
+    const col = index % GRID_COLS;
+    const row = Math.floor(index / GRID_COLS);
+    for (let i = 0; i < 4; i++) {
+      const nc = col + dc[i];
+      const nr = row + dr[i];
+      if (nc < 0 || nr < 0 || nc >= GRID_COLS || nr >= GRID_ROWS) continue;
+      const next = _gridIndex(nc, nr);
+      if (distance[next] !== -1 || !isCellFree(nc, nr)) continue;
+      if (extraBlocked && extraBlocked.has(cellKey(nc, nr))) continue;
+      distance[next] = distance[index] + 1;
+      parent[next] = index;
+      queue[tail++] = next;
+    }
+  }
+
+  return { distance, parent, start, reachableCount: tail };
+}
+
+function _pathToReachableLitterEntry(reachability) {
+  let bestIndex = -1;
+  let bestDistance = Infinity;
+  _forEachLitterEntryCell(_currentLitterCellRect(), (col, row) => {
+    const index = _gridIndex(col, row);
+    const distance = reachability.distance[index];
+    if (distance >= 0 && distance < bestDistance) {
+      bestDistance = distance;
+      bestIndex = index;
+    }
+  });
+  if (bestIndex < 0) return null;
+
+  const path = [];
+  let index = bestIndex;
+  while (index >= 0) {
+    path.push({ col: index % GRID_COLS, row: Math.floor(index / GRID_COLS) });
+    if (index === reachability.start) break;
+    index = reachability.parent[index];
+  }
+  if (path[path.length - 1].col !== reachability.start % GRID_COLS ||
+      path[path.length - 1].row !== Math.floor(reachability.start / GRID_COLS)) return null;
+  path.reverse();
+  return path;
+}
+
+function _freeExitCount(col, row, extraBlocked = null) {
+  let exits = 0;
+  const neighbors = [[1,0],[-1,0],[0,1],[0,-1]];
+  for (const [dc, dr] of neighbors) {
+    const nc = col + dc;
+    const nr = row + dr;
+    if (!isCellFree(nc, nr)) continue;
+    if (extraBlocked && extraBlocked.has(cellKey(nc, nr))) continue;
+    exits++;
+  }
+  return exits;
+}
+
+function _criticalPathWidth(path, extraBlocked) {
+  if (!path || path.length < 5) return 1;
+  let minimum = 5;
+  for (let i = 2; i < path.length - 2; i++) {
+    const prev = path[i - 1];
+    const next = path[i + 1];
+    const horizontal = prev.col !== next.col;
+    const dc = horizontal ? 0 : 1;
+    const dr = horizontal ? 1 : 0;
+    let width = 1;
+    for (const direction of [-1, 1]) {
+      for (let step = 1; step <= 2; step++) {
+        const col = path[i].col + dc * step * direction;
+        const row = path[i].row + dr * step * direction;
+        if (!isCellFree(col, row) || (extraBlocked && extraBlocked.has(cellKey(col, row)))) break;
+        width++;
+      }
+    }
+    minimum = Math.min(minimum, width);
+  }
+  return minimum;
+}
+
+function _componentTopology(reachability, extraBlocked) {
+  let branches = 0;
+  let deadEnds = 0;
+  for (let row = 0; row < GRID_ROWS; row++) {
+    for (let col = 0; col < GRID_COLS; col++) {
+      if (reachability.distance[_gridIndex(col, row)] < 0) continue;
+      const exits = _freeExitCount(col, row, extraBlocked);
+      if (exits >= 3) branches++;
+      else if (exits <= 1) deadEnds++;
+    }
+  }
+  return { branches, deadEnds };
+}
+
+function _estimateOwnerIntercept(path) {
+  const diff = DIFF[difficulty];
+  if (!path || level < diff.firstLvl) {
+    return { ownerSeconds: null, playerSeconds: null, leadSeconds: null };
+  }
+
+  const spawn = path[0];
+  const corners = [
+    { col: 0, row: 0 }, { col: GRID_COLS - 1, row: 0 },
+    { col: 0, row: GRID_ROWS - 1 }, { col: GRID_COLS - 1, row: GRID_ROWS - 1 },
+  ].sort((a, b) => {
+    const ad = (a.col - spawn.col) ** 2 + (a.row - spawn.row) ** 2;
+    const bd = (b.col - spawn.col) ** 2 + (b.row - spawn.row) ** 2;
+    return bd - ad;
+  });
+
+  let ownerStart = null;
+  for (const corner of corners) {
+    for (let radius = 0; radius <= 6 && !ownerStart; radius++) {
+      for (let dr = -radius; dr <= radius && !ownerStart; dr++) {
+        for (let dc = -radius; dc <= radius; dc++) {
+          if (Math.abs(dc) !== radius && Math.abs(dr) !== radius) continue;
+          const col = corner.col + dc;
+          const row = corner.row + dr;
+          if (_canEntityOccupyCell(col, row, owner.width, owner.height)) {
+            ownerStart = { col, row };
+            break;
+          }
+        }
+      }
+    }
+    if (ownerStart) break;
+  }
+  if (!ownerStart) return { ownerSeconds: 0, playerSeconds: 0, leadSeconds: -Infinity };
+
+  const interceptIndex = Math.min(
+    path.length - 1,
+    Math.max(0, Math.floor((path.length - 1) * 0.55))
+  );
+  const intercept = path[interceptIndex];
+  const ownerPath = aStarPath(
+    ownerStart.col, ownerStart.row, intercept.col, intercept.row,
+    owner.width, owner.height, 2000
+  );
+  if (!ownerPath) return { ownerSeconds: Infinity, playerSeconds: null, leadSeconds: Infinity };
+
+  const ownerSpeed = Math.min(
+    (diff.baseSpd + (getEffectiveLevel(level) - 1) * diff.spdPerLvl) * getOwnerSpeedScale(level),
+    diff.maxSpd
+  );
+  const ownerSeconds = Math.max(0, ownerPath.length - 1) * GRID / ownerSpeed / 60;
+  const playerSeconds = interceptIndex * GRID / player.speed / 60;
+  return { ownerSeconds, playerSeconds, leadSeconds: ownerSeconds - playerSeconds };
+}
+
+function buildLevelQualityReport(spawnCol, spawnRow, progression = currentLevelProgression) {
+  const sweptCells = _movingSweepBlockedCells();
+  const baseReachability = _buildReachability(spawnCol, spawnRow);
+  const safeReachability = _buildReachability(spawnCol, spawnRow, sweptCells);
+  const basePath = _pathToReachableLitterEntry(baseReachability);
+  const safePath = _pathToReachableLitterEntry(safeReachability);
+  const path = safePath || basePath;
+  const reasons = [];
+  const stepIndex = progression.actStep - 1;
+  const pathSteps = path ? Math.max(0, path.length - 1) : Infinity;
+  const directSteps = path
+    ? Math.max(1, Math.abs(path[0].col - path[path.length - 1].col) + Math.abs(path[0].row - path[path.length - 1].row))
+    : 0;
+  const pathDirectRatio = path ? pathSteps / directSteps : Infinity;
+  const diff = DIFF[difficulty];
+  const travelSeconds = path ? pathSteps * GRID / player.speed / 60 : Infinity;
+  const requiredSeconds = travelSeconds + diff.poopTime / 60;
+  const accidentSeconds = player.maxUrge / (diff.urgeRate * getUrgeScale(level));
+  const travelBudgetRatio = requiredSeconds / accidentSeconds;
+  const spawnExits = _freeExitCount(spawnCol, spawnRow, sweptCells);
+  const litterEnd = path ? path[path.length - 1] : null;
+  const litterEntryExits = litterEnd ? _freeExitCount(litterEnd.col, litterEnd.row, sweptCells) : 0;
+  const topology = _componentTopology(safeReachability, sweptCells);
+  const intercept = _estimateOwnerIntercept(path);
+
+  if (!basePath) reasons.push("no_path");
+  if (!safePath) reasons.push("moving_sweep_blocks_route");
+  if (pathSteps < LEVEL_QUALITY.minPathLengthByStep[stepIndex]) reasons.push("path_too_short");
+  if (travelBudgetRatio > LEVEL_QUALITY.maxTravelBudgetRatioByStep[stepIndex]) reasons.push("travel_budget");
+  if (spawnExits < LEVEL_QUALITY.minSpawnExitsByStep[stepIndex]) reasons.push("spawn_safety");
+  if (litterEntryExits < LEVEL_QUALITY.minLitterEntryExitsByStep[stepIndex]) reasons.push("litter_safety");
+  if (intercept.leadSeconds !== null &&
+      intercept.leadSeconds < -LEVEL_QUALITY.maxOwnerInterceptAdvantageByStep[stepIndex]) {
+    reasons.push("owner_intercept");
+  }
+
+  let reachableBonusCount = 0;
+  for (const bonus of bonuses) {
+    const cell = pixelToCell(bonus.x, bonus.y);
+    if (safeReachability.distance[_gridIndex(cell.col, cell.row)] >= 0) reachableBonusCount++;
+  }
+  const unreachableBonusCount = bonuses.length - reachableBonusCount;
+  if (unreachableBonusCount > 0) reasons.push("unreachable_bonus");
+
+  const valid = reasons.length === 0;
+  const qualityScore = (valid ? 1000 : 0)
+    + Math.min(safeReachability.reachableCount, 450)
+    + Math.min(topology.branches, 80) * 2
+    + Math.max(0, 100 - travelBudgetRatio * 100)
+    + Math.min(_criticalPathWidth(path, sweptCells), 5) * 12
+    - reasons.length * 180;
+
+  return {
+    valid,
+    qualityScore,
+    reasons,
+    runSeed: globalSeed,
+    levelSeed,
+    variant: currentLevelVariant,
+    location: currentLocation.key,
+    basementMode,
+    pathLengthCells: Number.isFinite(pathSteps) ? pathSteps : null,
+    directDistanceCells: directSteps || null,
+    pathDirectRatio: Number.isFinite(pathDirectRatio) ? pathDirectRatio : null,
+    reachableCells: safeReachability.reachableCount,
+    branchCells: topology.branches,
+    deadEndCells: topology.deadEnds,
+    criticalPassageWidthCells: _criticalPathWidth(path, sweptCells),
+    spawnExits,
+    litterEntryExits,
+    movingSweepCellCount: sweptCells.size,
+    travelSeconds: Number.isFinite(travelSeconds) ? travelSeconds : null,
+    requiredSeconds: Number.isFinite(requiredSeconds) ? requiredSeconds : null,
+    accidentSeconds,
+    travelBudgetRatio: Number.isFinite(travelBudgetRatio) ? travelBudgetRatio : null,
+    ownerInterceptSeconds: intercept.ownerSeconds,
+    playerToInterceptSeconds: intercept.playerSeconds,
+    interceptLeadSeconds: intercept.leadSeconds,
+    bonusCount: bonuses.length,
+    reachableBonusCount,
+    unreachableBonusCount,
+    path,
+  };
+}
+
+function _candidateHasReachableLitterEntry(
+  c, r, lbW, lbH, spawnCol, spawnRow, entityW, entityH, minPathSteps = 0
+) {
   markCells(c, r, lbW, lbH);
-  const reachable = !!_findPathToLitterEntry(
+  const path = _findPathToLitterEntry(
     spawnCol,
     spawnRow,
     entityW,
@@ -720,7 +999,7 @@ function _candidateHasReachableLitterEntry(c, r, lbW, lbH, spawnCol, spawnRow, e
     makeCellRect(c, r, lbW, lbH)
   );
   unmarkCells(c, r, lbW, lbH);
-  return reachable;
+  return !!path && path.length - 1 >= minPathSteps;
 }
 
 function _litterBoxAllowedAt(c, lbW) {
@@ -735,6 +1014,7 @@ function _relocateLitterBoxToReachableEntry(rng, spawnCol, spawnRow) {
   const lbW = oldRect.wCells || 2;
   const lbH = oldRect.hCells || 2;
   const minDist = Math.min(3 + Math.floor((getEffectiveLevel(level) - 1) * 0.5), 8);
+  const minPathSteps = LEVEL_QUALITY.minPathLengthByStep[currentLevelProgression.actStep - 1];
 
   unmarkCells(oldRect.col, oldRect.row, oldRect.wCells, oldRect.hCells);
 
@@ -758,7 +1038,9 @@ function _relocateLitterBoxToReachableEntry(rng, spawnCol, spawnRow) {
       if (c < hudCols && r < hudRows) continue;
       if (!_litterBoxAllowedAt(c, lbW)) continue;
       if (!cellsFree(c, r, lbW, lbH)) continue;
-      if (!_candidateHasReachableLitterEntry(c, r, lbW, lbH, spawnCol, spawnRow, player.size, player.size)) continue;
+      if (!_candidateHasReachableLitterEntry(
+        c, r, lbW, lbH, spawnCol, spawnRow, player.size, player.size, minPathSteps
+      )) continue;
       _placeLitterBoxAt(c, r, lbW, lbH);
       return true;
     }
@@ -775,6 +1057,7 @@ function placeLitterBox(rng, spawnCol, spawnRow) {
   // Лоток занимает 2×2 ячейки (80×80px при GRID=40)
   const lbW = 2, lbH = 2;
   const minDist = Math.min(3 + Math.floor((getEffectiveLevel(level) - 1) * 0.5), 8); // минимум ячеек от спавна
+  const minPathSteps = LEVEL_QUALITY.minPathLengthByStep[currentLevelProgression.actStep - 1];
 
   // Перемешанный список всех возможных позиций
   const candidates = [];
@@ -807,6 +1090,9 @@ function placeLitterBox(rng, spawnCol, spawnRow) {
     const mw = (c - mc) + lbW + rightPad;
     const mh = (r - mr) + lbH + bottomPad;
     if (!cellsFree(mc, mr, mw, mh)) continue;
+    if (!_candidateHasReachableLitterEntry(
+      c, r, lbW, lbH, spawnCol, spawnRow, player.size, player.size, minPathSteps
+    )) continue;
     _placeLitterBoxAt(c, r, lbW, lbH);
     return;
   }
@@ -824,6 +1110,9 @@ function placeLitterBox(rng, spawnCol, spawnRow) {
       const mw = (c - mc) + lbW + rightPad;
       const mh = (r - mr) + lbH + bottomPad;
       if (!cellsFree(mc, mr, mw, mh)) continue;
+      if (!_candidateHasReachableLitterEntry(
+        c, r, lbW, lbH, spawnCol, spawnRow, player.size, player.size, minPathSteps
+      )) continue;
       _placeLitterBoxAt(c, r, lbW, lbH);
       return;
     }
@@ -834,6 +1123,9 @@ function placeLitterBox(rng, spawnCol, spawnRow) {
     for (let c = 0; c < GRID_COLS - lbW + 1; c++) {
       if (!_litterBoxAllowedAt(c, lbW)) continue;
       if (!cellsFree(c, r, lbW, lbH)) continue;
+      if (!_candidateHasReachableLitterEntry(
+        c, r, lbW, lbH, spawnCol, spawnRow, player.size, player.size, minPathSteps
+      )) continue;
       _placeLitterBoxAt(c, r, lbW, lbH);
       return;
     }
@@ -1166,37 +1458,7 @@ function _placeWallEmbeds(rng) {
 }
 
 // ===== ГЕНЕРАЦИЯ УРОВНЯ =====
-function generateLevel() {
-  levelSeed = level * 9973 + score * 17 + globalSeed * 31 + 13;
-  const rng = createRng(levelSeed);
-  const progression = getLevelProgression(level);
-  currentLevelProgression = progression;
-
-  // ===== ВЫБОР ЛОКАЦИИ =====
-  // Подвал — закрытая локация, появляется только с уровня 9+.
-  // DFS-режим (сложнее) проверяется первым — он перекрывает corridor при level>=20.
-  // Обычные локации идут актами по 5 уровней: Зал → Ванная → Кухня → Двор → Дача.
-  basementMode = "";
-  if (cheatDfs) {
-    // Чит-код Shift+D: форсируем подвал (dfs) независимо от уровня
-    currentLocation = locationThemes.find(t => t.key === "basement");
-    basementMode = "dfs";
-    cheatDfs = false; // сбрасываем после использования
-  } else if (cheatBasement) {
-    // Чит-код Shift+B: форсируем подвал (corridor) независимо от уровня
-    currentLocation = locationThemes.find(t => t.key === "basement");
-    basementMode = "corridor";
-    cheatBasement = false; // сбрасываем после использования
-  } else if (level >= BASEMENT.dfsMinLevel && rng() < BASEMENT.dfsProb) {
-    currentLocation = locationThemes.find(t => t.key === "basement");
-    basementMode = "dfs";
-  } else if (level >= BASEMENT.corridorMinLevel && rng() < BASEMENT.corridorProb) {
-    currentLocation = locationThemes.find(t => t.key === "basement");
-    basementMode = "corridor";
-  } else {
-    currentLocation = makeActLocationTheme(progression.locationTheme, progression.variantTier);
-  }
-
+function _generateLevelCandidate(rng, progression) {
   obstacles.length = 0;
   bonuses.length = 0;
   catnipTimer = 0;  // сброс котовника при старте нового уровня
@@ -1294,60 +1556,176 @@ function generateLevel() {
     _placeWallEmbeds(rng);
   }
 
-  // Спавн бонусов — на свободных ячейках сетки.
+  return { spawnCol, spawnRow };
+}
+
+function _selectLevelLocation(progression) {
+  const rng = createRng(mixSeed(globalSeed, level, 0x4c4f4341));
+  basementMode = "";
+  if (cheatDfs) {
+    currentLocation = locationThemes.find(t => t.key === "basement");
+    basementMode = "dfs";
+  } else if (cheatBasement) {
+    currentLocation = locationThemes.find(t => t.key === "basement");
+    basementMode = "corridor";
+  } else if (level >= BASEMENT.dfsMinLevel && rng() < BASEMENT.dfsProb) {
+    currentLocation = locationThemes.find(t => t.key === "basement");
+    basementMode = "dfs";
+  } else if (level >= BASEMENT.corridorMinLevel && rng() < BASEMENT.corridorProb) {
+    currentLocation = locationThemes.find(t => t.key === "basement");
+    basementMode = "corridor";
+  } else {
+    currentLocation = makeActLocationTheme(progression.locationTheme, progression.variantTier);
+  }
+  cheatDfs = false;
+  cheatBasement = false;
+}
+
+function _snapshotLevelCandidate(spawnCol, spawnRow, report) {
+  return {
+    obstacles: obstacles.map(ob => ({ ...ob })),
+    decorItems: decorItems.map(item => ({ ...item })),
+    occupiedCells: new Set(occupiedCells),
+    litterBox: { ...litterBox },
+    playerX: player.x,
+    playerY: player.y,
+    spawnCol,
+    spawnRow,
+    levelSeed,
+    variant: currentLevelVariant,
+    report,
+  };
+}
+
+function _restoreLevelCandidate(candidate) {
+  obstacles.length = 0;
+  obstacles.push(...candidate.obstacles);
+  decorItems.length = 0;
+  decorItems.push(...candidate.decorItems);
+  occupiedCells.clear();
+  for (const key of candidate.occupiedCells) occupiedCells.add(key);
+  Object.assign(litterBox, candidate.litterBox);
+  player.x = candidate.playerX;
+  player.y = candidate.playerY;
+  levelSeed = candidate.levelSeed;
+  currentLevelVariant = candidate.variant;
+}
+
+function _collectBonusCandidates(spawnCol, spawnRow, path, rng) {
+  const sweptCells = _movingSweepBlockedCells();
+  const reachability = _buildReachability(spawnCol, spawnRow, sweptCells);
+  const pathCells = new Set((path || []).map(cell => cellKey(cell.col, cell.row)));
+  const candidates = [];
+
+  for (let row = 1; row < GRID_ROWS - 1; row++) {
+    for (let col = 1; col < GRID_COLS - 1; col++) {
+      const index = _gridIndex(col, row);
+      if (reachability.distance[index] < 0 || pathCells.has(cellKey(col, row))) continue;
+      let detour = 8;
+      for (const cell of path || []) {
+        detour = Math.min(detour, Math.abs(cell.col - col) + Math.abs(cell.row - row));
+      }
+      candidates.push({
+        col,
+        row,
+        distance: reachability.distance[index],
+        detour,
+        tieBreak: rng(),
+      });
+    }
+  }
+
+  // Prefer visible, meaningful side trips rather than cells on the mandatory
+  // shortest route. tieBreak keeps equal-quality choices seed-deterministic.
+  candidates.sort((a, b) => {
+    const scoreA = (a.detour >= 2 ? 100 : 0) + Math.min(a.detour, 6) * 10 + Math.min(a.distance, 30);
+    const scoreB = (b.detour >= 2 ? 100 : 0) + Math.min(b.detour, 6) * 10 + Math.min(b.distance, 30);
+    return scoreB - scoreA || a.tieBreak - b.tieBreak;
+  });
+  return candidates;
+}
+
+function _spawnReachableBonuses(progression, spawnCol, spawnRow, rng, path) {
+  bonuses.length = 0;
   const bonusCount = getBonusCount(progression);
   const bonusPool = getBonusPool(progression);
-  const usedBonusCells = new Set();
-  let lifeSpawned = 0; // не более 1 жизни за уровень
+  const candidates = _collectBonusCandidates(spawnCol, spawnRow, path, rng);
+  let lifeSpawned = 0;
 
-  function spawnBonus(type, maxAttempts = 200) {
-    let batt = 0;
-    while (batt < maxAttempts) {
-      batt++;
-      let btype = type;
-      if (btype === "life") {
-        if (lifeSpawned >= 1 || progression.rawLevel < 5) btype = "pill";
-        else lifeSpawned++;
-      }
-      if (btype === "catnip" && progression.rawLevel < 7) btype = "yarn";
-
-      const bc = randInt(rng, 1, GRID_COLS - 2);
-      const br = randInt(rng, 1, GRID_ROWS - 2);
-      const key = cellKey(bc, br);
-      if (usedBonusCells.has(key) || !isCellFree(bc, br)) continue;
-      usedBonusCells.add(key);
-      const center = cellToPixelCenter(bc, br);
-      bonuses.push({ x: center.x, y: center.y, type: btype, alive: true, pulse: Math.random() * Math.PI * 2 });
-      return true;
+  function normalizedType(type) {
+    if (type === "life") {
+      if (lifeSpawned >= 1 || progression.rawLevel < 5) return "pill";
+      lifeSpawned++;
     }
-    return false;
+    if (type === "catnip" && progression.rawLevel < 7) return "yarn";
+    return type;
+  }
+
+  function spawn(type) {
+    const candidate = candidates.shift();
+    if (!candidate) return false;
+    const center = cellToPixelCenter(candidate.col, candidate.row);
+    bonuses.push({
+      x: center.x,
+      y: center.y,
+      type: normalizedType(type),
+      alive: true,
+      pulse: rng() * Math.PI * 2,
+    });
+    return true;
   }
 
   for (const type of getGuaranteedBonusTypes(progression)) {
-    if (bonuses.length >= bonusCount) break;
-    spawnBonus(type, 300);
+    if (bonuses.length >= bonusCount || !spawn(type)) break;
   }
+  while (bonuses.length < bonusCount && candidates.length > 0) {
+    spawn(bonusPool[randInt(rng, 0, bonusPool.length - 1)]);
+  }
+}
 
-  let batt = 0;
-  while (bonuses.length < bonusCount && batt < 300) {
-    batt++;
-    const bc = randInt(rng, 1, GRID_COLS - 2);
-    const br = randInt(rng, 1, GRID_ROWS - 2);
-    const key = cellKey(bc, br);
-    if (usedBonusCells.has(key) || !isCellFree(bc, br)) continue;
-    usedBonusCells.add(key);
-    const center = cellToPixelCenter(bc, br);
-    let btype = bonusPool[randInt(rng, 0, bonusPool.length - 1)];
-    if (btype === "life") {
-      if (lifeSpawned >= 1 || progression.rawLevel < 5) btype = "pill";
-      else lifeSpawned++;
+function generateLevel() {
+  const progression = getLevelProgression(level);
+  currentLevelProgression = progression;
+  _selectLevelLocation(progression);
+
+  const attempts = currentLocation.key === "basement"
+    ? LEVEL_QUALITY.basementCandidateAttempts
+    : LEVEL_QUALITY.candidateAttempts;
+  let bestCandidate = null;
+
+  for (let variant = 0; variant < attempts; variant++) {
+    currentLevelVariant = variant;
+    levelSeed = mixSeed(globalSeed, level, variant, 0x4c564c31);
+    const candidateRng = createRng(levelSeed);
+    const spawn = _generateLevelCandidate(candidateRng, progression);
+    const report = buildLevelQualityReport(spawn.spawnCol, spawn.spawnRow, progression);
+    const candidate = _snapshotLevelCandidate(spawn.spawnCol, spawn.spawnRow, report);
+
+    if (!bestCandidate ||
+        (report.valid && !bestCandidate.report.valid) ||
+        (report.valid === bestCandidate.report.valid && report.qualityScore > bestCandidate.report.qualityScore)) {
+      bestCandidate = candidate;
     }
-    if (btype === "catnip" && progression.rawLevel < 7) btype = "yarn";
-    bonuses.push({ x: center.x, y: center.y, type: btype, alive: true, pulse: Math.random() * Math.PI * 2 });
   }
 
-  // OPT 4: Перестраиваем offscreen-слой фона при каждой генерации уровня
-  if (typeof rebuildBgLayer === 'function') rebuildBgLayer();
+  _restoreLevelCandidate(bestCandidate);
+  const bonusRng = createRng(mixSeed(levelSeed, 0x424f4e55));
+  _spawnReachableBonuses(
+    progression,
+    bestCandidate.spawnCol,
+    bestCandidate.spawnRow,
+    bonusRng,
+    bestCandidate.report.path
+  );
+  currentLevelQualityReport = buildLevelQualityReport(
+    bestCandidate.spawnCol,
+    bestCandidate.spawnRow,
+    progression
+  );
+  aiRng = createRng(mixSeed(globalSeed, level, currentLevelVariant, 0x4149524e));
+
+  // OPT 4: rebuild the offscreen layer once, after candidate selection.
+  if (typeof rebuildBgLayer === "function") rebuildBgLayer();
 }
 
 // ===== ОБНОВЛЕНИЕ ПРЕПЯТСТВИЙ =====

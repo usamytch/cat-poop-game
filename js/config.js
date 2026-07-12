@@ -57,6 +57,20 @@ const ACT = {
   ],
 };
 
+// ===== КОНТРАКТ ЧЕСТНОСТИ ПРОЦЕДУРНЫХ УРОВНЕЙ =====
+// Проверяется только при генерации, не участвует в горячем игровом цикле.
+// На пике акта маршрут может быть теснее и хозяин может раньше прийти в
+// точку перехвата, но генератор всё равно обязан оставить временной запас.
+const LEVEL_QUALITY = {
+  candidateAttempts: 3,
+  basementCandidateAttempts: 3,
+  minPathLengthByStep: [5, 6, 7, 8, 9],
+  maxTravelBudgetRatioByStep: [0.44, 0.48, 0.53, 0.59, 0.65],
+  minSpawnExitsByStep: [2, 2, 2, 1, 1],
+  minLitterEntryExitsByStep: [2, 2, 1, 1, 1],
+  maxOwnerInterceptAdvantageByStep: [2.5, 3.0, 3.5, 4.0, 4.5],
+};
+
 // Скорость снаряда-какашки
 const POOP_SPEED = 7;
 

@@ -6,6 +6,20 @@ function createRng(seed) {
   let v = seed % 2147483647; if (v <= 0) v += 2147483646;
   return () => { v = (v * 16807) % 2147483647; return (v-1)/2147483646; };
 }
+
+// Stable 31-bit seed derivation for independent gameplay streams.
+// Math.imul keeps the result identical in every JS engine and avoids the
+// precision loss of multiplying timestamp-sized numbers as regular doubles.
+function mixSeed(...parts) {
+  let hash = 2166136261 >>> 0;
+  for (const part of parts) {
+    let value = Number(part) >>> 0;
+    hash ^= value;
+    hash = Math.imul(hash, 16777619) >>> 0;
+    hash ^= hash >>> 13;
+  }
+  return (hash & 0x7fffffff) || 1;
+}
 function randRange(rng, min, max) { return min + rng()*(max-min); }
 function randInt(rng, min, max)   { return Math.floor(randRange(rng, min, max+1)); }
 function clamp(v, mn, mx)         { return Math.max(mn, Math.min(mx, v)); }

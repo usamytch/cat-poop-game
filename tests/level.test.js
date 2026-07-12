@@ -197,7 +197,7 @@ describe('generateLevel()', () => {
     }
   });
 
-  it('same level + score → same generation (deterministic)', () => {
+  it('same run seed + level → same generation (deterministic)', () => {
     level = 3;
     score = 0;
     generateLevel();

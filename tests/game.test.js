@@ -104,6 +104,14 @@ describe('stats', () => {
 
 // ---------------------------------------------------------------------------
 describe('startGame()', () => {
+  it('accepts an explicit run seed for replay', () => {
+    startGame(123456789);
+    expect(globalSeed).toBe(123456789);
+    const firstGeometrySeed = levelSeed;
+    startGame(123456789);
+    expect(levelSeed).toBe(firstGeometrySeed);
+  });
+
   it('resets score to 0', () => {
     score = 999;
     startGame();

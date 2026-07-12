@@ -156,6 +156,11 @@ window.addEventListener("keydown", e => {
   } else if (gameState === "paused") {
     if (e.key === "Enter" || e.key === " ") resumeGame();
   } else if (gameState === "win" || gameState === "lose" || gameState === "caught" || gameState === "accident") {
+    if (e.key === "r" || e.key === "R") {
+      const replayRunSeed = globalSeed;
+      startGame(replayRunSeed);
+      return;
+    }
     if (e.key === "Enter" || e.key === " ") { gameState = "start"; }
   }
 });
@@ -166,8 +171,10 @@ document.addEventListener("visibilitychange", () => {
 });
 
 // ===== СТАРТ ИГРЫ =====
-function startGame() {
-  globalSeed = Date.now() & 0x7FFFFFFF; // timestamp-based seed, positive 31-bit int
+function startGame(seedOverride = null) {
+  globalSeed = Number.isInteger(seedOverride)
+    ? seedOverride & 0x7FFFFFFF
+    : Date.now() & 0x7FFFFFFF;
   score = 0; level = 1; lives = 3;
   player.urge = 0; player.pooping = false; player.poopTimer = 0;
   poops.length = 0; overlayParticles.length = 0; comboPopups.length = 0; pawTrails.length = 0;

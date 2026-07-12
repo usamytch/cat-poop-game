@@ -168,7 +168,7 @@ GRID = 40px
 - **Фиксированные фоновые объекты** — зеркало, окно, картина, полки и похожие wall fixtures резервируют визуальные клетки для генерации препятствий, но не становятся коллизиями
 - **Лоток** — всегда на свободных ячейках
 - **Бонусы** — спавнятся в центрах свободных ячеек
-- **Детерминированность** — `level + score + globalSeed` → одинаковая карта (LCG RNG)
+- **Детерминированность** — `runSeed/globalSeed + level + candidate variant` → одинаковая карта; `score` не влияет на геометрию
 - **Уникальность** — `globalSeed = Date.now()` при старте → уникальный запуск
 - **Проходимость щелей** — кот (36×36px) и хозяин (36×36px) < ячейка (40px) → любая щель в 1 ячейку проходима для обоих
 
@@ -196,6 +196,14 @@ GRID = 40px
 **Value Noise** — seeded hash без зависимостей: карта «плотности» создаёт естественные кластеры.
 
 Обычные уровни тоже проходят A*-проверку от спавна до лотка; если путь заблокирован, генератор удаляет препятствия до восстановления маршрута.
+
+### LevelQualityReport и ограниченный отбор
+
+После построения геометрии генератор оценивает до трёх детерминированных кандидатов и выбирает лучший валидный. `LevelQualityReport` содержит длину и извилистость кратчайшего пути, топологию компонента, критическую ширину, безопасные выходы у спавна и лотка, временной бюджет до аварии, оценку перехвата хозяином и полный swept-диапазон движущихся препятствий.
+
+Бонусы создаются после выбора геометрии: только в достижимом компоненте спавна, вне swept-зон и преимущественно как боковой detour от обязательного маршрута. Проверка выполняется при генерации, но не в игровом цикле. Офлайн Monte Carlo на 10 000 seed дал 0 невалидных карт и 0 недостижимых бонусов при P95 генерации 7.51 мс; результаты зафиксированы в [`plans/level-quality-baseline.md`](plans/level-quality-baseline.md).
+
+Геймплейные потоки случайности разделены: геометрия и бонусы получают производные `levelSeed`, AI — отдельный `aiRng`; косметические эффекты могут использовать недетерминированный шум. Итоговый экран показывает seed, клавиша `R` перезапускает забег с ним же.
 
 ---
 
@@ -445,6 +453,8 @@ cat-poop-game/
 │   ├── owner.test.js         # owner: activate, flee, onShotFired, update, AI, basement
 │   ├── owner-grid.test.js    # grid-node движок: node arrival, repath, open levels, corridor
 │   ├── level.test.js         # generateLevel, updateObstacles, basement
+│   ├── level-quality.test.js # Быстрый контракт честности, seed и достижимость бонусов
+│   ├── level-quality.monte-carlo.test.js # Offline Monte Carlo 10 000 seed
 │   ├── grid.test.js          # cellKey, markCells, cellsFree, pixelToCell, aStarPath
 │   ├── game.test.js          # stats, startGame, respawnPlayer, update, input
 │   ├── touch.test.js         # мобильное управление
@@ -482,6 +492,8 @@ npm test
 | `tests/owner.test.js` | хозяин: activate, flee, onShotFired, update, AI, catnip, speed cap, basement |
 | `tests/owner-grid.test.js` | grid-node движок: node arrival, repath, open levels, corridor, flee/activate reset |
 | `tests/level.test.js` | генерация уровня, движущиеся препятствия, `cheatBasement` |
+| `tests/level-quality.test.js` | быстрые проверки бюджета, достижимости бонусов и воспроизводимости seed |
+| `tests/level-quality.monte-carlo.test.js` | отдельный Monte Carlo на 10 000 seed с распределениями качества и времени |
 | `tests/grid.test.js` | cellKey, markCells, cellsFree, pixelToCell, aStarPath |
 | `tests/game.test.js` | статистика, startGame, respawnPlayer, update |
 | `tests/touch.test.js` | мобильное управление |

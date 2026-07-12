@@ -438,16 +438,23 @@ function drawOverlay() {
     ctx.fillText("Счёт: "+score+"  |  Уровень: "+level, cx, cy+30);
   }
 
+  setFont("14px monospace"); ctx.fillStyle = "rgba(255,255,255,0.48)";
+  ctx.fillText("Seed: "+globalSeed, cx, cy+55);
+  if (!IS_MOBILE) {
+    setFont("14px Arial");
+    ctx.fillText("R — повторить этот забег", cx, cy+75);
+  }
+
   if (score >= stats.highScore && score > 0) {
     setFont("bold 22px Arial"); ctx.fillStyle = "#ffd54f";
-    ctx.fillText("🏆 НОВЫЙ РЕКОРД!", cx, cy+70);
+    ctx.fillText("🏆 НОВЫЙ РЕКОРД!", cx, cy+100);
   }
 
   // На мобиле кнопку "В меню" рисует drawTouchControls()
   if (!IS_MOBILE) {
     const t = _now*0.003;
     const sc = 1 + Math.sin(t)*0.04;
-    ctx.save(); ctx.translate(cx, cy+120); ctx.scale(sc, sc);
+    ctx.save(); ctx.translate(cx, cy+155); ctx.scale(sc, sc);
     ctx.fillStyle = "#ffd54f";
     ctx.beginPath(); ctx.roundRect(-130,-26,260,52,26); ctx.fill();
     setFont("bold 22px Arial"); ctx.fillStyle = "#1a1a2e";
