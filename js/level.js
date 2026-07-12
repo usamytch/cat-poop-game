@@ -1354,7 +1354,7 @@ function generateLevel() {
 function updateObstacles() {
   for (const ob of obstacles) {
     if (!ob.moving) continue;
-    ob.movingOffset = Math.sin(ob.phase + performance.now() * ob.speed) * ob.range;
+    ob.movingOffset = Math.sin(ob.phase + simulationTimeMs * ob.speed) * ob.range;
     if (ob.axis === "x") ob.x = ob.baseX + ob.movingOffset;
     else                  ob.y = ob.baseY + ob.movingOffset;
   }

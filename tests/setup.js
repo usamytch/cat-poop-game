@@ -74,6 +74,7 @@ global.document = {
   getElementById: vi.fn((id) => id === 'gameCanvas' ? canvasMock : null),
   addEventListener: vi.fn(),
   createElement: vi.fn(() => canvasMock),
+  hidden: false,
 };
 
 // ===== window / navigator =====
@@ -129,7 +130,8 @@ class MockAudioContext {
   }
   createOscillator() { return makeOscillator(); }
   createGain()       { return makeGain(); }
-  resume()           { return Promise.resolve(); }
+  resume()           { this.state = 'running'; return Promise.resolve(); }
+  suspend()          { this.state = 'suspended'; return Promise.resolve(); }
 }
 
 global.AudioContext = MockAudioContext;
@@ -152,6 +154,11 @@ export function resetGameState() {
   overlayTimer = 0;
   lifeLostTimer = 0;
   lifeLostReason = '';
+  pausedFromState = null;
+  pauseReason = '';
+  levelMessageTimer = 0;
+  simulationTimeMs = 0;
+  resetSimulationClock();
 
   // Игрок
   player.x = 100;
@@ -243,6 +250,7 @@ export function loadGame() {
   const files = [
     'js/config.js',
     'js/utils.js',
+    'js/performance.js',
     'js/melody-data.js',
     'js/audio.js',
     'js/particles.js',
@@ -258,11 +266,10 @@ export function loadGame() {
   for (const f of files) {
     let code = readFileSync(join(ROOT, f), 'utf8');
 
-    // Patch game.js: remove the auto-start gameLoop() call at the bottom
-    // so tests don't trigger requestAnimationFrame loops
+    // Patch game.js: remove the eager level generation. requestAnimationFrame
+    // is mocked and therefore cannot create a recursive browser loop.
     if (f === 'js/game.js') {
       code = code.replace(/^\s*generateLevel\(\);\s*$/m, '// generateLevel(); // patched by test setup');
-      code = code.replace(/^\s*gameLoop\(\);\s*$/m,      '// gameLoop(); // patched by test setup');
     }
 
     vm.runInThisContext(code, { filename: f });

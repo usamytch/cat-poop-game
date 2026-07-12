@@ -38,7 +38,7 @@ if (IS_MOBILE) {
   // ===== КНОПКИ ДЕЙСТВИЙ =====
   // Кнопка "Выстрел 💩" — правый нижний угол
   const BTN_SHOOT = { cx: 1100, cy: 590, r: 60, label: "💩", touchId: null };
-  // Кнопка "Старт / Продолжить" — центр экрана (только на стартовом/оверлейном экране)
+  // Кнопка "Старт / Продолжить / Меню" — центр экрана вне активной игры
   const BTN_ACTION = { cx: 600, cy: 635, r: 55, label: "▶", touchId: null };
   // Кнопка мьюта — верхний правый угол, всегда видна
   const BTN_MUTE = { cx: 1155, cy: 45, r: 38 };
@@ -128,6 +128,8 @@ if (IS_MOBILE) {
         if (inCircle(x, y, BTN_ACTION.cx, BTN_ACTION.cy, BTN_ACTION.r)) {
           if (gameState === "start") {
             startGame();
+          } else if (gameState === "paused") {
+            resumeGame();
           } else if (gameState === "lifeLost") {
             respawnPlayer();
           } else {
@@ -242,7 +244,7 @@ if (IS_MOBILE) {
 
     } else {
       // --- Кнопка действия (старт / в меню) ---
-      const label = gameState === "start" ? "▶ ИГРАТЬ" : "↩ МЕНЮ";
+      const label = gameState === "start" ? "▶ ИГРАТЬ" : gameState === "paused" ? "▶ ПРОДОЛЖИТЬ" : "↩ МЕНЮ";
       const t = Date.now() * 0.003;
       const sc = 1 + Math.sin(t) * 0.04;
       ctx.translate(BTN_ACTION.cx, BTN_ACTION.cy);

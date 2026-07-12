@@ -1,7 +1,7 @@
 // ==========================================
 // audio.test.js — panic melody, mutual exclusion, state transitions
 // ==========================================
-import { describe, it, expect, beforeAll, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeAll, beforeEach, afterEach, vi } from 'vitest';
 import { loadGame, resetGameState } from './setup.js';
 
 beforeAll(() => {
@@ -10,11 +10,22 @@ beforeAll(() => {
 
 beforeEach(() => {
   resetGameState();
+  if (_audioPauseTimer) clearTimeout(_audioPauseTimer);
+  _audioPauseTimer = null;
+  _audioPaused = false;
+  muted = false;
   currentLocation = locationThemes[0];
-  if (_ac) _ac.currentTime = 0;
+  if (_ac) { _ac.currentTime = 0; _ac.state = 'running'; }
   // Сбрасываем состояние мелодий перед каждым тестом
   stopMelody();
   stopPanicMelody();
+});
+
+afterEach(() => {
+  if (_audioPauseTimer) clearTimeout(_audioPauseTimer);
+  _audioPauseTimer = null;
+  _audioPaused = false;
+  vi.useRealTimers();
 });
 
 // ---------------------------------------------------------------------------
@@ -129,6 +140,52 @@ describe('location-aware soundtrack selection', () => {
     syncLocationMelody();
 
     expect(_melodyStartTime).toBe(startTime);
+  });
+});
+
+// ---------------------------------------------------------------------------
+describe('audio pause / resume', () => {
+  it('fades, suspends and resumes the same melody clock', () => {
+    vi.useFakeTimers();
+    gameState = 'playing';
+    startMelody();
+    const startTime = _melodyStartTime;
+    const master = _melodyMaster;
+
+    pauseAudio();
+
+    expect(_audioPaused).toBe(true);
+    expect(_melodyTimer).toBeNull();
+    expect(master.gain.linearRampToValueAtTime).toHaveBeenCalledWith(0.001, 0.04);
+
+    vi.advanceTimersByTime(50);
+    expect(_ac.state).toBe('suspended');
+
+    resumeAudio();
+
+    expect(_audioPaused).toBe(false);
+    expect(_ac.state).toBe('running');
+    expect(_melodyStartTime).toBe(startTime);
+    expect(_melodyMaster).toBe(master);
+    expect(_melodyTimer).not.toBeNull();
+    stopMelody();
+  });
+
+  it('restores the correct panic theme after pause', () => {
+    vi.useFakeTimers();
+    gameState = 'playing';
+    player.urge = 80;
+    startPanicMelody();
+    const panicStart = _panicStartTime;
+
+    pauseAudio();
+    vi.advanceTimersByTime(50);
+    resumeAudio();
+
+    expect(_panicStartTime).toBe(panicStart);
+    expect(_panicTimer).not.toBeNull();
+    expect(_melodyStartTime).toBeNull();
+    stopPanicMelody();
   });
 });
 

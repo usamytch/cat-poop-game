@@ -1155,14 +1155,11 @@ describe('updateObstacles()', () => {
     obstacles.length = 0;
     obstacles.push(ob);
 
-    let t = 0;
-    globalThis.performance = { now: () => t };
-
-    t = 0;
+    simulationTimeMs = 0;
     updateObstacles();
     const offset0 = ob.movingOffset;
 
-    t = 1000;
+    simulationTimeMs = 1000;
     updateObstacles();
     const offset1 = ob.movingOffset;
 

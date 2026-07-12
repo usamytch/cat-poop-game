@@ -357,6 +357,35 @@ Fallback таймер (`PATH_RECALC=30`) и "путь исчерпан" (`nextNo
 | **Melody `setTimeout`** — вместо rAF | [`js/audio.js`](js/audio.js) | Освобождает rAF бюджет |
 | **`setFont()` кэш** | [`js/utils.js`](js/utils.js) | Нет лишнего парсинга CSS-шрифта |
 | **`WORLD` константы** — вместо `canvas.width/height` | [`js/renderer-bg.js`](js/renderer-bg.js) | Нет DOM-обращений в горячих путях |
+| **Opt-in browser benchmark** — 5 секунд по клавише `F` | [`js/performance.js`](js/performance.js) | P50/P95/P99 frame pacing и CPU `update()+draw()` без overhead в обычной игре |
+
+Исходный browser baseline до fixed timestep хранится в [`plans/performance-baseline.md`](plans/performance-baseline.md).
+
+### Fixed simulation timestep
+
+[`js/game.js`](js/game.js) отделяет игровое время от частоты монитора:
+
+- симуляция работает фиксированными шагами `1000/60 ms`;
+- `draw()` по-прежнему вызывается на каждом `requestAnimationFrame`, поэтому 120/144 Гц не ограничиваются до 60 FPS;
+- входящая delta ограничена 100 ms;
+- за один render frame выполняется не более 5 шагов симуляции;
+- лишний backlog отбрасывается, предотвращая spiral of death после зависания вкладки;
+- рендер не изменяет игровые таймеры: `levelMessageTimer` обновляется в `update()`;
+- opt-in benchmark считает не только FPS/CPU, но и фактический `simulationSteps/sec`.
+
+Browser-проверка на 120 Гц показала около 120 FPS при **60.1 simulation steps/sec** в обычной и DFS-сцене. Unit-тесты закрепляют ровно 60 шагов за секунду на 60, 120 и 144 Гц.
+
+### Настоящая пауза
+
+- `Escape`/`P` ставят активный забег на ручную паузу; `Enter`, `Escape` или `P` продолжают.
+- `window.blur` и скрытие документа автоматически ставят паузу, но не снимают её сами: возврат всегда осознанный.
+- Пауза хранит предыдущее состояние (`playing` или `lifeLost`) и восстанавливает именно его.
+- Срочность, AI, снаряды, бонусы, частицы, countdown потери жизни и движущиеся препятствия не обновляются.
+- Зажатые клавиши очищаются на входе и выходе, поэтому кот не продолжает движение сам.
+- Accumulator сбрасывается при pause/resume — скрытое время не превращается в catch-up шаги.
+- Движущиеся препятствия используют `simulationTimeMs`, а не `performance.now()`, и не телепортируются после возврата.
+- Web Audio master плавно уходит в тишину за 40 ms, затем `AudioContext` приостанавливается; при продолжении сохраняются тема и позиция музыкального clock.
+- На touch-устройствах центральная кнопка продолжает поставленную на паузу игру.
 
 ---
 
@@ -365,7 +394,7 @@ Fallback таймер (`PATH_RECALC=30`) и "путь исчерпан" (`nextNo
 - **Vanilla JS** — никаких фреймворков
 - **Canvas 2D API** — вся графика
 - **Web Audio API** — процедурный звук
-- **requestAnimationFrame** — игровой цикл
+- **Fixed timestep 60 Гц + requestAnimationFrame** — независимые симуляция и рендер
 - **localStorage** — сохранение прогресса
 - **LCG Seeded RNG** — детерминированная генерация уровней
 - **Vitest** — unit- и интеграционные тесты (Node.js, без браузера)
@@ -388,6 +417,7 @@ cat-poop-game/
 ├── js/
 │   ├── config.js       # Только константы: WORLD, DIFF, GRID, BONUS_TYPES, каталоги
 │   ├── utils.js        # Утилиты: RNG, clamp, коллизии, drawSprite, rrect, setFont
+│   ├── performance.js  # Отключённый по умолчанию browser benchmark frame pacing и CPU
 │   ├── melody-data.js  # Каталог тем локаций + генерация reverse panic-вариантов
 │   ├── audio.js        # Web Audio API: эффекты, планировщик и выбор темы локации
 │   ├── particles.js    # Частицы: конфетти, лужа, комбо-попапы, emoji-кэш
@@ -418,6 +448,7 @@ cat-poop-game/
 │   ├── grid.test.js          # cellKey, markCells, cellsFree, pixelToCell, aStarPath
 │   ├── game.test.js          # stats, startGame, respawnPlayer, update, input
 │   ├── touch.test.js         # мобильное управление
+│   ├── performance.test.js   # opt-in browser benchmark: интервалы, CPU, длинные кадры
 │   └── integration/
 │       ├── combo-flow.test.js
 │       ├── urge-flow.test.js
@@ -454,6 +485,7 @@ npm test
 | `tests/grid.test.js` | cellKey, markCells, cellsFree, pixelToCell, aStarPath |
 | `tests/game.test.js` | статистика, startGame, respawnPlayer, update |
 | `tests/touch.test.js` | мобильное управление |
+| `tests/performance.test.js` | сбор frame intervals, CPU update+draw и счётчики длинных кадров |
 | `tests/integration/combo-flow.test.js` | полный флоу 3 попаданий → бегство → очистка |
 | `tests/integration/urge-flow.test.js` | рост срочности, таблетка, авария, паника |
 | `tests/integration/play-feel-regression.test.js` | повторяемые сценарии play-feel: открытое преследование, подвал, паника, комбо |

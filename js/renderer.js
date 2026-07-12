@@ -160,8 +160,11 @@ function drawPanicEffects() {
 
 // ===== ГЛАВНАЯ ФУНКЦИЯ РИСОВАНИЯ =====
 function draw() {
-  // OPT 5: Date.now() один раз за кадр
-  _now = Date.now();
+  // В игровом мире визуальные циклы идут по simulation clock и замирают на паузе.
+  // Меню и финальные экраны продолжают использовать wall clock.
+  _now = (gameState === "playing" || gameState === "paused" || gameState === "lifeLost")
+    ? simulationTimeMs
+    : Date.now();
 
   // --- Wave distortion при панике: синусоидальный skew всего экрана ---
   // Применяется через ctx.setTransform ДО clearRect, чтобы охватить весь кадр включая HUD.

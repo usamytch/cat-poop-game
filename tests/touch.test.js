@@ -166,8 +166,10 @@ describe('touch.js — кнопка BTN_ACTION (ИГРАТЬ / В меню)', ()
     // Мокаем startGame и respawnPlayer через vm-контекст
     vm.runInThisContext('startGame = function() { startGameCalled_btn = true; }');
     vm.runInThisContext('respawnPlayer = function() { respawnCalled_btn = true; }');
+    vm.runInThisContext('resumeGame = function() { resumeCalled_btn = true; }');
     globalThis.startGameCalled_btn = false;
     globalThis.respawnCalled_btn = false;
+    globalThis.resumeCalled_btn = false;
     handlers = loadTouchJS();
   });
 
@@ -194,6 +196,12 @@ describe('touch.js — кнопка BTN_ACTION (ИГРАТЬ / В меню)', ()
     setGameVar('gameState', 'lifeLost');
     touchStart(handlers['touchstart'], [makeTouch(600, 590)]);
     expect(globalThis.respawnCalled_btn).toBe(true);
+  });
+
+  it('тап по BTN_ACTION в gameState=paused вызывает resumeGame()', () => {
+    setGameVar('gameState', 'paused');
+    touchStart(handlers['touchstart'], [makeTouch(600, 590)]);
+    expect(globalThis.resumeCalled_btn).toBe(true);
   });
 
   it('тап далеко от BTN_ACTION (y=400) не запускает игру', () => {

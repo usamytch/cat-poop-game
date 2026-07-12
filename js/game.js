@@ -31,11 +31,75 @@ let difficulty = "normal";
 let lives = 3;
 let lifeLostTimer = 0;   // обратный отсчёт перед возобновлением
 let lifeLostReason = ""; // "accident" | "caught"
+let pausedFromState = null;
+let pauseReason = "";    // "manual" | "hidden" | "blur"
+
+// ===== ИГРОВОЕ ВРЕМЯ =====
+// Вся механика проекта настроена в единицах «кадр при 60 FPS». Fixed timestep
+// сохраняет этот баланс на дисплеях 60/120/144+ Гц, не ограничивая частоту draw().
+const SIMULATION_HZ = 60;
+const SIMULATION_STEP_MS = 1000 / SIMULATION_HZ;
+const MAX_FRAME_DELTA_MS = 100;
+const MAX_SIMULATION_STEPS = 5;
+const SIMULATION_EPSILON_MS = 0.000001;
+
+let simulationLastTimestamp = null;
+let simulationAccumulatorMs = 0;
+let droppedSimulationTimeMs = 0;
+let simulationTimeMs = 0;
+
+function resetSimulationClock(timestamp = null) {
+  simulationLastTimestamp = Number.isFinite(timestamp) ? timestamp : null;
+  simulationAccumulatorMs = 0;
+  droppedSimulationTimeMs = 0;
+}
+
+function clearInputState() {
+  for (const key in keys) keys[key] = false;
+}
+
+function pauseGame(reason = "manual") {
+  if (gameState === "paused") return false;
+  if (gameState !== "playing" && gameState !== "lifeLost") return false;
+
+  pausedFromState = gameState;
+  pauseReason = reason;
+  gameState = "paused";
+  clearInputState();
+  resetSimulationClock();
+  pauseAudio();
+  return true;
+}
+
+function resumeGame() {
+  if (gameState !== "paused") return false;
+
+  gameState = pausedFromState || "playing";
+  pausedFromState = null;
+  pauseReason = "";
+  clearInputState();
+  resetSimulationClock();
+  resumeAudio();
+  return true;
+}
 
 // ===== КЛАВИШИ =====
 const keys = {};
 window.addEventListener("keydown", e => {
+  if (e.key === "Escape" || e.key === "p" || e.key === "P") {
+    e.preventDefault();
+    if (gameState === "paused") resumeGame();
+    else pauseGame("manual");
+    return;
+  }
   keys[e.key] = true;
+  // F — пять секунд измерять frame pacing и CPU update+draw (debug only).
+  if (e.key === "f" || e.key === "F") {
+    const locationKey = typeof currentLocation !== "undefined" ? currentLocation.key : "none";
+    const panic = player.urge / player.maxUrge > 0.75 ? "panic" : "calm";
+    perfMonitor.start(`${gameState}:${difficulty}:L${level}:${locationKey}:${panic}`);
+    return;
+  }
   // M — мьют работает в любом состоянии игры
   if (e.key === "m" || e.key === "M") {
     toggleMute();
@@ -89,11 +153,17 @@ window.addEventListener("keydown", e => {
   } else if (gameState === "lifeLost") {
     // Enter/пробел — пропустить ожидание и сразу возобновить
     if (e.key === "Enter" || e.key === " ") respawnPlayer();
+  } else if (gameState === "paused") {
+    if (e.key === "Enter" || e.key === " ") resumeGame();
   } else if (gameState === "win" || gameState === "lose" || gameState === "caught" || gameState === "accident") {
     if (e.key === "Enter" || e.key === " ") { gameState = "start"; }
   }
 });
 window.addEventListener("keyup", e => { keys[e.key] = false; });
+window.addEventListener("blur", () => { pauseGame("blur"); });
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden) pauseGame("hidden");
+});
 
 // ===== СТАРТ ИГРЫ =====
 function startGame() {
@@ -107,6 +177,9 @@ function startGame() {
   panicFlashAlpha = 0; panicFlashTimer = 0;
   puddleAlpha = 0;
   poopProgress = 0; isPooping = false;
+  pausedFromState = null; pauseReason = "";
+  simulationTimeMs = 0;
+  resetSimulationClock();
   generateLevel();
   owner.activate();
   sndMeow();
@@ -136,6 +209,7 @@ function respawnPlayer() {
 
 // ===== ОБНОВЛЕНИЕ =====
 function update() {
+  if (gameState === "paused") return;
   if (gameState === "lifeLost") {
     updateOverlayParticles();
     updateComboPopups();
@@ -149,6 +223,7 @@ function update() {
     overlayTimer++;
     return;
   }
+  simulationTimeMs += SIMULATION_STEP_MS;
   player.update();
   owner.update();
   updatePoops();
@@ -157,15 +232,63 @@ function update() {
   updatePawTrails();
   updateOverlayParticles();
   updateComboPopups();
+  if (levelMessageTimer > 0) levelMessageTimer--;
 }
 
 // ===== ИГРОВОЙ ЦИКЛ =====
-function gameLoop() {
-  update();
+function advanceSimulation(timestamp) {
+  if (!Number.isFinite(timestamp)) return 0;
+
+  if (simulationLastTimestamp === null) {
+    simulationLastTimestamp = timestamp;
+    return 0;
+  }
+
+  let frameDelta = timestamp - simulationLastTimestamp;
+  simulationLastTimestamp = timestamp;
+  if (!Number.isFinite(frameDelta) || frameDelta <= 0) return 0;
+
+  if (frameDelta > MAX_FRAME_DELTA_MS) {
+    droppedSimulationTimeMs += frameDelta - MAX_FRAME_DELTA_MS;
+    frameDelta = MAX_FRAME_DELTA_MS;
+  }
+  simulationAccumulatorMs += frameDelta;
+
+  let steps = 0;
+  while (simulationAccumulatorMs + SIMULATION_EPSILON_MS >= SIMULATION_STEP_MS &&
+         steps < MAX_SIMULATION_STEPS) {
+    update();
+    simulationAccumulatorMs -= SIMULATION_STEP_MS;
+    if (simulationAccumulatorMs < 0) simulationAccumulatorMs = 0;
+    steps++;
+  }
+
+  // Если вкладка или поток зависли, не пытаемся догонять потерянные секунды.
+  // Оставляем только дробный остаток до следующего simulation tick.
+  if (simulationAccumulatorMs + SIMULATION_EPSILON_MS >= SIMULATION_STEP_MS) {
+    const backlogSteps = Math.floor(
+      (simulationAccumulatorMs + SIMULATION_EPSILON_MS) / SIMULATION_STEP_MS
+    );
+    const droppedBacklog = backlogSteps * SIMULATION_STEP_MS;
+    simulationAccumulatorMs -= droppedBacklog;
+    if (simulationAccumulatorMs < 0) simulationAccumulatorMs = 0;
+    droppedSimulationTimeMs += droppedBacklog;
+  }
+
+  return steps;
+}
+
+function gameLoop(timestamp) {
+  const measuringPerformance = perfMonitor.enabled;
+  if (measuringPerformance) perfMonitor.beginFrame(timestamp);
+  const simulationSteps = advanceSimulation(timestamp);
+  if (measuringPerformance) perfMonitor.recordSimulationSteps(simulationSteps);
   draw();
+  if (measuringPerformance) perfMonitor.endFrame();
   requestAnimationFrame(gameLoop);
 }
 
 // ===== ИНИЦИАЛИЗАЦИЯ =====
 generateLevel();
-gameLoop();
+resetSimulationClock();
+requestAnimationFrame(gameLoop);

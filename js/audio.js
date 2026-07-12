@@ -6,6 +6,8 @@
 
 let _ac = null;
 let muted = false;
+let _audioPaused = false;
+let _audioPauseTimer = null;
 
 function getAC() {
   if (!_ac) _ac = new (window.AudioContext || window.webkitAudioContext)();
@@ -13,7 +15,7 @@ function getAC() {
 }
 
 function tone(freq, type, dur, vol, delay) {
-  if (muted) return;
+  if (muted || _audioPaused) return;
   vol = vol || 0.3; delay = delay || 0;
   try {
     const ac = getAC();
@@ -109,7 +111,7 @@ function _melodyTick() {
 function startMelody() {
   stopMelody();
   stopPanicMelody();
-  if (muted) return;
+  if (muted || _audioPaused) return;
   const ac = getAC();
   const locationKey = typeof currentLocation !== "undefined" ? currentLocation.key : "hall";
   _melodyTheme = getLocationMelody(locationKey, false);
@@ -206,7 +208,7 @@ function _panicTick() {
 function startPanicMelody() {
   if (_panicStartTime !== null) return; // уже играет
   stopMelody();
-  if (muted) return;
+  if (muted || _audioPaused) return;
   const ac = getAC();
   const locationKey = typeof currentLocation !== "undefined" ? currentLocation.key : "hall";
   _panicTheme = getLocationMelody(locationKey, true);
@@ -255,6 +257,69 @@ function syncLocationMelody() {
     startPanicMelody();
   } else if (_melodyStartTime !== null) {
     startMelody();
+  }
+}
+
+function _fadeAudioMaster(master, target, duration) {
+  if (!master || !_ac) return;
+  try {
+    const now = _ac.currentTime;
+    const gain = master.gain;
+    gain.cancelScheduledValues(now);
+    gain.setValueAtTime(Math.max(0.001, gain.value || 1), now);
+    gain.linearRampToValueAtTime(target, now + duration);
+  } catch(e) {}
+}
+
+function pauseAudio() {
+  if (_audioPaused) return;
+  _audioPaused = true;
+
+  if (_melodyTimer) { clearTimeout(_melodyTimer); _melodyTimer = null; }
+  if (_panicTimer) { clearTimeout(_panicTimer); _panicTimer = null; }
+  if (!_ac) return;
+
+  _fadeAudioMaster(_melodyMaster, 0.001, 0.04);
+  _fadeAudioMaster(_panicMaster, 0.001, 0.04);
+
+  if (_audioPauseTimer) clearTimeout(_audioPauseTimer);
+  _audioPauseTimer = setTimeout(function() {
+    _audioPauseTimer = null;
+    if (!_audioPaused || !_ac || typeof _ac.suspend !== "function") return;
+    try {
+      const result = _ac.suspend();
+      if (result && typeof result.catch === "function") result.catch(function() {});
+    } catch(e) {}
+  }, 50);
+}
+
+function resumeAudio() {
+  if (!_audioPaused) return;
+  _audioPaused = false;
+
+  if (_audioPauseTimer) {
+    clearTimeout(_audioPauseTimer);
+    _audioPauseTimer = null;
+  }
+
+  if (_ac && typeof _ac.resume === "function") {
+    try {
+      const result = _ac.resume();
+      if (result && typeof result.catch === "function") result.catch(function() {});
+    } catch(e) {}
+  }
+
+  _fadeAudioMaster(_melodyMaster, 1, 0.04);
+  _fadeAudioMaster(_panicMaster, 1, 0.04);
+
+  if (muted) return;
+  if (_melodyStartTime !== null && !_melodyTimer) {
+    _melodyTimer = setTimeout(_melodyTick, 0);
+  } else if (_panicStartTime !== null && !_panicTimer) {
+    _panicTimer = setTimeout(_panicTick, 0);
+  } else if (typeof gameState !== "undefined" && gameState === "playing") {
+    const inPanic = typeof player !== "undefined" && player.urge / player.maxUrge > 0.75;
+    if (inPanic) startPanicMelody(); else startMelody();
   }
 }
 

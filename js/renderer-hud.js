@@ -234,10 +234,6 @@ function drawUI() {
     ctx.fillText("🌿 "+Math.ceil(catnipTimer/60)+"с", bx, bonusY);
   }
 
-  if (levelMessageTimer > 0) {
-    levelMessageTimer--;
-  }
-
   ctx.textAlign = "left";
 }
 
@@ -354,6 +350,26 @@ function drawOverlay() {
 
   ctx.save(); ctx.textAlign = "center";
   const cx = WORLD.width/2, cy = WORLD.height/2;
+
+  if (gameState === "paused") {
+    setFont("bold 72px Arial");
+    ctx.fillStyle = "#ffd54f";
+    ctx.shadowColor = "#ff9800";
+    ctx.shadowBlur = 24;
+    ctx.fillText("⏸ ПАУЗА", cx, cy - 70);
+    ctx.shadowBlur = 0;
+
+    setFont("bold 28px Arial");
+    ctx.fillStyle = "#fff";
+    ctx.fillText(pauseReason === "manual" ? "Кот терпит. Пока что." : "Игра остановлена — фокус потерян.", cx, cy - 15);
+
+    setFont("20px Arial");
+    ctx.fillStyle = "#b0bec5";
+    ctx.fillText("Срочность, хозяин, препятствия и таймеры заморожены", cx, cy + 25);
+    ctx.fillText("Enter / Esc / P — продолжить", cx, cy + 70);
+    ctx.restore();
+    return;
+  }
 
   if (gameState === "lifeLost") {
     const reason = lifeLostReason === "caught" ? "😾 Поймали!" : "💩 Авария!";

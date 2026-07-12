@@ -16,6 +16,8 @@ function fullReset() {
   gameState = 'start';
   lifeLostTimer = 0;
   lifeLostReason = '';
+  pausedFromState = null;
+  pauseReason = '';
   player.urge = 0;
   player.x = 100;
   player.y = 300;
@@ -43,6 +45,9 @@ function fullReset() {
   litterBox.x = 900;
   litterBox.y = 400;
   overlayTimer = 0;
+  levelMessageTimer = 0;
+  simulationTimeMs = 0;
+  resetSimulationClock();
 }
 
 beforeEach(fullReset);
@@ -196,6 +201,151 @@ describe('update() — state dispatcher', () => {
     player.urge = 20;
     update();
     expect(player.urge).toBe(20);
+  });
+
+  it('decrements the level message timer in simulation, not rendering', () => {
+    gameState = 'playing';
+    levelMessageTimer = 10;
+    update();
+    expect(levelMessageTimer).toBe(9);
+  });
+});
+
+// ---------------------------------------------------------------------------
+describe('fixed timestep game loop', () => {
+  function simulateOneSecond(refreshRate) {
+    fullReset();
+    gameState = 'playing';
+    owner.active = false;
+    resetSimulationClock();
+
+    let steps = 0;
+    for (let frame = 0; frame <= refreshRate; frame++) {
+      steps += advanceSimulation(frame * 1000 / refreshRate);
+    }
+    return { steps, urge: player.urge };
+  }
+
+  it.each([60, 120, 144])('runs exactly 60 simulation steps in one second at %i Hz', refreshRate => {
+    const result = simulateOneSecond(refreshRate);
+    expect(result.steps).toBe(60);
+    expect(result.urge).toBeCloseTo(DIFF.normal.urgeRate, 5);
+  });
+
+  it('renders every rAF even when no simulation step is due', () => {
+    gameState = 'playing';
+    draw.mockClear();
+    requestAnimationFrame.mockClear();
+    resetSimulationClock();
+
+    gameLoop(0);
+    gameLoop(1000 / 120);
+    gameLoop(1000 / 60);
+
+    expect(draw).toHaveBeenCalledTimes(3);
+    expect(requestAnimationFrame).toHaveBeenCalledTimes(3);
+    expect(player.urge).toBeCloseTo(DIFF.normal.urgeRate / 60, 5);
+  });
+
+  it('caps catch-up work and drops stale backlog after a long stall', () => {
+    gameState = 'playing';
+    resetSimulationClock(0);
+
+    const steps = advanceSimulation(1000);
+
+    expect(steps).toBe(MAX_SIMULATION_STEPS);
+    expect(simulationAccumulatorMs).toBeLessThan(SIMULATION_STEP_MS);
+    expect(droppedSimulationTimeMs).toBeGreaterThan(900);
+    expect(player.urge).toBeCloseTo(DIFF.normal.urgeRate / 60 * MAX_SIMULATION_STEPS, 5);
+  });
+});
+
+// ---------------------------------------------------------------------------
+describe('pause state', () => {
+  it('freezes gameplay state and moving obstacles, then resumes without backlog', () => {
+    gameState = 'playing';
+    player.urge = 10;
+    speedBoostTimer = 60;
+    simulationTimeMs = 1000;
+    keys.ArrowRight = true;
+    obstacles.push({
+      x: 300, y: 300, width: GRID, height: GRID,
+      moving: true, axis: 'x', range: GRID, speed: 0.01,
+      phase: 0, movingOffset: 0, baseX: 300, baseY: 300,
+    });
+    updateObstacles();
+    const obstacleX = obstacles[0].x;
+
+    expect(pauseGame('manual')).toBe(true);
+    expect(gameState).toBe('paused');
+    expect(keys.ArrowRight).toBe(false);
+
+    advanceSimulation(0);
+    advanceSimulation(1000);
+
+    expect(player.urge).toBe(10);
+    expect(speedBoostTimer).toBe(60);
+    expect(simulationTimeMs).toBe(1000);
+    expect(obstacles[0].x).toBe(obstacleX);
+
+    expect(resumeGame()).toBe(true);
+    expect(gameState).toBe('playing');
+    expect(advanceSimulation(5000)).toBe(0);
+    expect(advanceSimulation(5000 + SIMULATION_STEP_MS)).toBe(1);
+    expect(player.urge).toBeGreaterThan(10);
+    expect(simulationTimeMs).toBeCloseTo(1000 + SIMULATION_STEP_MS);
+  });
+
+  it('keeps pause separate from lifeLost and restores its countdown state', () => {
+    gameState = 'lifeLost';
+    lifeLostTimer = 90;
+
+    pauseGame('manual');
+    advanceSimulation(0);
+    advanceSimulation(1000);
+
+    expect(gameState).toBe('paused');
+    expect(pausedFromState).toBe('lifeLost');
+    expect(lifeLostTimer).toBe(90);
+
+    resumeGame();
+    expect(gameState).toBe('lifeLost');
+  });
+
+  it('pauses on window blur and requires explicit resume', () => {
+    const blurHandler = window.addEventListener.mock.calls.find(call => call[0] === 'blur')[1];
+    gameState = 'playing';
+
+    blurHandler();
+
+    expect(gameState).toBe('paused');
+    expect(pauseReason).toBe('blur');
+    resumeGame();
+  });
+
+  it('pauses when the document becomes hidden', () => {
+    const visibilityHandler = document.addEventListener.mock.calls.find(call => call[0] === 'visibilitychange')[1];
+    gameState = 'playing';
+    document.hidden = true;
+
+    visibilityHandler();
+
+    expect(gameState).toBe('paused');
+    expect(pauseReason).toBe('hidden');
+    document.hidden = false;
+    resumeGame();
+  });
+
+  it('toggles manual pause with P', () => {
+    const keydownHandler = window.addEventListener.mock.calls.find(call => call[0] === 'keydown')[1];
+    const event = { key: 'P', preventDefault() {} };
+    gameState = 'playing';
+
+    keydownHandler(event);
+    expect(gameState).toBe('paused');
+
+    keydownHandler(event);
+    expect(gameState).toBe('playing');
   });
 });
 
